@@ -1,0 +1,648 @@
+dev_checks = 1
+hack_minimala = 1
+todo  = 1
+; Compile: Adapt data, flatten lists, inline tables, etc
+
+; 2024  
+; ----- v0h ------
+  ; Apr               
+    ; 29 Support instr_chip_down_arp_noise
+       ; row_lp: fix end of chunk pre-detection
+    ; 26 Various fix (instr: bufferization)
+    ; 24 Fix
+         ; Remove old code from chung vu (too much has changed anyway) 
+    ; 23 v1 Rewrite Belo Horizonte!
+  ; ???  v0 extracted from chung vu
+
+      IMPORT "memmap.i" ; for instr_head_rows and co
+      IMPORT "memcpc.o" ; for connect_bk_io
+      IMPORT "const.i"
+; For compiler_player adr and co.
+; Note: we don't use flags (use_*...) here, they are setup for the tool.
+      ; Instead, we use dynamic flag (_use_note_flag etc), meant to be
+      ; set up after analysis.
+      IMPORT "plyconf.i"
+      IMPORT "chung.o"
+      IMPORT "chunk.o"  ; Next_node
+      IMPORT "instr.o"  ; Note: version non compiled
+      IMPORT "phrase.o"
+      IMPORT "track.o"
+      IMPORT "ply.o"
+
+;      IF ayane:ELSE
+;!!! ayane must be = 1, to detect proper instruments
+;      END
+
+;=========================================
+
+;Hack: we report here the LSB of routines for instr.o compiled with 
+     ; ayane = 0 
+
+compiled_instr_null = compiled_player + 0
+      IF hack_minimala
+compiled_instr_default = compiled_player + 0 ; Not used
+      ELSE
+!! todo: right value
+      END
+compiled_instr_chip_down_vib = compiled_player + 4
+compiled_instr_chip_down_arp_noise = compiled_player + &52
+
+dest  = compiled_data
+
+connect_bk_compile = connect_bk_io
+error_confine = &BE00
+      IF todo
+;!! When not set, raise ambiguous label. Shouldn't it meant to be
+;  &be00 everywhere? 
+      END
+to_be_implemented = &BE00
+
+compile
+;------             
+          ld de,dest+9  ; Leave room song list
+
+instruments
+;..........
+
+; Must add instr 0 = instr_null.
+          ld hl,instr_map
+          push hl
+          ld (hl),e:inc h
+          ld (hl),d
+; Type, no params
+          ld a,compiled_instr_null AND &FF
+          ld (de),a:inc de
+
+; We iterate on all possible instruments, as they are not contiguous 
+          pop hl:inc l  ; L= instr # 
+instr_lp
+; Store instrument pnt in compiled file
+; (note: done even for empty instrument, to free HL)
+          push hl
+          ld (hl),e:inc h
+          ld (hl),d
+
+          ld a,l
+          call Song_select_instr
+          jp z,instr_next
+
+          call get_instr_pnt
+          ld a,(hl):inc hl
+; instr_null not used in ayane module itself
+;          cp instr_null AND &FF:jr z,comp_null
+          cp instr_null AND &FF:call z,mess
+          cp instr_default AND &FF:jr z,comp_default
+          cp instr_chip_down_vib AND &FF:jp z,comp_chip_down_vib
+          cp instr_chip_down_arp_noise AND &FF
+          jp z,comp_chip_down_arp_noise
+      BRK               ; unexpected
+
+comp_null
+          ld a,compiled_instr_null AND &FF
+          ld (de),a:inc de
+          jp instr_next
+
+comp_default
+      IF hack_minimala
+          call mess     ; not used/compiled
+      ELSE
+          call poke_init
+          ld a,compiled_instr_default AND &FF
+          call poke_a
+          call poke_flush
+          ld de,(dest_pnt)
+          call instr_get_loop
+          xor a
+.deflp
+;de=dest (not buffer) for loop handling.
+          call connect_bk_instr
+          call is_last_row:jr nz,.defend
+          call Next_node:call z,mess
+
+          push af
+          push bc       ; save row
+          push hl
+          cp b
+          jr nz,.loop_not_reached
+          ld (loop_pnt),de
+.loop_not_reached
+          ld (last_row),de
+          inc de        ; room for link
+
+          idsz ** inc hl ; skip link
+          push de
+          ld de,buffer
+          push de
+          ld bc,instr_row_size_max
+          ldir
+          call connect_bk_compile
+          pop hl
+          pop de
+; - arpegio
+
+      IF instr_arp
+ !! review that
+      END
+          ldi
+; - pitch   
+      IF instr_pitch - 1
+ !! review that
+      END
+          ld a,(_use_instr_pitch)
+          or a:jr z,.no_instr_pitch
+          call to_be_implemented
+
+.no_instr_pitch
+; Check it's null (and skip field)
+; assume no pitch
+          ld a,(hl):inc hl
+          or (hl):inc hl:call nz,fail
+
+; - r7 flags 
+; For now copy flags
+      IF todo
+; infer noise flag from noise value
+; via flags _use_channel_open_flag  _use_noise
+      END
+      IF instr_flags - 3
+ !! review that
+      END
+          ldi
+
+; - noise
+      IF instr_noise - 4
+ !! review that
+      END
+          ldi
+
+; - vol
+      IF instr_vol - 5
+  !! review that
+      END
+          ld a,(_use_hard_env):or a:jr z,.no_hard_env_vol
+          call to_be_implemented
+.no_hard_env_vol
+; If no hard env, no need for flag. Put volume as is
+          ld a,(hl):inc hl
+          rrca:call c,mess ; NC: regular volume
+          ld (de),a:inc de
+
+; - hperiod
+      IF instr_hperiod - 6
+   !! review that
+      END
+          ld a,(_use_hard_env):or a:jr z,.no_hard_env
+          call to_be_implemented
+.no_hard_env
+
+          ld hl,(last_row)
+          ld a,h:cp d:call nz,error_confine ; Expect instr fit in &100
+          ld a,e:sub l:ld (hl),a ; relative link
+
+          pop hl
+          pop bc
+          pop af
+          inc a
+          jr .deflp
+.defend
+          ld hl,(last_row)
+          ld a,(loop_pnt)
+          sub l:ld (hl),a
+          jr instr_next
+      END
+
+comp_chip_down_vib
+          call poke_init
+          ld a,compiled_instr_chip_down_vib AND &FF
+          call poke_a
+; ext params, before table
+          push hl
+          instr_head_ext - instr_head_rows ** inc hl
+          2 ** call poke_ldi
+          call poke_flush
+          ld de,(dest_pnt)
+
+          call instr_get_loop
+          pop hl
+      IF instr_head_rows - 1
+ !! review that. rows were expected after type
+      END
+          xor a
+.cdvlp
+;de= dest (not buffer), for detection
+          call connect_bk_instr
+          call is_last_row:jr nz,.cdvend
+          call Next_node:call z,mess
+
+          push af
+          push bc       ; save b=row
+          push hl
+          cp b
+          jr nz,.loop_not_reached
+          ld (loop_pnt),de
+.loop_not_reached
+          ld (last_row),de
+
+          idsz ** inc hl ; skip link
+chip_row_size = 2
+          push de
+          ld de,buffer
+          ld bc,chip_row_size
+          push de
+          ldir
+          call connect_bk_compile
+          pop hl
+          pop de
+          ld a,chip_row_size+1
+          ld (de),a
+          inc de
+;Just copy pitch
+          chip_row_size ** ldi
+          ld hl,(last_row)
+          ld a,h:cp d:call nz,error_confine ; expect instr fit in &100
+
+          pop hl
+          pop bc
+          pop af
+          inc a
+          jr .cdvlp
+.cdvend
+          call connect_bk_compile
+          ld hl,(last_row)
+          ld a,(loop_pnt)
+          sub l:ld (hl),a
+          jr instr_next
+
+comp_chip_down_arp_noise
+          call poke_init
+          ld a,compiled_instr_chip_down_arp_noise AND &FF
+          call poke_a
+; ext params, before table
+          push hl
+          instr_head_ext - instr_head_rows ** inc hl
+          3 ** call poke_ldi
+          call poke_flush
+          ld de,(dest_pnt)
+
+          call instr_get_loop
+          pop hl
+      IF instr_head_rows - 1
+ !! review that. rows were expected after type
+      END
+          xor a
+.cdanlp
+;de= dest (not buffer), for detection
+          call connect_bk_instr
+          call is_last_row:jr nz,.cdanend
+          call Next_node:call z,mess
+
+          push af
+          push bc       ; save b=row
+          push hl
+          cp b
+          jr nz,.loop_not_reached
+          ld (loop_pnt),de
+.loop_not_reached
+          ld (last_row),de
+
+          idsz ** inc hl ; skip link
+chip_row_size' = 1
+          ld c,(hl):inc hl
+          call connect_bk_compile
+          ld a,chip_row_size+1
+          ld (de),a:inc de
+;Just copy arp
+          ld a,c
+          ld (de),a:inc de
+          ld hl,(last_row)
+          ld a,h:cp d:call nz,error_confine ; expect instr fit in &100
+
+          pop hl
+          pop bc
+          pop af
+          inc a
+          jr .cdanlp
+.cdanend
+          call connect_bk_compile
+          ld hl,(last_row)
+          ld a,(loop_pnt)
+          sub l:ld (hl),a
+;enchaine
+instr_next
+          pop hl
+          inc l
+          jp nz,instr_lp
+
+      IF hack_minimala
+; For minimala: assume instr fit in &100
+          ld a,d:cp dest/&0100:call nz,mess
+      END
+
+phrases
+;......
+
+; Same principle: iter all phrases, skip non-existing ones
+; We iterate on all possible instruments, as they are not contiguous 
+          ld hl,phrases_map ; L = phrase #
+phrases_lp
+      IF dev_checks
+;Dest still in bank
+          ld a,d:cp &40:call c,mess
+          cp &80:call nc,mess
+      END
+          push hl
+; Store instrument pnt in compiled file
+; (note: done even for empty instrument, to free HL)
+          ld (hl),e:inc h
+          ld (hl),d
+
+          ld a,l
+;          cp &14:call z,&BE00
+          call song_select_phrase
+          jp z,phrases_next
+
+          call poke_init
+          call connect_phrase_begin
+.row_lp
+      IF dev_checks
+; Check pnt 
+          ld a,h:cp &40:call c,mess
+          cp phrases_/&0100:call nc,mess
+      END
+
+          ld c,(hl):inc hl ; duration
+          ld b,(hl)     ; flags
+
+; -- Phrase flag
+      IF todo
+;!!! a bit brittle.
+; To accelerate a bit, we assume encoding of 'set phrase' pseudo-fx.
+      END
+          bit bit_fx0,b:jr z,.okrow
+; End of phrase or link to next chunk 
+          dec hl        ; rewind    
+          call is_end_of_phrase
+          jr z,.row_end
+          call follow_link_if_eoc
+          jr .row_lp
+
+.okrow
+          inc hl
+          ld a,c:call poke_a
+
+; Must we copy flags byte itself?
+; Yes if any of fx, instr, note, phrase flag is non-constant
+          push hl
+          ld hl,_nb_fx
+          ld a,(hl):inc hl
+          or (hl):inc hl
+          or (hl):inc hl
+          or (hl)
+          pop hl
+          ld a,b
+          call nz,poke_a
+
+; -- FX
+          ld a,(_nb_fx):or a:jr z,.no_fx
+          call to_be_implemented
+.no_fx
+; No fx used. We verify that
+          ld a,b
+          and mask_fx0 AND mask_fx1 AND mask_fx2 AND mask_fx3
+          call nz,mess
+
+; -- Instr
+          ld a,(_use_instr_flag):or a:jr z,.no_instr_flag
+          call to_be_implemented
+.no_instr_flag
+      IF hack_minimala
+; Flag always set. Expect for empty phrase.
+          bit bit_instr,b:jr nz,.putinstr
+; Empty phrase: neither instr nor note.
+   ; - check that
+          ld a,b:or a:call nz,mess
+   ; - put instr0 (instr_null) and dummy note
+          ld a,(instr_map)
+          call poke_a
+          call poke_a   ; note: nevermind
+          jr .ok_note
+      ELSE
+; Flag always set. We verify that
+          bit bit_instr,b:call z,mess
+      END
+.putinstr
+          push hl
+          ld l,(hl)
+          ld h,instr_map / &0100
+      IF hack_minimala
+          instr_head_type ** inc hl
+          ld b,(hl)
+; Not used in ayane module itself
+;          ld a,compiled_instr_null AND &FF
+;          cp instr_null AND &FF:jr z,.oktype
+          ld a,compiled_instr_chip_down_vib AND &FF
+          cp instr_chip_down_vib AND &FF:jr z,.oktype
+          ld a,compiled_instr_chip_down_arp_noise AND &FF
+          cp instr_chip_down_arp_noise AND &FF:jr z,.oktype
+      BRK
+;Unexpected type
+.oktype
+          call poke_a
+      ELSE
+ !! todo. Dynamic flag "_are_instr_confined"
+      END
+          pop hl
+          inc hl
+
+; -- Note
+          ld a,(_use_note_flag):or a:jr z,.no_note_flag
+          call to_be_implemented
+.no_note_flag
+; Flag always set. We verify that
+          bit bit_note,b:call z,mess
+          call poke_ldi
+
+.ok_note
+; Skip reserved byte
+          reserved_byte ** inc l
+          jp .row_lp
+
+.row_end
+; -- marker loop (none for no)
+          ld a,(_has_phrase_loop)
+          or a:jr z,.okloop
+          call to_be_implemented
+.okloop
+          call poke_flush
+          ld de,(dest_pnt)
+
+phrases_next
+          pop hl
+          inc l
+          jp nz,phrases_lp
+
+tracks
+;.....           
+          ld hl,dest    ; songlist
+          ld a,1        ; channel
+track_lp
+      IF dev_checks
+;Dest still in bank
+          push af
+          ld a,d:cp &40:call c,mess
+          cp &80:call nc,mess
+          pop af
+      END
+          call connect_bk_compile
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+          ld (hl),a:inc hl
+          push hl
+          push af
+          dec a
+          call get_track_pnt
+          call poke_init
+          call connect_bk_track
+          call Next_node ; From header to head of list of hooks
+;Flatten all events 
+.hooklp
+          push hl
+          idsz ** inc hl
+          2 ** call poke_ldi ; duration
+; Now follow list of event 
+          call Next_node
+; Might be empty (intermediate hook)
+; For now, not suported
+          call z,to_be_implemented
+      IF hack_minimala
+; For now, rely on the fact there is always transpose following by
+; phrase (aka "static")
+  ; -> No need for indirection (would take space)
+  ; -> We could still leverage phrase looping (if same transpose)
+          push hl
+          idsz ** inc hl
+          ld a,(hl):inc hl
+          cp evt_set_transpose AND &FF:call nz,mess
+          call poke_ldi
+          pop hl
+          call Next_node
+;Must be last event (link=0)
+          ld a,(hl):inc hl
+          or (hl):call nz,mess
+          inc hl
+          ld a,(hl):inc hl
+          cp evt_change_phrase AND &FF:call nz,mess
+          call Next_node ; phrase start in chunk
+          ld l,chunk_start+fc_index
+          ld l,(hl)
+; We poke full address rather than id:
+   ; - no indirection
+   ; - *might* compress as well (ref needed!)
+          ld h,phrases_map/&0100
+          ld a,(hl):call poke_a
+          inc h
+          ld a,(hl):call poke_a
+      ELSE
+.evtlp
+          push hl
+          idsz ** inc hl
+          ld a,(hl)
+          cp evt_set_transpose:jr z,.set_transpose
+          cp evt_change_phrase:jr z,.set_phrase
+ !!!todo
+      END
+
+          pop hl
+          call Next_node
+          jr nz,.hooklp
+
+          call poke_flush
+          ld de,(dest_pnt)
+
+          pop af
+          pop hl
+          inc a
+          cp 4
+          jr c,track_lp
+
+          call poke_flush
+;Return de=start (connected), hl=size
+          ld hl,(dest_pnt)
+          ld de,dest
+          or a:sbc hl,de
+          call connect_bk_io
+          ret
+
+is_last_row
+;in: hl: link             
+;Return NZ if yes (msb set)
+          inc hl:bit 7,(hl):dec hl
+          ret
+
+poke_init
+;--------
+;For trans-bk bufferization
+          ld (dest_pnt),de
+          ld de,buffer
+          ret
+
+poke_ldi
+; LDI-like, without dec bc
+          ld a,(hl):inc hl
+;enchaine
+poke_a
+          ld (de),a
+          inc e
+          ret nz
+;enchaine
+poke_flush
+          push af:push bc:push hl
+          call get_bk_connected
+          push af
+          call connect_bk_io
+          ld c,e:ld b,0:dec c:inc bc ; bc=size
+          ld hl,buffer
+dest_pnt = $+1
+          ld de,&C000
+          ldir
+          ld (dest_pnt),de
+          pop af
+          call connect_a
+          pop hl:pop bc:pop af
+          ld de,buffer
+          ret
+
+
+      FILL -$ AND &FF,0
+buffer FILL 256,0
+instr_map FILL 512,0
+phrases_map FILL 512,0
+
+; ----- Tmp variables ----
+var
+loop_pnt WORD 
+last_row WORD 
+
+; ----- Flags for compilation -----
+      IF todo
+; Set them after analysis phase
+      END
+;--instr
+_use_instr_pitch BYTE 0
+_use_hard_env BYTE 0
+;--phrase
+_nb_fx BYTE 0
+_use_instr_flag BYTE 0  ; Flag not needed when always instr in row
+_use_note_flag BYTE 0   ; Flag not needed when always note in row
+_has_phrase_loop BYTE 0 ; 0: no loop, phrase changed on time 
+
+      IF _use_instr_flag - _nb_fx - 1
+ !! must be contiguous
+      END
+      IF _use_note_flag - _use_instr_flag - 1
+ !! must be contiguous
+      END
+      IF _has_phrase_loop - _use_note_flag - 1
+ !! must be contiguous
+      END
+

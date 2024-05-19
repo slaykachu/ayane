@@ -1,0 +1,66 @@
+; ---- Shared constants -----
+
+mask_note = &80
+bit_note = 7
+
+mask_vol = &40
+bit_vol = 6             ;MUST BE LOWER than bit_note ;cf read_vol
+
+mask_instr = &20
+bit_instr = 5
+
+      IF 0
+;!!! obsolete
+mask_phrase = &10
+bit_phrase = 4          ;In song Map: must change phrase
+      END
+
+;3-0: fxs
+bit_fx0 = 0
+bit_fx1 = 1
+bit_fx2 = 2
+bit_fx3 = 3
+mask_fx0 = &01
+mask_fx1 = &02
+mask_fx2 = &04
+mask_fx3 = &08
+
+savepc = $
+saveobj = $$
+
+      ORG 0
+;Clip structure (inside chunk header)
+fc_type BYTE 
+fc_index BYTE 
+fc_name SKIP 3          ; PNT
+fc_color BYTE 
+clip_header_size
+
+reserved_byte = 1       ;reserved for backward reading. ply, phrase
+;NB: We reserve it, as we don't want memory-regression when enabling
+   ; the feature.               
+idsz  = 2               ; ply, track. put here to avoid YAS (track.i)
+
+      ORG 0
+;Default ayane instr row 
+;Used by chung, chipn
+;Todo: checks in instr.o?
+
+;Put here to avoid yet another source (instr.i)
+
+; instr_link WORD         ; Link to next row or loop (with MSBit set)
+; We don't count link, since chipn forms the record without the link.
+instr_arp BYTE 
+instr_pitch WORD 
+instr_flags BYTE        ; channel / noise
+instr_flags_
+;Note: we cannot update r5 inconditionally
+     ; -> instr without noise mustn't interfere
+instr_noise BYTE 
+instr_vol BYTE 
+instr_vol_
+instr_hperiod WORD      ; for hard env (could be shift instead)
+instr_row_size_max
+
+      ORG savepc,saveobj ; restore
+

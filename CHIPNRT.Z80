@@ -1,0 +1,118 @@
+; tests chipnsfx convertion
+do_play = 0             ; 0: check  1: play tune
+
+      ORG &0100
+      ENT tests
+
+      IMPORT "memmap.i"
+      IMPORT "chipn.o"
+      IMPORT "init.o"
+      IMPORT "ply.o"
+      IMPORT "track.o"  ; just for /tracks/!
+      IMPORT "testlib.o"
+
+tests
+          call full_init
+          call test_convert_minimal
+          ret
+
+test_convert_minimal
+; That's the name of the song.
+; Not really minimal!
+          ld hl,minimala
+          call conv_chipn
+;-- play it
+          ld a,3:ld hl,tracks:call Amorce_song
+      IF 1-do_play
+          call chip_init
+      END
+frame_lp
+      IF do_play
+          call &BD19
+          call &BB1B
+          ret c
+
+          halt
+          halt
+          halt
+      END
+
+frame_cpt ld hl,-1      ; matches ply.tick
+          inc hl
+          ld (frame_cpt+1),hl
+          ld bc,&1480
+          or a:sbc hl,bc:jr z,end_of_tune
+
+          di
+          exx:push bc
+          ld bc,&7F10:out (c),c:ld c,&5F:out (c),c
+          call play
+      IF do_play
+          ld bc,&7F10:out (c),c:ld c,&40:out (c),c
+          call psg
+      END
+          ld bc,&7F10:out (c),c:ld c,&44:out (c),c
+          pop bc:exx
+
+      IF 1-do_play
+; Check against chipnsfx player
+          ld bc,&7F00+BK_REF:out (c),c
+          call chip_play+&50
+          ld hl,psg_ref
+          call psg_read
+
+
+;notes: period diff 3 at 683
+                  ; 4 at a83
+
+          ld hl,psg_regs
+          ld de,psg_ref
+          call compare_regs
+      END
+
+          jr frame_lp
+
+end_of_tune
+; success!
+          ret
+
+
+chip_play = &5000
+chip_sng = &7000
+song_a = chip_sng+&00
+song_b = chip_sng+&0175
+song_c = chip_sng+&01F8
+song_list
+      WORD song_a-song_list-2
+      WORD song_b-song_list-4
+      WORD song_c-song_list-6
+
+chip_init
+          di
+          ld bc,&7F00+BK_REF:out (c),c
+
+          call chip_play
+
+          ld hl,song_list
+          call chip_play+&15
+          ret
+
+
+      FILL -$ AND &FF,0
+psg_ref SKIP 14
+
+
+BK_REF = &C6
+
+      BANK BK_REF
+      ORG chip_play
+      LOAD "chipnsfx.out"
+
+      ORG chip_sng
+      LOAD "minimala.bin"
+
+      BANK BK_IO
+      ORG &4000
+minimala
+      LOAD "ums:music/tj/minimala.chq" ; binary version
+

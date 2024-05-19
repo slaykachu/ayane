@@ -1,0 +1,1710 @@
+; ====== Handling of phrases and rows ======
+dev_checks = 1
+todo  = 1
+makeroom = 1
+
+; Table Of Content (to be completed). 
+; In Orgams: Use CONTROL-ENTER to jump to routine and see I/O API.
+
+; -------------------------------------------------------------
+; --- Song handling ---
+; This are the highest level routines
+; -------------------------------------------------------------
+  ; song_select_new_phrase
+
+; -------------------------------------------------------------
+; --- Phrase handling ---
+; All those routines expect a phrase to be currently selected
+; -------------------------------------------------------------
+  ; phrase_select_new_row
+  ; phrase_select_row_at
+  ; phrase_set_blank_row_at 
+  ; phrase_get_row_at
+  ; Get_phrase
+
+; -------------------------------------------------------------
+; --- Row handling ----
+; All those routines expect a row to be currently selected
+; -------------------------------------------------------------
+  ; row_set_note  
+
+
+; 2024                  
+; ----- v0i ------
+  ; Mai
+    ;15: fix phrase_get_row_at
+       ; Add /phrase_select_row_at/ Simpler API:
+           ; - Allow to introduce first row at tick > 0
+           ; - Simpler for chip.o to set single row whose duration
+                 ; is the whole phrase (we juste leave duration 0)
+       ; [cosmetic] Remove /va_current_row/: ill defined, and not used!
+       ; [cosmetic] Remove /va_row_bk/, since all phrases in same bank.
+
+; ----- v0h ------
+  ; Apr  
+    ;29: Get_phrase: don't assert for non-existing phrase.
+    ;12: song_select_phrase: clarify API and allow non-existing phrase.
+       ; Get_phrase: idem
+    ;11: Get_phrase: return pointer instead of ID with bank
+       ; song_select_new_phrase: register passed phrase#
+       ; remove va_phrases#: YAGNI.
+    ; 8: Move ayane_init in init.o
+    ; 3: song_select_new_phrase: take A= ID
+       ; is_end_of_phrase: fix test.
+       ; phrase_get_duration: cannot use _postlude as we must return BCD
+    ; 1: Extract from chung
+       ; -> Clearer, notably regarding bank connection
+           ; (we must connect BK_PHRASE, not BK_BASE)
+
+      IMPORT "const.i"
+      IF todo
+; shouldn't have to import it here?
+; E.G config for ayane <> config for player
+      END
+      IMPORT "plyconf.i"
+      IMPORT "ply.o"    ; for fx_set_phrase
+      IMPORT "memmap.i"
+      IMPORT "memcpc.o"
+      IMPORT "chunk.o"
+      IMPORT "chung.o"  ; new_chunk_ext
+
+connect_bk_base = &BE00 ; use connect_bk_phrase instead
+
+pos_flags = 1           ; Duration: 1 byte only
+flags_sz = 1
+; Hack to avoid ambiguous label?
+phrase_start = chunk_start + clip_header_size
+
+      IF phrase_start - chunk_start:ELSE
+!!! must review is_end_of_phrase
+      END
+
+;-- Tables -----------------
+;!! in new table: fix chunks_in_base_bk
+;7000-...: free 
+      IF phrases_ - &7600
+ !!! inconsistent
+      END
+phrases_idx = &7600     ; start chunk for each phrase (&200)
+      IF phrases_idx AND &01FF
+ !! must be multiple of #200
+      END
+phrases_rows = &7800    ; nb rows for each phrase
+;nb: for now, no discrimination between tables (arp, instr, ...)
+;-> we should keep it that way (more flexible, less ram & code needed)
+
+va    = &7C00
+
+      IF nb_fx:ELSE
+!!! We must have at least 1 fx
+  ; to be able to handle fx_set_phrase
+  ; Needed for 'goto next chunk' and 'goto start of phrase'
+; For compile, it needs to be dynamic anyway.
+; E.G.  : nb_fx = 4 for in-tool
+  ; If a particular music doesn't use fx, then we remove handling
+  ; dynamically.
+      END
+
+
+;==============================================
+      MACRO INIT_LENGTH
+      IF todo
+; rename s/lenght/duration (or better term)
+      END
+      IF pos_flags - 1
+ !! a revoir
+      END
+          ld (hl),a:inc l
+      ENDM
+
+      MACRO SKIP_LENGTH
+          pos_flags ** inc l
+      ENDM
+
+      MACRO SKIP_LENGTH_DE
+          pos_flags ** inc e
+      ENDM
+
+      MACRO CP_COPY_LENGTH
+          pos_flags ** call cp_copy
+      ENDM
+
+      MACRO SKIP_RESERVED
+          reserved_byte ** inc l
+      ENDM
+
+;==============================================
+fatal = &BE00           ; TODO: replace by warning mecanism.
+memory_full = fatal
+mess  = &BE00
+fail  = &BE00           ; synonymous
+unexpected = &BE00
+programming_error = &BE00
+not_supported = &BE00
+to_be_implemented = &BE00
+;implement/handle me
+          ret
+;==============================================
+
+;enchaine
+song_reset
+;---------
+          call connect_bk_phrase
+
+          ld hl,def:ld de,var:ld bc,def_size:ldir ; non-zero vars
+          ex de,hl
+          ld b,zero_size:xor a:call fillb
+; Reset index. Easier to see if phrase already allocated or not.
+; song_select_new_phrase relies on that for checks.
+          ld hl,phrases_idx
+          call fill
+          inc h
+;enchaine
+fill      ld (hl),a:inc l:jr nz,fill
+          ret
+fillb     ld (hl),a:inc hl:djnz fillb
+          ret
+
+
+phrase_select_new_row
+;--------------------
+; create (append) row in current phrase, and select it.
+; In:  A = duration
+; Out: Carry if ok, row selected
+     ; NC otherwise (memory full)
+
+; TODO: check if there is actual a phrase selected
+
+          call _prelude
+
+          push af
+          ld hl,(va_current_phrase) ; for l only
+          ld h,phrases_rows/&0100
+          inc (hl)
+
+          call connect_phrase_begin
+          call goto_end
+          ld e,l:ld d,h
+          push de:pop ix
+          pop af
+          push af
+row_size0 = 1+pos_flags+reserved_byte ; duration, flags, reserved
+          ld c,row_size0 ; size without note, volume, instr or fx
+          call shift_in_phrase_chunk
+;pb: hl=pos where link was added
+          pop af
+          push hl
+          INIT_LENGTH()
+          ld (hl),0     ; flags
+          pop hl
+          jr ssr_com
+
+      IF 0
+; who would select row based on its "number"?
+; What do we mean by "number"? index? tick?
+phrase_select_row
+;----------------
+; select row in current phrase.
+; In:  A: row number (from 0)
+; Out: Carry if ok, row selected 
+     ; NC otherwise (invalid row number)
+
+          call _prelude
+          ld hl,(va_current_phrase) ; for l only
+          ld h,phrases_rows/&0100
+          cp (hl)
+          jp nc,_postlude_fail
+
+          push af
+          call connect_phrase_begin
+          ld b,a
+          pop af
+          or a:jr z,ssr_com
+          push bc
+          ld b,a
+.skip
+          call skip_all
+          call follow_link_if_eoc
+          call z,err_invalid_row
+          djnz .skip
+          pop bc
+      END
+ssr_com
+          ld (va_row_pnt),hl
+          jp _postlude
+
+phrase_select_row_at
+;-------------------
+; Create a new row at t (if not existing)
+; and select it.  
+; In: DE = t
+;Out: row selected.     
+    ; AF thrashed, all other registers preserved.
+
+          push hl
+          call phrase_set_blank_row_at
+          ld (va_row_pnt),hl
+          pop hl
+          ret
+
+phrase_set_blank_row_at
+;----------------------
+; Create a new row at t (if not existing)
+; In: DE = t
+;Out: HL = pnt row
+
+      IF todo
+; factorize with add_duration?
+      END
+          call _prelude
+          call phrase_get_row_at
+          jr nc,.new_row
+
+; New duration of previous row = t - t0
+; If 0, nothing to do.
+          ld bc,(row_t0)
+          ld a,e:sub c:ld c,a
+          ld a,d:sbc b:call c,mess
+; intermediate row if t-t0 >= &100
+          call nz,to_be_implemented
+          ld a,c:or a:jr z,.done
+          ld c,a
+          ld a,(hl):push af ; previous duration for case = 0
+          ld (hl),c
+          call is_end_of_phrase:call z,mess
+          call skip_all
+
+; Duration of new row = t1 - t
+          call insert_new_row
+          pop af
+; Corner case: if duration was previously 0, 
+; we interpret it as "forever". New row duration shall stay 0 as well.
+; Note: it is slighty inconsistent with ply which interpret it as 65356
+; (21 minutes at 50hz replay) -> nevermind.
+; Anyway 0 duration should only be used for last row of phrase.
+          or a
+          jr z,.done
+
+          ld bc,(row_t1)
+          ld a,c:sub e:ld c,a
+          ld a,b:sbc d:call c,mess
+ ; intermediate row if t1-t >= &100
+          call nz,to_be_implemented
+          ld a,c:or a:call z,mess ; should have t < t1  
+          ld (hl),a
+.done
+          pop af        ; stack correction
+          jp _postlude_
+.new_row
+          call insert_new_row
+;duration = 0 as expected, since last row.
+          jr .done
+
+insert_new_row
+;In:  HL= start of row
+;Out: HL= same (start of inserted row)
+      IF todo
+; what if eoc, and new row doesn't fit?
+      END
+          push de
+          ld e,l:ld d,h
+          ld c,pos_flags+flags_sz+reserved_byte
+          call shift_in_row:call nc,memory_full
+; setup row:
+          ld (hl),0:inc l ; dur
+          ld (hl),0     ; flags
+;reserved byte: nevermind for now
+          dec l
+          pop de
+          ret
+
+phrase_get_row_at
+;----------------
+; Pick row (t0, dur) such that t0 <= t < t1 (t0+dur)
+;   Written at nu gulho (such a nice waitress, Raquel)
+; In: DE = t (16 bits is enough, 1024 rows at delai 64)
+;OUt: If such a row:
+      ; Carry, HL = row start
+      ; row_t0 = t0,  row_t1 = t0+dur
+    ; Otherwise, NC
+    ; BC, DE preserved in any case.
+
+          call _prelude
+          call connect_phrase_begin
+          ld bc,0       ; t0: current time
+.lp
+; loop while t1 <= t and eoc not met
+          ld (row_t0),bc
+          call is_end_of_phrase
+          scf:ccf:jr z,.done
+          ld a,(hl)
+          add c:ld c,a:jr nc,$+3:inc b
+          ld (row_t1),bc
+;special case: handle 0 as 65536
+          ld a,(hl)
+          or a
+          jr z,.found
+;Stop if bc (t1 = t0+dur) > de (t) 
+          ex de,hl
+          or a:sbc hl,bc:add hl,bc
+          ex de,hl
+          jr c,.found
+; musn't use goto_next_row.
+; Otherwise, we would follow eoc: infinite loop!
+          call skip_all
+          jr .lp
+
+.found
+          scf
+.done
+          pop bc        ; stack correct without touching F
+          jp _postlude_
+
+phrase_get_duration
+;------------------
+; Get total duration of the phrase
+; For now we don't cache it (yagni, premature optimisation)
+; IN: phrase selected
+;OUT: cde = total 
+
+          call connect_phrase_begin
+          ld de,0
+          ld c,d
+.lp
+          call is_end_of_phrase
+          ret z         ; done
+          ld a,e:add (hl):ld e,a
+          jr nc,.nxt
+          ld a,d:add 1:ld d,a
+          jr nc,.nxt
+          inc c
+.nxt
+          call skip_all
+          jr .lp
+
+
+row_add_duration
+;---------------
+; Extend duration of current row
+; IN: A= additional duration
+          call _prelude
+          call connect_current_row
+          add (hl):jr nc,.ok
+; insert blank row **after** with length = 255
+; (we don't use length 0 = 256)
+          push af
+          call skip_all
+          call insert_new_row
+          ld (hl),255
+          call connect_current_row
+          pop af
+          inc a         ; remainder
+;enchaine
+.ok
+          ld (hl),a
+          jp _postlude
+
+row_set_note
+;-----------
+; in: A= note
+;out: A preserved
+
+          call _prelude
+
+          call connect_current_row_skip_length
+          bit bit_note,(hl)
+          push af
+          call skip_fx_ins_vo
+          pop af
+          jr nz,_change_byte
+
+;insert                  
+          push af
+          ld c,1:call shift_in_row
+          ex de,hl
+          SKIP_LENGTH()
+          set bit_note,(hl) ;cannot be done before
+_change_com
+          ex de,hl
+          pop af
+_change_byte
+          ld (hl),a
+          jp _postlude
+
+
+row_get_note
+;-----------
+; in: N/A
+;out: NZ A= note  if any
+    ; Z if no note defined here
+
+          call _prelude
+          call connect_current_row_skip_length
+          bit bit_note,(hl)
+          jp z,_postlude
+
+          call skip_fx_ins_vo
+          xor a:inc a   ; NZ
+          ld a,(hl)
+          jp _postlude
+
+row_set_vol
+;-----------
+; in: A= volume (F=max)
+;out: A as encoded
+
+          call _prelude
+          call connect_current_row_skip_length
+          cpl:add 15+1  ; Negative. 0=max 15=mute
+          bit bit_vol,(hl)
+          push af
+          call skip_fx_ins
+          pop af
+          jr nz,_change_byte
+
+;insert                  
+          push af
+          ld c,1:call shift_in_row
+          ex de,hl
+          SKIP_LENGTH()
+          set bit_vol,(hl) ;cannot be done before
+          jr _change_com
+
+
+row_get_vol
+;----------
+; in: N/A
+;out: NZ A= vol if any
+    ; Z if no vol defined here
+
+          call _prelude
+          call connect_current_row_skip_length
+          bit bit_vol,(hl)
+          jp z,_postlude
+
+          call skip_fx_ins
+          xor a:inc a   ; NZ
+          ld a,15:sub (hl)
+          jp _postlude
+
+
+row_set_instr
+;------------
+; in: A= ins
+;out: A preserved
+          call _prelude
+          call connect_current_row_skip_length
+          bit bit_instr,(hl)
+          push af
+          call skip_fx
+          pop af
+          jr nz,_change_instr
+
+;insert 
+          push af
+          ld c,1:call shift_in_row
+          ex de,hl
+          SKIP_LENGTH()
+          set bit_instr,(hl) ;CANNOT be done before
+          ex de,hl
+          pop af
+
+_change_instr
+          ld (hl),a
+          jp _postlude
+
+row_set_no_param_fx_
+          call _prelude
+row_set_no_param_fx
+;.......................
+; in: BK connected
+    ;  A: fx nb (0, 1, 2, 3)
+    ; DE: fx routine
+
+          push de
+          call connect_current_row_skip_length
+;on se place sur bon fx
+          ld b,a
+          call skip_nfx
+          rra
+          jr c,_change_fxnoparam
+;insert 
+          push bc
+          ld c,2:call shift_in_row
+          pop bc
+
+          SKIP_LENGTH_DE()
+          ld a,(de):or c:ld (de),a ;cannot be done before
+          pop de:call ld_hl_de
+          jp _postlude
+
+_change_fxnoparam
+      BRK               ; todo: remove previous fx!
+          jp _postlude
+
+row_set_byte_param_fx_
+          call _prelude
+row_set_byte_param_fx
+;..................
+; in: BK connected
+    ;  A: fx nb (0, 1, 2, 3)
+    ; DE: fx routine
+    ;  C: param
+
+          push bc:push de
+;on se place sur bon fx
+          call connect_current_row_skip_length
+          ld b,a
+          call skip_nfx
+          rra
+          jr c,_change_fx0
+;insert     
+          push bc
+          ld c,3:call shift_in_row
+          pop bc
+          SKIP_LENGTH_DE()
+          ld a,(de):or c:ld (de),a ;cannot be done before
+          pop de:call ld_hl_de
+          pop bc:ld (hl),c
+          jp _postlude
+
+_change_fx0
+      BRK               ; todo: remove previous fx!
+          jp _postlude
+
+
+row_set_word_param_fx_
+          call _prelude
+row_set_word_param_fx
+;.......................
+; in: BK connected
+    ;  A: fx nb (0, 1, 2, 3)
+    ; DE: fx routine
+    ; BC: adr table/param
+
+          push bc:push de
+          call connect_current_row_skip_length
+;on se place sur bon fx
+          ld b,a
+          call skip_nfx
+          rra
+          jr c,_change_fx
+;insert     
+          push bc
+          ld c,4:call shift_in_row
+          pop bc
+          SKIP_LENGTH_DE()
+          ld a,(de):or c:ld (de),a ;cannot be done before
+          pop de:call ld_hl_de
+          pop bc:call ld_hl_bc
+          jp _postlude
+
+_change_fx
+      BRK               ; todo: remove previous fx!
+          jp _postlude
+
+
+row_set_3_param_fx
+;.......................
+; in: BK connected
+    ;  A: fx nb (0, 1, 2, 3)
+    ; DE: fx routine
+    ; C,B,L: parameter
+
+          push hl:push bc:push de
+          call connect_current_row_skip_length
+;on se place sur bon fx
+          ld b,a
+          call skip_nfx
+          rra
+          jr c,_change_fx3
+;insert     
+          push bc
+          ld c,5:call shift_in_row
+          pop bc
+          SKIP_LENGTH_DE()
+          ld a,(de):or c:ld (de),a ;cannot be done before
+          pop de:call ld_hl_de
+          pop bc:call ld_hl_bc
+          pop bc:ld (hl),c
+          jp _postlude
+
+_change_fx3
+      BRK               ; todo: remove previous fx!
+          jp _postlude
+
+      IF 0
+;-------------------------------
+irow_set_type_vol
+;----------------
+; in: A= type + vol   ttttvvvv
+;out: A preserved
+
+          call _prelude
+          call connect_current_irow
+          ld (hl),a
+          jp _postlude
+
+irow_set_period
+; in: de= period (abs or rel depending on type)
+          call _prelude
+          call connect_current_irow
+; !! wip !! todo: reflechir comment set/update/sera fait + in bank.
+      END
+
+      IF 0
+;-------------------------------
+fx_append_byte
+; For incremental fx construction (cf salo.o)
+; In: row_set_fx (in fx.o) called previously
+    ; A= byte   
+
+          push af
+          call connect_current_row
+          ex de,hl      ; de=start for shift_in_row
+          ld hl,(va_instr_pnt)
+          ld a,l:or h:call z,programming_error
+;insert     
+          ld c,1:call shift_in_row
+          pop af:ld (hl),a
+          jp _postlude
+      END
+
+;-------------------------------
+ld_hl_de
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+          ret
+
+ld_hl_bc
+          ld (hl),c:inc hl
+          ld (hl),b:inc hl
+          ret
+
+skip_all
+; See /goto_next_row/ to follow eoc as well
+;In:  HL: start of row
+;Out: HL: post skip. BC, DE preserved.
+          SKIP_LENGTH()
+skip_post_length
+          call skip_fx_ins_vo
+          call _skip_byte ; note
+          SKIP_RESERVED()
+          ret
+
+skip_fx_ins
+;In:  HL: post-length
+;Out: HL: post skip. BC, DE preserved.
+          call skip_fx
+          rra           ; discard bit 4
+      IF dev_checks
+          call c,&BE00
+      END
+;ins
+_skip_byte
+; In   A: flag in bit 0
+          rra:jr nc,$+3:inc l
+          ret
+
+skip_fx_ins_vo
+;In: HL: post length
+;Out: HL: post skip. BC, DE preserved.
+          call skip_fx_ins
+          jr _skip_byte ; vol
+
+      IF 0
+_skip_word
+; In   A: flag in bit 0
+          rra:jr nc,$+3:inc l
+          jr nc,$+3:inc l
+          ret
+      END
+
+skip_fx
+          push bc
+          ld b,4
+          call skip_nfx
+          pop bc
+          ret
+
+skip_nfx
+; In   B: nb fx to skip (can be 0)
+    ; hl: points to flag
+; Out  A: flags shifted B times
+    ; hl: post N fx
+    ;  C: mask corresponding to fx
+
+          ld c,mask_fx0
+          ld a,(hl):inc l
+          ld (dbg1),hl
+          ld (dbg2),a
+          inc b:dec b
+          ret z
+skip_fxlp call skip_one_fx:sla c:djnz skip_fxlp
+          ret
+
+skip_one_fx
+;In:   A: bit 0, current flag
+;Out:  A: flag consumed
+
+          rra:jr nc,scom_nop
+
+          push af
+          call get_fx_sign
+
+; 000000-> no more param
+; ????01-> byte
+; ????10-> word
+; ????11-> word (table)
+
+sof_param_lp
+          or a:jr z,sof_param_end
+
+          inc hl
+          srl a
+          srl a:jr nc,sof_param_lp ; case 01
+          inc hl
+          jr sof_param_lp
+
+sof_param_end
+          pop af
+          ret
+
+scom_nop
+;todo: TM management
+          ret
+
+get_fx_sign
+; here we already point to fx_init
+; out: hl+=2 (addr fx consumed)
+
+          push de
+          ld e,(hl):inc hl
+          ld d,(hl):inc hl
+          dec e
+
+      IF dev_checks
+;Player (and then fxs) out of bank.
+          ld a,d:cp &40:call nc,mess
+      END
+          ld a,(de)
+          pop de
+          ret
+
+
+
+connect_current_row_skip_length
+;In: bk base connected!
+;Out: HL= post length
+    ; DE= start (used for shift in row)
+;don't change A !              
+          call connect_current_row
+          ld e,l:ld d,h
+          SKIP_LENGTH()
+          ret
+
+connect_current_row
+;In:  The row was selected.
+   ;  If no row was selected, create blank one
+     ; - Useful for chipn.o: we only create rows when notes
+          ; - If first row is "...:..", we want a blank row to set delai
+     ; - It's better to do a sensible thing rather can assert.
+;Out: HL= start
+    ; AF, BC, DE, DE unchanged
+          ld hl,(va_row_pnt)
+          push af
+          xor a         ; needed if calling phrase_select_new_row
+          or h:call z,phrase_select_new_row
+; Second chance when calling phrase_select_new_row
+          ld hl,(va_row_pnt)
+      IF dev_checks
+          inc h:dec h:call z,mess
+      END
+          pop af
+          ret
+
+
+err_invalid_arpg
+      BRK
+assert_fail
+      BRK
+err_invalid_row
+      BRK
+err_invalid_ins
+      BRK
+err_no_instr
+      BRK
+err_no_row_selected
+      BRK
+
+
+connect_phrase_begin
+;out: bk connected
+    ; hl=chunk start **PAST phrase HEADER itself** (connected)
+    ;  A=bk
+    ; BC, DE preserved
+          call song_get_current_phrase
+          ld l,BK_PHRASE
+          jp connect_phrase_from_id
+
+song_get_current_phrase
+; Get selected phrase
+;OUT:H= MSB, L= BK
+          push bc
+      IF makeroom
+; Move bank saving in _prelude and restore in _postlude
+      END
+          call get_bk_connected
+          ld c,a
+          call connect_bk_phrase
+
+          ld a,(va_current_phrase)
+          call Get_phrase
+          call connect_c
+          pop bc
+          ret
+
+Get_phrase
+;In: A= phrase number
+;OUT: If phrase exists:
+        ; NZ, HL= pointer (non connected)
+    ; Otherwise, Z, HL thrased. 
+            ; Needed by compile.o to iterate among existing phrases.
+    ; Reconnect caller's bank (handy for track.o to plug pnt).
+          push bc
+      IF makeroom
+; Move bank saving in _prelude and restore in _postlude
+      END
+          push af
+          call get_bk_connected
+          ld c,a
+          pop af
+          call connect_bk_phrase
+
+; legacy: ID with BK number
+; todo: full pointer directly (to allow mini chunks, or no chunks
+      ; at all -> big pool).
+          ld l,a
+          ld h,phrases_idx/&0200
+          add hl,hl
+          inc l
+      IF dev_checks
+          ld a,(hl):or a:jr z,.ok0
+          and &C0:cp &40:call nz,fatal
+          dec l
+          ld a,(hl):cp BK_PHRASE:call nz,fatal
+          inc l
+.ok0
+      END
+          ld h,(hl)
+          ld l,chunk_start ; phrase header
+          call connect_c
+          pop bc
+;We can ask for non-existing phrase (needed for compile.o)
+;In that case, set Z flag.
+          ld a,h:or a   ; Z/NZ
+          ret
+
+
+song_select_new_phrase
+;---------------------
+; Create and select a fresh phrase, from 0 to 254
+; Init header: type, index, name (null for now), color (idx+1 for now)
+; IN: A = phrase ID: - needed by chip.o since non contiguous patterns
+                   ; - useful for user (use ids as he likes)
+
+          call _prelude
+;Must set header value **before** new_phrase_chunk which 'install' them
+;We store idx, so that track can directly point to phrase (using pnt)
+;(faster for player), but we still know the phrase# for UI purpose.
+          ld (phrase_idx),a
+          ld (va_current_phrase),a
+          inc a:call z,err_toomuchphrases
+          ld (phrase_color),a
+
+          call new_phrase_chunk:ret nc ; Exit if memory full
+      IF dev_checks
+          ld a,l:cp BK_PHRASE:call nz,mess
+      END
+          ex de,hl      ; DE= phrase chunk ID.
+;Must updates vars **after** new_phrase_chunk,
+;in case mem full -> no change.
+          call connect_bk_phrase
+          ld hl,(va_current_phrase) ; for l
+          ld h,phrases_rows/&0100:ld (hl),0 ; rows # 
+          ld h,phrases_idx/&0200:sla l:rl h
+          ld (hl),e:inc l
+      IF dev_checks
+; !! Right now we assume it's a brand new phrase.
+; When it's not the case anymore (e.g. user input), either
+; return current as is (no new_phrase_chunk) or free it (TBD).
+          ld a,(hl):or a:call nz,unexpected
+      END
+          ld (hl),d
+_ssp
+; Here and below: mustn't change flag Z!
+          ld hl,0
+          ld (va_row_pnt),hl
+_postlude
+      IF todo
+; Is carry really needed if we use exception mecanism?
+      END
+          scf
+_postlude_fail
+          pop hl
+_postlude_
+          pop ix:pop de:pop bc
+          ret
+
+song_select_phrase
+;-----------------
+; In: A: phrase number (from 0)
+; Out: Like /Get_phrase/
+  ; !! Current phrase changed even when non-initialised. Nevermind?
+
+          call _prelude
+
+          ld (va_current_phrase),a
+          call Get_phrase
+          jr _ssp       ; unselect row
+
+
+err_toomuchphrases
+      BRK
+
+
+_prelude
+; save registers and sp (for 'exception mechanisme)
+; then connect work bank
+; More space-efficient, we don't need to be fast
+
+          push de:push ix:push hl
+          ld hl,6:add hl,sp
+          push af
+          ld a,&C3:ld (jp_ret),a ; done each time, nevermind
+          ld a,(hl):ld (jp_ret+1),a:ld (hl),c:inc hl
+          ld a,(hl):ld (jp_ret+2),a:ld (hl),b:inc hl
+          ld (va_savesp),hl
+          pop af
+          pop hl
+          push hl
+          call connect_bk_phrase
+          jp jp_ret
+
+goto_end
+;in  a= bank
+;out b= bank
+.lp
+          ld b,a
+          call connect_next_chunk ; if nz, a= bk
+          jr nz,.lp
+          ld l,chead_last
+          ld a,(hl)
+          sub tag_end_size-1
+          ld l,a
+          ret
+
+
+  ; ------ memory helpers -------------
+
+shift_in_row
+; in de: start of row  (!! needed in case of relocation)
+;    hl: position of insertion (current byte will be shifted)
+;     c: shift size
+; Out : like shift_in_chunk 
+          push de
+          push hl
+          ex de,hl
+          call skip_all
+;here: hl:post, de:start
+          ex (sp),hl
+          pop ix
+          pop de
+;!! enchaine
+shift_in_phrase_chunk
+; Like /shift_in_chunk/ except whole row must be moved if chunk full.
+
+; IN de: start of row
+;    hl: position of insertion (current byte will be shifted)
+;    ix: post row
+;     c: shift size
+    ; !! Chunk connected.
+    ; Nb: de=hl=ix when actually inserting a row.
+;out If ok, Carry and:
+  ; de: start of row (unchanged, or might be in new chunk)
+  ; hl: position of insertion (unchanged, or might be in new chunk)
+      ; bk connect 
+
+; nb: we always insert before phrase's endtag,
+    ; so this one will always be moved properly
+
+; TODO? factorize with orgams? No merge and some other differences tho
+
+      IF dev_checks
+          ld a,c:or a:call z,fatal
+      END
+          call try_shift_in_chunk
+          ret c
+
+; Chunk is full.
+; Row in first half: move past row -> we have room here.
+; Row in second half: move from row -> we have room in new chunk
+; This is needed to handle each corner case, respectively:
+       ;  - row is first
+       ;  - row is last
+
+          bit 7,e:jr nz,sicc_second
+
+          push hl
+          push ix:pop hl
+          call move_tail_in_new_chunk
+          pop hl
+          jr sicc_com
+
+sicc_second
+          ld a,l:sub e  ; offset insertion point from row start
+          push af
+          ld l,e:ld h,d
+          call move_tail_in_new_chunk
+          call connect_next_chunk
+          ld (va_row_pnt),hl
+          ld e,l:ld d,h ; start of row = chunk_start
+          pop af
+          add l:ld l,a
+
+sicc_com
+; Must fit now that room was made.
+          call try_shift_in_chunk
+          call nc,programming_error
+          ret
+
+
+copy_from_chunk_to_next
+; This is a dumb overwritting copy:
+; caller must ensure sentinel is copied as well.
+
+; In: B : source bk
+    ; HL: source   (with 'next' field valid)
+    ; E: dest LSB. (MSB taken from 'next' field)
+    ; C: size 
+;Out: DE: next (dest) chunk
+    ; Dest chunk updated (chead_last). !! TODO: checksum etc.
+    ; Source bk reconnected.
+
+; TODO: more trans bk-nrts!
+; TODO: simpler code by coping to tmp buf out of bank.
+; TODO: macroize!
+
+          push iy
+          ld iyh,b      ;bk source
+          ld iyl,c
+          ld b,l
+          ld l,chead_next:ld a,(hl) ;bk dest
+          inc l:ld d,(hl) ;MSB dest
+          ld l,b
+
+;copy_trans_bk   !! specialized for chunks
+; adapted from mirror6.o
+
+;in : HL=source DE=dest iyl=size 
+    ; iyh=bk source (classical: c4 c5 c6 c7 ...)
+    ; a=bk dest (classical too for ayane)
+         ; (actually any would work, except c2 as we are not in rom)
+          ld c,a
+      IF dev_checks
+; 'next' field must be valid and non 0
+          and &C4:cp &C4:call nz,fail
+          ld a,d:and &C0:cp &40:call nz,fail
+      END
+          ld b,&7F
+.ctbk_lp
+          ld a,iyh
+          out (c),a
+          ld a,(hl):inc l
+          out (c),c
+          ld (de),a:inc e
+          dec iyl
+          jr nz,.ctbk_lp
+
+          ld a,e
+          dec a:ld e,chead_last:ld (de),a
+          inc a
+          ld e,a
+
+          ld a,iyh
+          out (c),a
+          pop iy
+          scf
+          ret
+
+
+
+insert_new_chunk_from_bhl
+;------------------------
+          push hl
+          ld l,b
+          call insert_new_chunk_from_id
+          pop hl
+          ret
+
+insert_new_chunk_from_id
+;-----------------------
+      IF makeroom
+; factorize with chunk.o
+      END
+; in: hl= id chunk
+    ; ix= routine for new chunk (e.g. /new_phrase_chunk/)
+;out: If ok: Carry.  A= chunk_start. 
+    ; Otherwise, NC, A= code (memory full). 
+;  !! Input chunk reconnected in any case.
+    ; bc, de, hl preserved.
+
+          push bc:push de:push hl
+
+          ld l,chead_next:ld e,(hl):inc l:ld d,(hl)
+          call hook_new_chunk:jr nc,ret_pop_hl_de_bc
+          ld b,a        ; backup
+
+;new.next = cur.next
+          ld a,l
+          ld l,chead_next:ld (hl),e:inc l:ld (hl),d
+          ld e,a
+          ld d,h        ; de= id new
+
+          pop hl
+          push hl
+          call connect_phrase_from_id
+
+;cur.next = new
+          ld l,chead_next:ld (hl),e:inc l:ld (hl),d
+          scf
+          ld a,b        ; chunk_start
+ret_pop_hl_de_bc
+          pop hl:pop de:pop bc
+          ret
+
+hook_new_chunk
+; Common interface: see new_phrase_chunk
+
+; !! for now: only new_phrase_chunk_used
+          push af
+          ld a,ixl:cp new_chunk_ext AND &FF:call nz,programming_error
+          ld a,ixh:cp new_chunk_ext/&0100:call nz,programming_error
+          pop af
+          jp ix
+
+
+new_phrase_chunk
+;---------------
+;  in: N/A
+; out: If ok: Carry.
+            ; HL= chunk ID. (H=MSB, L=BANK)
+            ; Chunk is connected.
+      IF todo
+; See why
+      END
+            ; A= end+1 (why?)
+     ; Otherwise, NC
+            ;  A= error code
+     ; DE, BC preserved in any case.
+
+          call connect_bk_phrase
+          call New_chunk
+          ret nc        ;exit if mem full
+
+          push hl
+          push de
+          push bc
+          ld a,l        ; bk for loop  
+          ld d,h
+          ld hl,phrase_def
+          ld bc,phrase_def_ ;last word below
+          jp _install_com
+
+is_end_of_phrase
+; IN: hl points on row
+; OUT: Z if end of phrase
+     ;NZ otherwise
+     ; HL preserved in both case
+          push hl
+          SKIP_LENGTH()
+          ld a,(hl):cp mask_fx0:jr nz,.exit
+          inc l
+          ld a,(hl):cp fx_set_phrase AND &FF:jr nz,.exit
+          inc l
+;phrase_start vs chunk_start: enough to discriminate
+          ld a,(hl):cp phrase_start
+.exit
+          pop hl
+          ret
+
+goto_next_row
+;!!! Loop at end of phrase.
+   ; -> Must of the time we want skip_all instead 
+;In:  HL: start of row
+;Out: HL: start of next row BC, DE preserved.
+          call skip_all
+;enchaine
+follow_link_if_eoc
+          SKIP_LENGTH()
+          ld a,(hl):cp mask_fx0:jr nz,flie_ret_
+          inc l:ld a,(hl):inc l
+          cp fx_set_phrase AND &FF:jr nz,flie_ret
+; EOC
+          ld a,(hl)
+      IF phrase_start - chunk_start:ELSE
+ !! review how to discriminate  
+ ; in is_end_of_phrase as well
+      END
+;phrase_start: means loop to start of phrase 
+          cp phrase_start:ret z ; Z: nothing to follow
+          cp chunk_start:jr z,connect_next_chunk
+      BRK               ; ASSERT
+;!! unexpected
+
+flie_ret
+          dec l:dec l
+flie_ret_
+          pos_flags ** dec l
+          ret           ;NZ
+
+connect_next_chunk      ; !! Todo: rename connect_next_phrase_chunk
+;-----------------
+;in : hl pointe dans chunk (connected)
+;Out: If has next chunk: NZ, HL: chunk start  A: bk chunk
+    ; If no next chunk :  Z, NC (just side effect. Unused?)
+                       ; H unchanged (for append)
+
+      IF makeroom
+; factorize with chunk.o
+      END
+
+          ld l,chead_next
+          ld a,(hl):or a:ret z
+          inc l
+          ld h,(hl)
+          ld l,a
+          call connect_phrase_from_id
+; 'ext' chunks don't have phrase header
+          ld l,chunk_start
+          ret
+
+connect_phrase_from_id
+;---------------------
+;in : h=MSB, l=bk
+;out: bk connected
+    ; hl=chunk start **PAST phrase HEADER itself** (connected)
+    ;  A=bk
+    ; NZ (needed when coming from connect_next_chunk)
+    ; BC, DE preserved
+          call check_hl_in_bank
+          call connect_l
+          ld a,l
+
+      IF chunk_start:ELSE
+  !! trick NZ won't work
+      END
+          ld l,phrase_start-1:inc l ; NZ without changing A.
+          ret
+
+      IF 0
+connect_phrase_from_bhl
+;---------------------
+          push hl
+          ld l,b
+          call connect_phrase_from_id
+          pop hl
+          ret
+      END
+
+;-------------- generic chunk operation
+append_raw_in_chunk
+      IF makeroom
+; factorize with chunk.o and/or heap.o?
+      END
+; 'raw' because:
+    ; - we don't deal with sentinel (in most cases we don't need it)
+    ; - we don't need contiguity. 
+      ; Just copy what fits and continue in new chunk.
+    ; - [optim] we expect last chunk as a entry,
+              ; so we don't have to follow the linked list.
+
+; In: hl= source !! out of bank
+    ;  b= bk dest
+    ;  d= MSB dest (ie BD = ID of *last* chunk)
+    ;  c= size
+    ;  ix= routine new_chunk (returning HL:id, A:start)
+    ; Bank agnostic    
+
+; Out:  HL = id of new last chunk (can be the same). Needed by new_table
+     ; BDE = dest start (i.e. insertion point). Rationale:
+             ; - simpler client code (new_table)
+             ; - avoid corner case when copy reaches end of chunk:
+                 ; it would quirky to return "past the end" pnt then. 
+           ; NB: that means BD is unchanged unless chunk was full.
+     ; Last chunk inserted connected 
+       ; Not a hard constraint for now -> might be revisited upon needs
+
+
+; For now: BRK if size = 0 to detect programmation errors.
+         ; Since i cannot think of a scenario were we would pass 0.
+          inc c:dec c:call z,fatal
+
+          push hl
+          ld h,d:ld l,b
+          call connect_phrase_from_id
+          ld e,chead_last:ld d,h
+          ld a,(de):ld e,a ; point to last
+          pop hl
+
+          cpl           ; remaining size 
+          cp c:jr c,$+3:ld a,c ; size1 = min(c,remaining)
+          inc e:jr z,aric_full
+          push de
+          push bc
+          ld c,a
+          call _append
+          pop bc        ;aric_com needs initial bank
+          push bc
+          call aric_com
+          pop bc
+          pop de
+          ld l,b:ld h,d
+          ret
+
+aric_full
+; Returned BDE must point to start of chunk
+; Returned  HL = id of new chunk
+; Yeah, nothing special to do!
+aric_com
+; Out: BDE points to start new chunk.  
+     ; 
+          neg:add c     ; remaining size
+          ld c,a
+          scf
+          ret z
+
+          push hl
+          ld h,d:ld l,b
+          call insert_new_chunk_from_id:call nc,memory_full
+          call connect_next_chunk:call z,programming_error
+          ld e,l:ld d,h
+          pop hl
+          call _append
+          ld b,a
+          ld l,a:ld h,d
+          scf
+          ret
+
+_append
+; preserve DE (either needed to connect next chunk or as return value)
+          push af
+          push de
+          ld b,0
+          ldir
+          ld a,e:dec a
+          pop de
+          ld b,e
+          ld e,chead_last:ld (de),a
+          ld e,b
+          pop af
+          ret
+
+      IF 0
+insert_in_chunk
+; In:  hl= source !! out of bank
+    ; bde= dest    (ie B= bank  DE= pos in chunk)
+    ;   c= size    (0 = BRK)    
+    ;  ix= routine new_chunk (returning HL:id, A:start)
+    ;  iy= pointer to sentinel 'end of chunk' (size then data).
+    ; Bank agnostic.
+; Out: If ok: Carry, bde= past post dest (possibly new chunk)
+            ; Chunk bde connected.
+            ; HL= HL+c    
+
+; See comments in shift_in_chunk below
+          ex de,hl
+          call shift_in_chunk
+          ex de,hl
+          ret nc
+
+          ld a,b
+          ld b,0
+          ldir
+          ld b,a
+          scf
+          ret
+      END
+
+
+shift_in_chunk
+; Make room in chunk.
+; In: bhl= dest    (ie B= bank  hl= pos in chunk)
+    ;   c= size    (0 = BRK)    
+    ;  ix= routine new_chunk (returning HL:id, A:start)
+    ;  iy= pointer to sentinel 'end of chunk' (size then data).
+         ; Nb: it would be nice to have only 1 hook since new chunk
+             ; and sentinel are linked. It's not practical though,
+             ; because we must follow the sequence:
+                  ; - /hook_new_chunk/
+                  ; - move tail
+                  ; - /put_end_of_chunk/
+    ; Bank agnostic.
+; Out: If ok: Carry, bhl= post dest (possibly new chunk) 
+            ; Chunk bhl connected.
+     ; DE preserved
+
+; If chunk is full, ALL the remaining from insertion point is moved:
+   ; - No need to be smarter. We couldn't anyway, since data
+     ; must remains contiguous (we wouldn't know where else to cut).
+   ; - For phrase, sentinel must be moved unchanged. Works for both:
+       ; - link to next chunk
+       ; - link to phrase start
+
+; NB: contrarily to orgams. No merge is performed (moved stuff is
+    ; put in new chunk, not next one).
+    ; -> Deemed unnecessary (merge done at load time)
+    ; -> More complex code. We don't want that.
+
+; Algorithm:
+; ----------
+; Let:
+     ; x: the size before insertion point
+     ; y: the shift size
+     ; z: the size after insertion point
+ ; Each option is considered in turn in the previous fails:
+       ; (1) Try to fit x+y+z
+       ; (2) Move z in new chunk, try to fit x+y
+       ; (3) Try to fit y+z
+       ; (4) Move z, y necessary fits in emptied chunk.
+
+; Not optimized: In both (3) & (4) scenario, z has been moved twice.
+; Instead we aim for short & simple code:
+  ; The code from shift_in_row (chunge) was "optimized" and buggy. 
+
+; For now: BRK if size = 0 to detect programmation errors.
+         ; Since i cannot think of a scenario were we would pass 0.
+          inc c:dec c:call z,fatal
+; For now: Doesn't support bigger than chunk size 
+         ; since anyway inserted stuff must remain contiguous.
+          ld a,c:cp chunk_free+1:call nc,not_supported
+
+          push hl
+          ld l,b
+          call connect_phrase_from_id
+          pop hl
+
+          call try_shift_in_chunk
+          ret c
+
+; Full: move trailing.
+          call move_tail_in_new_chunk'
+
+; Retry now that room was made.
+          call try_shift_in_chunk
+          ret c
+
+; Try to insert in introduced chunk (options 3 & 4).
+          call connect_next_chunk
+          ld b,a
+; Tail Recursion! NB: 2nd iteration will succeed unless memory full.
+          jr shift_in_chunk
+
+
+try_shift_in_chunk
+;-----------------
+; If it fits: shift, return Carry. Otherwise return NC.
+; In:  hl= dest (this byte will be shifted).    
+    ;   c= shift size   
+    ;  A trashed, all other registers preserved.
+
+          push bc:push hl
+          ld a,l
+          ld l,chead_last
+          neg:add (hl):ld b,a:inc b ; size to copy
+      IF dev_checks:call z,fatal:END
+
+          ld a,(hl)
+          add c:jr c,_tsic_ret ; -> doesn't fit
+; shift       
+          ld (hl),a     ; new last
+          push de
+          ld e,a:ld d,h ; Dest
+          sub c:ld l,a  ; Source
+          ld c,b
+          ld b,0
+          lddr
+          pop de
+          or a
+_tsic_ret
+          ccf
+          pop hl:pop bc
+          ret
+
+
+move_tail_in_new_chunk
+;---------------------
+; Insert new chunk and copy tail.
+;in: hl=source
+;out: reconnect source chunk     
+
+; TODO: better factorization?
+
+          push ix:push iy
+          ld ix,new_chunk_ext
+          ld iy,sentinel_phrase_eoc
+          ld a,(bk_connected):ld b,a
+          call move_tail_in_new_chunk'
+          pop iy:pop ix
+          ret
+
+
+move_tail_in_new_chunk'
+;----------------------
+; in: bhl=source
+    ;  IY=sentinel (size+data)  
+    ;  IX=routine for new chunk (e.g. /new_phrase_chunk/)
+;out: reconnect source chunk     
+    ; bhl, de preserved
+
+          call insert_new_chunk_from_bhl:ret nc
+
+          push bc:push de:push hl
+          ld c,a        ; chunk_start
+
+          ld e,chead_last
+          ld d,h
+          ld a,(de)
+          sub l:IF dev_checks:call c,&BE00:END
+          inc a
+          ld e,c        ; chunk_start
+          ld c,a        ; size
+          call copy_from_chunk_to_next
+          pop hl
+;---------------
+; Put sentinel 'end of chunk' 
+; HL = cur chunk
+; DE = next chunk
+          ld a,d        ; for link
+          push hl
+          ex de,hl      ; de=dest in current chunk
+          push iy:pop hl
+      IF dev_checks
+;For now only one kind: strict sanity check.
+          ld bc,sentinel_phrase_eoc
+          or a:sbc hl,bc:add hl,bc:call nz,programming_error
+      END
+          ld c,(hl):inc hl
+          inc c:dec c:jr z,.put_eoc
+          ld b,0
+          ldir
+.put_eoc
+      IF phrases_across_banks
+ !!! review that. Use word for id, fx_set_phrase' would have to force
+   ; L = chunk_start
+      END
+          ld (de),a     ; MSB next chunk (LSB in sentinel_phrase_eoc)
+
+          ld a,e
+          ld e,chead_last:ld (de),a
+          pop hl
+          pop de:pop bc
+          scf
+          ret
+
+phrase_def
+;-------
+;phrase chunk header (after last, reset by new_chunk)
+      BYTE phrase_def_+3 ; +3: same reason as for /chunk_def/
+      BYTE 0            ;checksum (unused now)
+      BYTE 0            ; row# (mimic line# in orgams's chunk)
+;clip header
+      BYTE type_phrase
+phrase_idx BYTE 
+      FILL 3,0          ; Pnt name. Unused for now
+phrase_color BYTE 
+tag_end                 ; used by chungnrt.o
+;duration 0 = tag eof of phrase 
+      BYTE 0
+      BYTE mask_fx0
+      BYTE fx_set_phrase AND &FF
+      BYTE phrase_start ; lsb self loop. MSB depends on chunk!
+; !!! if changed review follow_link_if_eoc
+
+tag_end_size = $ - tag_end + 2 ;+2: Address jump 
+phrase_def_ = $ - phrase_def
+
+; Maximum contiguous size in chunk.
+; Actually could be a bit bigger since chunk_link_size < tag_end_size.
+; Nevermind for now.
+; Also, that's the max for the first chunk, for next (ext) it's bigger
+chunk_free = &0100-phrase_def_-2 ; -2 next field
+nrtfree = chunk_free
+
+sentinel_phrase_eoc
+      BYTE sentinel_phrase_eoc_ ; Size of sentinel for generic append
+          pos_flags ** BYTE 0 ; duration
+      BYTE mask_fx0
+      BYTE fx_set_phrase AND &FF
+; link to next chunk: no more clip header, so starts at
+; chunk_start rather than phrase start
+      BYTE chunk_start
+; !!! if changed review follow_link_if_eoc
+sentinel_phrase_eoc_ = $ - sentinel_phrase_eoc - 1
+
+      IF todo
+; Factorize phrase_end+phrase_next_chunk into 'phrase_jump'?
+    ; e.g. next_chunk: follow next
+                ; end: follow loop
+  ; (next and loop written like after phrase_end)
+      END
+
+; Maximum contiguous size in chunk.
+; Actually could be a bit bigger since chunk_link_size < tag_end_size.
+; Nevermind for now.
+; Also, that's the max for the first chunk, for next (ext) it's bigger
+chunk_free = &0100-phrase_def_-2 ; -2 next field
+nrtfree = chunk_free
+
+; ----------------------------
+vars
+; Private/tmp vars alongside code (out of bank: no persistence needed)
+
+row_t0 WORD             ; tmp
+row_t1 WORD             ; tmp
+
+va_savesp WORD 
+jp_ret SKIP 3
+
+dbg1  WORD 
+dbg2  WORD 
+
+; ----------------------------       
+; Vars in bank
+save_pc = $
+
+def
+; Doesn't use org va,$$
+; otherwise orgams set high $ = 7cxx, which is inconvenient
+      BYTE 
+def_size = $-def
+
+      ORG va
+var
+      BYTE              ; nothing for now
+
+      IF $-var - def_size
+ !! inconsistency
+      END
+
+zero_start              ; Not loaded, must follow def (see check below)
+      IF zero_start - [var+def_size]
+ !! must be contiguous to simplify init code
+      END
+va_current_phrase BYTE 
+va_row_pnt WORD         ;address of currently selected row 
+
+zero_size = $-zero_start
+
+      ORG save_pc
+

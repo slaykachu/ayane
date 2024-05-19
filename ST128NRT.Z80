@@ -1,0 +1,38 @@
+; <<< Functional tests for st128 conversion >>>
+
+      IMPORT "memmap.i"
+
+      ORG code_start    ; After tables
+      ENT tests
+
+      IMPORT "st128.o"
+      IMPORT "track.o"  ; for display
+      IMPORT "init.o"
+
+nrt_init
+          call full_init
+          ret
+
+nrtfail = &BE00
+
+tests
+          call nrt_init
+          call test_convert_pcrb3
+; More complete test with replay in ply.nrt
+          ret
+
+test_convert_pcrb3
+; Test conversion of pcrb3.128 (loaded at end of source)
+; 1/ Check it doesn't assert
+; 2/ Display tracks
+          call st_convert
+          call refresh_all_tracks
+          call &BB06
+          ret
+hi
+      SKIP &4000 - $    ; Poor's man limit
+
+      BANK BK_IO        ; &C0
+      ORG &4000
+      LOAD "ums:music/shap/pcrb3.128"
+

@@ -1,0 +1,140 @@
+; Common routines for tests 
+
+; 2024 
+  ; Apr
+   ; 23 v1: Add /psg_read/
+   ; 22 v0: /compare_regs/ extracted from ide:ay/plybh
+            ; Smarter comparison: r7 can be <> when volume 0
+            ; Adjustable tolerance
+tolerance = 4
+
+fail  = &BE00
+
+compare_sized
+          ld a,(de):cp (hl):call nz,&BE00
+          inc hl:inc de
+          djnz compare_sized
+          ret
+
+compare_regs
+; Smart comparison of PSG regs:
+; e.g. if channel closed, don't check periods
+; In: hl = regs 0
+   ;  de = regs 1
+
+          push hl:pop ix
+          push de:pop iy
+
+      MACRO COMPARE_CHAN ch,chbit
+
+          bit chbit,(ix+7):jr z,.open
+          bit chbit,(iy+7):jr nz,.perok ; both closed
+          ld a,(iy+ch):or a:jr z,.perok ; de: volume 0
+          call fail     ; mismatch
+
+.open
+          bit chbit,(iy+7):jr z,.openok
+          ld a,(ix+ch):or a:jr z,.perok ; hl: volume 0
+          call fail     ; mismatch
+
+.openok
+          ld a,(ix+ch):cp (iy+ch):call nz,fail
+          ld a,(ix+ch):or a:jr z,.perok
+
+; compare with allowed diff (since vibrato isn't exactly the same)
+
+          push de:push hl
+          ld c,(hl):inc hl:ld b,(hl)
+          ex de,hl
+          ld e,(hl):inc hl:ld a,(hl):and &0F:ld d,a
+          ex de,hl
+          or a
+          sbc hl,bc:jr z,.perok_ ; 0 
+          jr nc,.oksign
+          ld c,l:ld b,h:ld hl,0:or a:sbc hl,bc ; neg hl
+.oksign
+;hl (diff) must be <= tolerance
+          ex de,hl
+          ld hl,tolerance
+          or a:sbc hl,de
+          call c,fail
+
+.perok_
+          pop hl:pop de
+.perok
+          bit chbit+3,(ix+7):jr z,.noise
+          bit chbit+3,(iy+7):jr nz,.noiseok ; both closed
+          call fail     ; mismatch
+
+.noise
+          bit chbit+3,(iy+7):call nz,fail
+          ld a,(ix+6):cp (iy+6):call nz,fail
+.noiseok
+      ENDM
+
+          COMPARE_CHAN(8,0)
+
+          inc hl:inc de
+          inc hl:inc de
+
+          COMPARE_CHAN(9,1)
+
+          inc hl:inc de
+          inc hl:inc de
+
+          COMPARE_CHAN(10,2)
+
+          inc hl:inc de
+          inc hl:inc de
+
+          ld a,(ix+7):rra
+          or (ix+7):rra
+          or (ix+7)
+          bit 3,a:jr nz,cr_nono
+
+          ld a,(de):cp (hl):call nz,&BE00
+cr_nono
+
+      5 ** [inc hl:inc de] ;6 to 11      
+          ld a,(de):cp (hl):call nz,&BE00
+          inc hl:inc de
+          ld a,(de):cp (hl):call nz,&BE00
+          inc hl:inc de
+          ld a,(de):cp (hl):call nz,&BE00
+
+          ret
+
+psg_read
+; IN: hl: pnt buffer
+          ld c,0
+.lp
+          call psg_read1
+          ld (hl),a:inc hl
+          inc c
+          ld a,c
+          cp 14
+          jr c,.lp
+          ret
+
+psg_read1
+;In:  C= register to read
+;Out: A= value
+    ; C preserved
+          push bc
+          ld b,&F4
+          out (c),c
+          ld bc,&F6C0
+          out (c),c
+          out (c),0
+          ld bc,&F792
+          out (c),c
+          ld bc,&F640
+          out (c),c
+          ld a,&F4
+          in a,(&FF)
+          out (c),0
+          ld bc,&F782
+          out (c),c
+          pop bc
+          ret
+

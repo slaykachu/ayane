@@ -1,0 +1,133 @@
+; ========= Shared buffers and variables ==========
+todo  = 1
+
+savepc = $
+saveobj = $$
+
+MAX_TRACKS = 32         ; For now! 
+
+; ---Bank used---
+BK_IO = &C0             ; for st128 convert and co
+BK_PHRASE = &C4         ; Static for now
+BK_BASE = &C5           ; static for now  (allow connection &c2)
+BK_TRACK = BK_BASE
+BK_INSTR = BK_BASE
+;&c6 = free
+BK_DISP = &C7           ; Static for now (for connection &c1)
+
+bk_connected = &3C      ;!!! Hardcoded in liszt. 
+;!!! 3e: vo_thisbk for ayane. See rationale in memcpc.o
+instruments = &40       ;max 18*16  (for st). What about starkos?
+instruments_ = &0E00    ; For checks
+; tables and co below
+
+code_start = &0E00
+
+ramlimit = &4000
+
+; ---------- C0 -----------------
+      ORG &4000
+; status bar
+; st128 module
+
+; ----- c4: phrases ---------------
+phrases_across_banks = 0 ; 1 when allowing several banks
+
+      IF phrases_across_banks
+ !!! must review ply, chung
+; e.g. fx_set_phrases would need 24 bits:
+  ; use word param for ID, then force l to chunk start
+ ; !!! but chunk start depends if rewind (first chunk with header)
+                             ; or next chunk (ext chunk w/o header)
+      END
+
+      ORG &4000
+
+phrases_ = &7600        ; end
+;phrases and phrase_index defined by chung
+
+; ------- c5: Base BK, instr, tables -----------
+      ORG &4000
+
+; -- tracks  (aka song map)
+;tracks    ; for now tracks defined in track.o: index itself
+track_events
+
+; -- tables (instr rows, arpeggios, ...)
+      ORG &5000
+track_events_
+tables                  ; might lower it. check hb4: which place would
+
+; -- Instr headers (serve as index table)
+; I was tempted to put fields "verticaly" (one field per MSB), but
+;  - it prevents generic operation (link insertion for instr_head_rows)
+;  - hinder debugging
+      ORG 0
+; TODO? flags (e.g. "export" for special effects)
+;             ;-> Hm. Maybe phrase should be exported instead!
+                ; no need for flags, export all phrases!
+; Oh! For now can be put in type anyway.
+instr_head_type BYTE 
+instr_head_rows WORD    ; pnt to first rows
+instr_head_ext SKIP 3   ; additional params 
+instr_head_name WORD    ; pnt to nt string (todo)
+instr_head_size
+
+      ORG &7000         ; simplify instr pnt computation for ply
+tables_
+instr_idx SKIP instr_head_size*&0100 ; chung, ply
+instr_idx_
+
+;7800-7f00 : free
+
+      SKIP &7F00 - $
+va_chung
+
+      SKIP &7FE0 - $
+; Note: chunk allocation for ayane: bank by bank basic,
+      ; as we associate one bank for phrases, another for tables.
+; This variable is repeated in each bank.
+chunk_var
+chunk_var_ = &8000
+
+; --------- IO BK --------------
+st_module = &4000
+
+; ---------- Disp BK ------------
+      ORG &4000
+; Setup by ayane.o, which imports disp.o, fonte...
+
+      ORG &8000
+disc_buffer             ; In central RAM for easier loading in banks
+      SKIP &0800
+      SKIP &0100
+      SKIP &0100        ; BUF_TMP in status.o  
+bandaya SKIP &0300      ; Code: out of page 0 and bank (since under int)
+; -> could be mitigated: int hook saving and connecting bank.
+psg_regs SKIP &0100     ;  Room for pseudo registers and ??? 
+workzone SKIP &0300     ; Sharable. Used by st128
+buf_chung SKIP &0200
+buf_chung_
+ramlimit' = &A000
+      IF todo
+; Replace ramlimit by himem
+; -> More ram  if himem > &a000 (typical)
+; -> No corruption if " < &a000 
+; Note, when detecting himen, check it is > tables
+      END
+
+   ; also fx pnt for /append_fx/   !?!
+      IF todo
+;check why needed by st128
+;!!! currently conflict with tables
+      END
+
+; Out of bank variables are more convenient!
+; !! Private vars are kept alongside code.
+; !! No need to reserve room 
+;vars_chung SKIP 32      ; some room
+;vars_chung_
+
+  ;    SKIP &9E00 - $    ; Reusable buffer (status.o)
+
+      ORG savepc,saveobj

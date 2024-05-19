@@ -1,0 +1,774 @@
+dev_checks = 1
+shortcut = 0            ; !! doesn't respect st map, only pattern #
+todo  = 1
+
+; ------------------------------------------------
+  ;         ST 128 conversion
+  ; (also tested via ply.nrt with donrt=0)
+
+ ; Mar
+; ----- For v0f -----------
+  ; 24 !!ON HOLD!! Work on "chipn.o" first: 
+            ; - less complicated
+            ; - more directly useful for vanity.
+  ; 21 Adapt for Conv_song_map
+  ; 16 Adapt to new instr.o (only one table)
+
+; ----- For v0e -----------
+  ; 10 Import memcpc.o from local dir
+
+; ----- For v09 -----------
+ ; Dec        
+  ; 21 Import memcpc.o from :lib
+  ; 02 /patterns/ Fix bug: nb pattern = st_max_pattern + 1
+ ; June
+  ; 05 Remove vibrato cut at row 0 and no effect assertion at stp_fx
+     ; (see rationale in journal.o)
+
+; ----- For v08 -----------
+; May     
+ ; 20: Use connect_bk_st  
+; ---------------------------
+  ; v4: Extracted from plybh.o
+  ; v3: * C fx put in instr (to avoid cutting previous FX) 
+  ; v2: * F fx put in instr (for retriger)
+  ; v1: * no doublon detection or whatever
+      ; * full instr copy (32)
+      ; * always loop (last bar if no loop specified)
+      ; * assume delay 6, pattern 64
+; ------------------------------------------------
+
+      IMPORT "const.i"  ; for chunk_start
+      IMPORT "memmap.i"
+      IMPORT "chung.o"
+      IMPORT "track.o"
+      IMPORT "fx.o"
+      IF todo
+; should be removed, no?
+      END
+      IMPORT "memcpc.o" ; connect_bk_base
+
+
+st_convert
+;---------
+;In: Module loaded @ 4000 in bank /st_bk/
+
+          di            ;use exx
+
+          xor a
+          ld hl,st_insarp_mat:call fill
+          inc h:call fill
+          inc h:call fill
+          ld hl,st_var
+          ld b,st_zero_size:call fillb
+
+;hack: module must be already loaded here
+          call connect_bk_st
+          ld hl,&4000
+
+; Phase 1: extract vol/noise/tone tables,
+         ; and create corresponding instr
+
+          ld b,16       ;inst 0 to F 
+st_inslp
+          push bc
+
+          call song_select_new_instr
+          call connect_bk_st
+
+;VOL----
+          call is_empty32b
+          jr nz,st_instnotempty
+
+          ld bc,32+32+64+2:add hl,bc ; skip table
+
+          jr st_instok
+
+st_instnotempty
+
+          push hl
+;Clean table (e.g. set arp to 0, as not defined by st128)
+          ld hl,workzone
+          ld de,workzone+1
+          ld bc,instr_row_size_max * 16 - 1
+          pop hl
+
+;---Set volume
+          ld b,32
+          ld de,workzone + instr_vol
+.vollp
+; Convert to XXXX0 with XXXX = vol to subtract (0 = max volume)
+          ld a,(hl):bit 7,a:call nz,mess ; TODO
+          ld a,15:sub (hl):inc hl
+          add a
+          ld (de),a
+          ld a,instr_row_size_max:add e:ld e,a:jr nc,$+3:inc d
+          djnz .vollp
+
+;---Set noise
+          ld b,32
+          ld ix,workzone
+.noiselp
+          ld a,(hl):inc hl
+          bit 7,a:jr nz,.nonoise
+          and &1F
+          ld (ix+instr_noise),a
+          ld a,&00      ; noise and channel open
+          jr .noiseflag
+
+.nonoise
+          ld a,&38      ; no noise, channel open
+.noiseflag
+          ld (ix+instr_flags),a
+          ld de,instr_row_size_max
+          add ix,de
+          djnz .noiselp
+
+;---- pitch       
+; (First must get abs/rel flag)
+          push hl
+          ld bc,64:add hl,bc
+          ld b,(hl):inc hl ; repeat pos + flags
+          ld c,(hl)     ; repeat len
+          pop hl
+
+          bit 7,b
+          jr z,st_tone_
+
+st_abs
+      BRK
+ ; TODO: flag instr as "absolute", to associate it with d#9 or ...
+       ; Note: this flag is only for convertion.
+
+st_tone_
+          call connect_bk_st
+
+st_oktone
+          inc hl        ;skip rep flags, already read 
+          inc hl
+
+          push hl
+          ld hl,workzone
+          ld bc,&2000   ; force loop to 0
+      IF todo
+; reproduce loop 
+      END
+          call instr_append_rows
+          pop hl
+
+st_instok
+          pop bc
+          djnz st_inslp
+
+; ----------
+; -- arpg --
+; ----------
+          ld b,16       ;arpg 0 to F 
+st_arpglp
+          push bc
+
+          call is_empty32b
+          jr nz,st_arpgnotempty
+
+          ld bc,32:add hl,bc ; skip table
+
+          ld bc,0
+          jr st_arpgok
+
+st_arpgnotempty
+          ld bc,0       ; no loop
+;Fixme: should loop on last entry, but on 0
+;Optim: strip trailings 0
+          call st_make_table32
+st_arpgok
+          call set_new_arpg
+          call connect_bk_st
+
+          pop bc
+          djnz st_arpglp
+
+; ---------------------------------------------
+
+; TODO   Check this values 'WARP ZONE'
+          ld bc,16:add hl,bc
+
+; ---------------------------------------------
+
+          push hl       ; Song list to do after
+; but get max pattern
+st_songsize = &60
+
+          ld b,st_songsize
+          xor a
+          call get_max
+          ld (st_max_pattern),a
+
+          ld bc,&88+st_songsize
+          add hl,bc     ; skip names and transpose table
+
+; ---
+; warp zone 2: delay, length song etc???
+; --- 
+
+          ld bc,7:add hl,bc
+          ld a,(hl):inc hl
+          ld (st_song_length),a
+
+; ----
+patterns
+; ----                         
+
+          ld a,(st_max_pattern):inc a
+      IF shortcut
+          ld a,shortcut
+      END
+
+st_patnlp               ; each st pattern
+          push af
+
+          ld b,3
+          ld ix,st_var
+
+st_patnchanlp           ; each channel 
+          push bc:push hl
+
+          push hl
+progress  ld hl,&C000
+          ld (hl),&55
+          inc hl
+          ld (progress+1),hl
+          pop hl
+
+          call song_select_new_phrase
+          call connect_bk_st
+
+          ld iyl,0      ;cur note
+          ld b,64
+st_rowlp
+          push bc
+          call phrase_select_new_row
+          call nc,&BE00
+
+          call connect_bk_st
+
+          ld a,(hl):inc hl
+          cp &D0        ; RAZ track 
+          jp z,stp_nonote ; Never mind for now
+          call z,&BE00  ; TODO !!   ^^^^
+          or a:jp z,stp_nonote ;do not read instr
+          cp iyl:jr z,stp_samenote
+
+          ld iyl,a
+          and &F0:ld d,a
+          xor iyl
+          dec a:ld e,a:add a:add e:2 ** add a ;*12
+          ld e,a:ld a,d:4 ** rrca:add e
+          call row_set_note
+
+          call connect_bk_st
+
+stp_samenote            ; do not encode: instr will retrigger same note
+
+
+; ==== Here: Turn fx into instr. So no fx used ====
+
+          ld a,(hl):and &F0:ld b,a
+          4 ** rrca:ld c,a
+
+          ld a,(hl):xor b
+; If fx C,
+; we use a copy of instr with noise injected
+          cp &0C:jr z,stp_fxc
+
+; If fx 6 (arp+vol), we does as F (arp).
+; We set volume here so we can reuse stp_fxf (which jumps to stp_nofx)
+
+          cp &06:jp z,stp_fx6
+
+; If fx F starting OR running 
+; we use a copy of instr with arp injected. TODO: why?
+
+; Starting?
+          cp &0F:jr z,stp_fxf
+; Stopping?
+          cp &01:jp z,stp_instr
+; running?
+          ld a,(ix):cp &0F:jp nz,stp_instr
+
+          ld a,(ix+st_curpara-st_var) ; num arpg
+          call stp_arp_
+          jp stp_fx
+
+stp_fxf
+          call stp_arp
+          inc hl
+          jp stp_nofx
+
+stp_arp
+; Gestion commune 6/E/F, fx or retrigger.
+          ld (ix),a
+          inc hl:ld a,(hl):dec hl
+stp_arp__
+          ld (ix+st_curpara-st_var),a
+stp_arp_
+          or b          ; num instr in MSQ
+          push hl
+          ld l,a:ld h,st_insarp_mat/&0100
+          ld a,(hl)
+          or a:jr nz,_stp_instr ; already exists
+
+          push hl
+          ld a,c
+
+;hack: remove note2tone, since we cannot insert yet
+          call song_select_instr
+          ld hl,(va_instr_pnt)
+          dec (hl)
+          push hl
+      BRK
+; To be reviewed: why not sfx?
+;          call song_clone_instr
+          pop hl
+          inc (hl)
+
+          pop hl
+          ld (hl),a
+          ld d,a
+
+          call song_select_instr
+          ld a,l:and &0F:ld c,a
+      BRK
+     ;     call get_arpg_from_index
+     ;     call instr_set_arpg_table
+     ;     call instr_append_note2tone
+
+          ld a,d
+_stp_instr
+          call row_set_instr
+          call connect_bk_st
+          pop hl
+          ret
+
+stp_fxc
+          inc hl:ld a,(hl)
+; tone 
+          and &F0:call nz,&BE00 ; not implemented
+; recupere Noise.
+          xor (hl)
+          or b          ; num instr source in MSQ
+          dec hl
+          push hl
+          ld l,a:ld h,st_insnoi_mat/&0100
+          ld a,(hl)
+          or a:jr nz,_stpc_instr ; already exists
+
+          push hl
+          ld a,c
+;hack: remove note2tone, since we cannot insert yet
+          call song_select_instr
+
+          ld hl,(va_instr_pnt)
+          dec (hl)
+          push hl
+; To be reviewed. Why not sfx
+      BRK
+       ;   call song_clone_instr
+          pop hl
+          inc (hl)
+          pop hl
+          ld (hl),a
+          ld d,a
+
+;get table from other instrument
+          ld a,l:and &0F
+          call song_select_instr
+          push hl
+
+      BRK
+    ;      call instr_get_noise_table
+      IF dev_checks:call nc,&BE00:END
+
+          ld c,l:ld b,h
+          pop hl
+
+          ld a,d
+          call song_select_instr
+      BRK
+        ;  call instr_set_noise_table
+        ;  call instr_append_note2tone
+
+          ld a,d
+_stpc_instr
+          call row_set_instr
+          call connect_bk_st
+          pop hl
+          inc hl
+          jp stp_nofx
+
+stp_fx6
+          ld (ix),&0F   ; Flag arp
+          inc hl:ld a,(hl)
+          and &0F:call row_set_vol
+          call connect_bk_st
+          ld a,(hl):dec hl
+          4 ** rrca:and &0F
+          call stp_arp__
+          inc hl
+          jp stp_nofx
+
+stp_instr
+          ld a,c:call row_set_instr
+
+stp_nonote
+stp_fx
+          call connect_bk_st
+; FX -----------
+          ld a,(hl):inc hl
+          ld c,(hl)
+          and &0F
+          call nz,stp_fxswitch
+stp_nofx
+          call connect_bk_st
+          dec hl:dec hl:ld a,(hl):inc hl:inc hl ; peek note
+          or a:jr z,stp_okporta
+          cp &D0:jr z,stp_okporta
+
+; Is portamento active?
+          ld a,(ix+st_curportaup-st_var)
+          or (ix+st_curportadown-st_var)
+          jr z,stp_okporta
+
+; We must reset: if other fx, doomed.
+; TODO: replace by more accurate row_get_fx, since
+
+          dec hl:ld a,(hl):inc hl ; peek instr/fx
+          and &0F:call nz,&BE00
+
+          xor a
+          ld (ix+st_curportaup-st_var),a
+          ld (ix+st_curportadown-st_var),a
+      BRK
+; TODO
+     ;     call row_set_reset_glide
+
+stp_okporta
+          call connect_bk_st
+          ld de,7:add hl,de
+          pop bc
+          dec b:jp nz,st_rowlp ; -- next row --
+
+          pop hl:pop bc
+          3 ** inc hl
+          inc ix
+          dec b:jp nz,st_patnchanlp ; -- next channel --
+
+          push hl
+          ld hl,(progress+1)
+          ld (hl),&FF
+          inc hl
+          ld (progress+1),hl
+          pop hl
+
+          ld de,63*9:add hl,de
+          pop af
+          dec a
+          jp nz,st_patnlp ; -- next pattern --
+; ----
+; SONG LIST                                          
+; ----
+
+          pop de        ;song list
+
+; parcours 3 fois la liste, pour chaque channel
+; (puisque dissocies dans ayane)
+          xor a
+.chnlp
+          push af:push de
+
+          push de
+          push af
+; --- Copy transposition list for each channel
+; For now, no transpose track: st_transpose just checks it's 0
+;TODO: select phrase on the fly if no such already.
+;          call song_select_new_track
+          ld hl,&60+&88:add hl,de ;pattern transpose table
+          call st_transpose
+
+          pop af
+          push af
+          inc a
+          call song_select_new_track
+          pop af
+          ld c,a
+          pop hl        ; was de = song list
+          call st_map
+
+          pop de:pop af
+          inc a
+          cp 3
+          jr nz,.chnlp
+          ret
+
+;-------------------------
+
+stp_fxswitch
+          dec a:jr z,stfx_stop68aef
+          dec a:jr z,stfx_portamentodown
+          dec a:jr z,stfx_portamentoup
+          dec a:jr z,stfx_volumedown
+          dec a:jr z,stfx_volumeup
+          dec a:jr z,stfx_arpg_vol
+          dec a:jr z,stfx_vibrato
+;8
+          dec a:jp z,stfx_env8
+          dec a:jr z,stfx_brk_delay
+          dec a:jp z,stfx_envA
+          dec a:jp z,stfx_volume
+          dec a:jp z,stfx_noise_tone ; c
+          dec a:jp z,stfx_delay
+          dec a:jp z,stfx_arpg_xy ; e
+stfx_arpg
+      BRK
+; !! already handled
+
+;!!!! use fact a=0 !!!!
+
+stfx_stop68aef
+          xor a:ld (ix),a
+          jp row_set_no_fx
+stfx_portamentodown
+          ld a,(ix+st_curportadown-st_var)
+          cp c:ret z
+          ld (ix+st_curportadown-st_var),c
+          ld a,c:and &0F:ld b,a ; step
+          xor c:4 ** rrca ; delay
+          ld c,a
+          xor a
+          3 ** sla b    ; Compensate multi precision
+          jp row_set_portamento_downfx
+
+stfx_portamentoup
+          ld a,(ix+st_curportaup-st_var)
+          cp c:ret z
+          ld (ix+st_curportaup-st_var),c
+          ld a,c:and &0F:ld b,a ; step
+          xor c:4 ** rrca ; delay
+          ld c,a
+          xor a
+          3 ** sla b    ; Compensate multi precision
+          jp row_set_portamento_upfx
+
+stfx_volumedown
+      BRK:ret
+stfx_volumeup
+      BRK:ret
+stfx_arpg_vol
+;Arpg already inject in instr.
+;vol already set as well.    Cf stp_fx6
+      BRK
+      BRK
+
+stfx_vibrato
+          ld a,(ix+st_curvib-st_var) ; param (0: no vib)
+          ld (ix+st_curvib-st_var),c
+          cp c:ret z    ; 
+
+          push hl
+          ld a,c:and &0F:ld b,a ; half-range
+          xor c:4 ** rrca ; delay
+          ld c,a
+          ld l,8        ; step 1
+          rrca:jr c,sfv_ok
+; double precision
+          ld l,4        ; step 0.5
+          sra c         ; half delay
+          sla b         ; double half-range
+sfv_ok
+          xor a
+          call row_set_vibrato_fx
+          pop hl
+          ret
+
+stfx_brk_delay
+      BRK:ret
+
+stfx_env8
+          ld a,8
+          jr stfx_env
+
+stfx_envA
+          ld a,&0A
+stfx_env
+          ld (ix),a
+          ld c,a
+          xor a
+          jp row_set_hardenv
+
+stfx_volume
+          ld a,c
+          jp row_set_vol
+
+stfx_noise_tone
+          ld a,c
+;TONE? TODO
+          and &F0:ld b,a:call nz,&BE00:xor c
+
+; Noise: already injected in new instr
+          ret
+
+stfx_delay
+      BRK:ret
+stfx_arpg_xy
+          ld a,c
+          call get_table_from_arpeggio
+          ld c,a
+          xor a:jp row_set_arpg_fx
+
+;-------------------     
+st_transpose
+;-----------
+; In: hl = transpose list
+; For now, just check it's all 0
+; TODO: message instead or breakp
+; Then: create track if not one already.
+
+          call connect_bk_st
+
+          ld a,(st_song_length)
+      IF shortcut
+          ld a,shortcut
+      END
+          ld b,a
+.lp
+          ld a,(hl):inc hl
+          or a:call nz,&BE00 ; NOT impl yet (Shap barely transpose)
+          djnz .lp
+          ret
+
+st_map
+;-----
+; Convert songlist
+; !!! For now assume delai==6
+; !!! TODO: check if wrong delai, and log.
+; In: hl = song list
+    ;  c = channel 0..2
+;-------------------     
+
+          ld a,(st_song_length)
+      IF shortcut
+          ld a,shortcut
+      END
+          ld b,a
+.maplp
+          call connect_bk_st
+          push bc
+; Phrase# = pattern# * 3 + channel
+          ld a,(hl):inc hl ; pattern number
+          ld b,a:add a:add b ; *3
+          add c         ; channel
+          push hl
+
+; Form clip: duration and pointer
+          call connect_bk_base
+          call get_phrase_chunk
+;Form complete 24 bits pnt      
+mess  = &BE00
+      IF dev_checks
+          ld a,l:and &F4:cp &C4:call nz,mess
+      END
+          ld a,l
+          ld (st_clip_pnt+2),a
+          ld l,chunk_start
+          ld (st_clip_pnt),hl
+          ld hl,st_clip
+          call track_append_clip
+
+          pop hl
+          pop bc
+          djnz .maplp
+          ret
+
+st_clip
+st_clip_dur WORD 64*6:BYTE 0 ; duration: fix that
+st_clip_pnt FILL 3,0
+      IF $-st_clip - clip_struct_size
+   !! out of sync
+      END
+
+;--------------    
+connect_bk_st
+          push bc
+          ld c,BK_IO:call connect_c_c0
+          pop bc
+          ret
+
+st_make_table32
+          ld a,32
+          jp st_make_table
+
+get_max
+          cp (hl):jr nc,$+3:ld a,(hl)
+          inc hl
+          djnz get_max
+          ret
+
+
+is_empty32b
+          ld b,32
+is_empty
+          push hl
+          xor a
+ie_lp     or (hl):inc hl:djnz ie_lp
+          or a
+          pop hl
+          ret
+
+fill      ld (hl),a:inc l:jr nz,fill
+          ret
+fillb     ld (hl),a:inc hl:djnz fillb
+          ret
+
+get_table_from_arpeggio
+;-----------------------
+;in: A= valeurs arpege 0 X Y   ;TODO: C instead?
+;out: A= index table arpegio (create it if absent)
+
+          push hl
+          ld l,a:ld h,st_arpg_store/&0100
+          ld a,(hl)
+          or a
+          jr nz,gtfa_ok
+
+          ld a,l
+          push hl
+          call create_arpeggio_0xy ; TODO: what if mem full?
+          pop hl
+          inc a:ld (hl),a
+
+gtfa_ok
+          dec a
+          pop hl
+          scf
+          ret
+
+
+
+;----------------------------------------------------
+st_var
+st_curpara 3 ** BYTE 
+; There is no such thing as 'current vibrato',
+; since patterns can be enchained arbitrarily.
+; But for most Shap's zik where pattern are chained,
+; it might be good enough.
+st_curvib 3 ** BYTE     ; Vib param. 00 when off
+st_curportaup 3 ** BYTE  ; Param. 00 when off
+st_curportadown 3 ** BYTE  ; Param. 00 when off
+st_zero_size = $-st_var
+st_max_pattern BYTE 
+st_song_length BYTE 
+
+;----------------------------------------------------
+st_insarp_mat = workzone ; &100 in: (ins,arp)  out: ins' with arp
+st_insnoi_mat = workzone+&0100 ; &100 in: (ins,noi)  out: ins' with noi
+st_arpg_store = workzone+&0100 ; &100 in: XY      out: table arpg 0,X,Y
+

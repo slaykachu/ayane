@@ -1,0 +1,1208 @@
+; <<<<< chung: gestion chunk? + instr >>>>>
+dev_checks = 1
+todo  = 1
+makeroom = 1
+st    = 0               ; disabled for now
+      ; hist
+
+; Poc (to be completed)
+
+    ; Init_chung
+    ; New_instr_ayane
+    ; New_instr_chp_down_vib
+    ; Song_select_instr
+    ; Setup_row_r7
+    ; instr_ayane_append_rows
+    ; instr_chip_append_rows
+    ; instr_set_loop
+    ; instr_get_loop    
+
+      IMPORT "const.i"
+      IMPORT "memmap.i"
+      IMPORT "memcpc.o"
+      IMPORT "chunk.o"  ; new_chunk 
+      IMPORT "heap.o"   ; new_heap_chunk
+      IMPORT "ply.o"    ; For fx_set_phrase
+      IMPORT "instr.o"  ; Use LSB as type
+      IMPORT "plyconf.i" ; for nb_fx
+
+bk_connected = &3C      ; hack: avoid "ambiguous label"
+
+; !!!! TODO? [Optim]: to save bk connection for fx signature,
+                    ; we might compile (or copy) player out of bank
+             ;---> UNEEDED when player intool (rom) as well
+
+; !!!! Scheis !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+; !!!!!! What the heck with fx interface
+; !!!!!!   - Already init in instr vs direct jump
+; !!!!!!   - How to enforce that?
+; interface!!!  some routine needs a call to _prelude beforehanb !!!!!!
+;               -> how can we know?
+
+      IF nb_fx:ELSE
+!!! We must have at least 1 fx
+  ; to be able to handle fx_set_phrase
+  ; Needed for 'goto next chunk' and 'goto start of phrase'
+; For compile, it needs to be dynamic anyway.
+; E.G.  : nb_fx = 4 for in-tool
+  ; If a particular music doesn't use fx, then we remove handling
+  ; dynamically.
+      END
+
+
+hist
+; TODO: see what's up with firmware, since we use EXX.
+
+; //// 2024 /////////////////
+; ------ For v0h -------
+; Apr
+    ; 29 Reset instr_idx (so compile can skip non-existing instr)
+       ; Add New_instr_chp_down_arp_noise
+       ; Discriminate: instr_chip_append_rows_byte
+                     ; instr_chip_append_rows_word
+; ------ For v0g -------
+    ; 26 instr_get_loop: save hl, de
+    ; 23 Song_select_instr: adapt to new structure                    
+       ; Remove va_instr_pnt (was defined in memmap.i)
+    ; 13 New_instr_*: reset instr_head_rows
+    ; 11 instr_append_row: fix typo! Z vs NZ
+
+; ------ For v0f -------
+; Apr 
+    ;  1 Fix $ at end of source (save_pc)
+; Mar             
+    ; 31 New_instr_chp_down_vib: setup params in instr header.
+    ; 29  ; add Setup_row_r7
+          ; Same pool for tables and instr
+          ; instr_idx: Contain full header
+          ; replace song_select_new_instr by
+              ; New_instr_ayane  
+          ; add New_instr_chp_down_vib  !!WIP!!
+          ; remove register_table, _new_table etc... :
+              ; - was storing tables raw in bank for persistance
+              ; - now we store them only once with linked rows
+          ; row_set_instr: poke id instr (instead of id*2),
+                           ; as instr_idx is now an &200 table.
+    ; 25 vac: add phrase_get_duration
+    ; 24 vab: Re-enable create_arpeggio_0xy and co (for st128)
+            ; phrase_select_new_row: pass duration
+            ; add row_add_duration
+    ; 14 vaa: Follow new instr encoding: only one table (cf instr.o)
+                 ; - Discard instr_set_table_com_ and co 
+                 ; - Introduce instr_append_rows
+    ; 11 vz: Expose Get_phrase (for track.Set_phrase_as_t)
+; Feb
+    ; 25 vy: No more va_jp_set_phrase etc: directly use fx_set_phrase
+                ; -> to next chunk when needed
+                ; -> and to first chunk for automatic loop
+           ; s/clip/phrase (harmonize, phrase is more telling)
+              ; That was a mistake doing it!
+                  ; - neither urgent nor important 
+                  ; - urgl oups, what if other clip types?
+           ; Use new_heap_chunk for table. See rationale in ayane_init
+    ; 21 vx: Use local chunk and memcpc
+
+; //// 2023 /////////////////
+; Nov
+    ; 28 vw: remove spurious end
+; May                   
+    ;  9 vv: song_select_new_phrase: add header info:
+           ; Type, idx, name (null for now), color (idx+1 for now) 
+        ; Duration of 'row' in phrase: use byte instead of word.
+             ; -> Natural for event 'agenda' table
+             ; More optimised (time and space)
+             ; For long duration, needs 24 bits anyway.
+        ; Use new_chunk from chunk.o (consolidation)
+        ; Cleanup chunk_to_idx (not needed, or should be in chunk.o)
+        ; use "memcpc.o"
+        ; Fix: bk_base must be reconnected after append_raw_in_chunk
+             ; (wasn't detected because before: new_chunk was
+               ;in c7. Now they are in c4 since reuse
+               ;orgams's "source chunk", which is another issue 
+               ;altogether but actually nice to reveal such bugs).
+        ; Introduce SKIP_RESERVED
+        ; Switch back to just 1 byte for duration
+
+type_phrase = 1
+
+; Apr
+    ; 13 vu: Reprise!!!!! Mem version.
+
+; //// 2021 /////////////////
+
+; Jan 01 vt: Limit @ e500
+           ; Add /fx_append_byte/fx_append_word/fx_append_table/ 
+           ; Refonte gestion instr: /irow_set_type_vol/
+
+; //// 2020 /////////////////
+
+    ; 16 vs: Export/Import.
+           ; Expose register_table.
+; Dec 14 vr: Reprise /register_table/ + refactor /st_make_table/ & co.
+; Oct  5 vq: WIP register_table. Doesn't assemble
+           ; . Shift table type enum. See /type_table_byte/
+           ;    + Introduce empty type
+           ;    . More sensical (1 for byte, 2 for word).
+           ; . Change table header to: type, size in bytes, loop len.
+           ;    + Allow more generic handling
+
+; Sep 27 vp: Add/expose routines for salo
+           ; . chunk_to_idx
+           ; + get_instr#   TODO: must reconnect bank? 
+
+    ; 17 vo: Fix st_make_table (Wasn't covered by test: SP mismatch
+           ; led to early exit). 
+           ; Do not use EXX anymore.
+    ; 13 vn: Export/Import.
+     ; 9 vm: st_make_table/st_make_table_word: 
+             ; Store a persistent version. Needed for... persistence!
+               ; Also ease save (no need to recover loop and length).
+               ; Future-proof (table meta data will also be in bank).
+           ; Move @ d800 (demands new ply, plybc expected chunks at
+                         ;certain places).
+
+     ; 8 vl: st_make_table/st_make_table_word: copy out of bank,
+             ; to facilitate incoming persistent storage.
+             ; That removes dependency to st_bk.
+     ; 7 vj: chunk_to_idx: now returns idx in 16 bit (HL)
+       ; vi: Smarter 'new chunk' management.
+              ; - Detect max chunks
+              ; - Distinguish /chunks_in_base_bk/ and /chunks_per_bk/ 
+           ;  !! copy-pasted  from chunkt.o
+       ; vh: Introduce /append_in_chunk/
+           ; NRT: remove calls to /connect_chunk_from_index/
+       ; vg: Import /st_make_table/ & /st_make_table_word/ (from plybb)
+       ; vf: Introduce /insert_in_chunk/ 
+
+       ; ve: phrases_idx: store directly id.
+           ; new_chunk: Now returns chunk id:
+                      ;    - harmonization with orgams.
+                      ;    - future proof.
+    ;  4 vd: Interface change!
+             ; Old: song_get_phrase_idx -> return chunk idx
+             ; New: song_get_phrase_id  -> return chunk id
+           ; phrases_idx table: make room for 16 bits chunk_id.
+; May  1 vc: new_table: change interface (fix /test_compile/)
+; Apr 23 vb: Put table id at beginning of table. See /new_table/
+             ; -> Ease save.
+
+; Jan 14 va: Leave room (word) for duration
+
+
+; -----------------------------------------------
+chunk_offset = &40      ;MSB in bank
+
+
+; \/\/ 2018 \/\/\/\/\/\/\/\/\/\
+
+        ; comp_instr: fix idx*2 -> idx (already fine)
+; v8 10/7 New order for data: instr (must fit &100), table, phrase, map
+
+;    22/3 Compile: Store proper phrase idx (buffer offset)
+;    21/3 Compile: Save A when flushing!          
+        ; Burn @db00
+        ; Don't burn nrts in ROM
+; v7  8/2 Compile: fix when fx in another bank
+
+        ; !! Interface change: sign expanded instead of size !!
+        ;      --> impact instr_get_table_com
+        ; Fix: return NC if invalid phrase or row 
+        ; Better naming: song_select_row -> phrase_select_row
+; v6  3/2 Compile: still WIP, nrt ok but fail if fx in another bank
+
+   ; 24/1 !!! BREAKING change: encode instr idx instead of addr
+             ; cf plyaf for rational.
+; v5 23/1 export/import
+
+; !!!! 05/01/2018 !!!! Interface change for fx_ (signature param)
+              ; ---> Impact skip_one_fx
+              ; ---> Impact instr_get_table_com
+; v4 30/12 WIP.  Compile: table+ins copy, with corrections
+
+; v3 17/12       Base bk passed at init,
+                 ;  so no inconsistency possible with PLY.O
+; v2 16/12/2017  Expose ayane_init, _prelude
+
+bk_nrt = &C7            ; !! must match bk_ayane
+bk_compile = &C4
+
+; We don't discriminate tables: arpegio, volume, ...
+type_table_empty = 0
+type_table_byte = 1
+type_table_word = 2
+
+table_header_size = 3   ; type, size in bytes, loop len
+
+;==============================================
+      MACRO INIT_LENGTH
+      IF todo
+; rename s/lenght/duration (or better term)
+      END
+      IF pos_flags - 1
+ !! a revoir
+      END
+          ld (hl),a:inc l
+      ENDM
+
+      MACRO SKIP_LENGTH
+          pos_flags ** inc l
+      ENDM
+
+      MACRO SKIP_LENGTH_DE
+          pos_flags ** inc e
+      ENDM
+
+      MACRO CP_COPY_LENGTH
+          pos_flags ** call cp_copy
+      ENDM
+
+      MACRO SKIP_RESERVED
+          reserved_byte ** inc l
+      ENDM
+
+;==============================================
+fatal = &BE00           ; TODO: replace by warning mecanism.
+memory_full = fatal
+mess  = &BE00
+unexpected = &BE00
+to_be_implemented
+          call &BE00
+;implement/handle me
+          ret
+
+  ; =====================================
+  ; ------ song interface ---------------
+  ; =====================================
+
+  ; all register expect A preserved
+
+Init_chung
+; in:  N/A     
+          call Init_chunk_module
+          call connect_bk_base
+          ld hl,zero_chung
+          ld de,zero_chung+1
+          ld bc,zero_chung_-1
+          ld (hl),0
+          ldir
+
+;enchaine
+song_reset_chung
+;---------------
+; Part of song handled here (instr, arp, ...)
+          call connect_bk_base
+
+          ld hl,def:ld de,var:ld bc,def_size:ldir ; non-zero vars
+          ex de,hl
+          ld b,zero_size:xor a:call fillb
+
+; instr_head_type = 0 marks absence of instr
+; Needed to be able to pick non-contiguous instruments.
+          ld hl,instr_idx
+          ld de,instr_idx+1
+          ld bc,instr_head_size*&0100 - 1
+          ld (hl),0
+          ldir
+
+      IF todo
+;TODO: free stored_table_start before hand
+; !!!    memory leak
+      END
+; Note: can't reuse new_chunk_ext, as it put a sentinel with current
+      ; track for auto-loop.
+  ;- No current_track at this point! (would trigger all kind of asserts)
+  ;- Wouldn't make sense for table anyway.
+          call New_heap_chunk
+          ret nc
+          call connect_bk_base
+          ld (stored_table_start),hl
+          ld (stored_table_back),hl ; for l = bk
+          ret           ; Carry
+
+fill      ld (hl),a:inc l:jr nz,fill
+          ret
+fillb     ld (hl),a:inc hl:djnz fillb
+          ret
+
+
+
+Song_select_instr
+;----------------
+; In: A: inst number (from 1. 0 reserved)
+; Out: A unchanged
+     ; NZ if instr exist
+     ; Instr selected (even in non existent)
+
+          call _prelude
+          or a:call z,mess
+          ld (va_current_instr),a
+          call get_instr_pnt
+          ld c,a
+          ld a,(hl):or a ; Instr type <> 0 
+          ld a,c
+          jp _postlude
+
+
+New_instr_ayane
+          ld a,instr_default AND &FF
+;enchaine
+_select_new_instr
+; create new empty instr, and select it.
+; In:  A = type 
+; Out: Carry if ok, instr selected
+     ; NC otherwise (memory full)
+          call _prelude
+          push af
+          ld hl,va_instrs#
+          inc (hl)
+          ld a,(hl)     ; Start by 1: 0 is reserved
+          ld (va_current_instr),a
+          call get_instr_pnt
+          pop af
+          instr_head_type ** inc hl
+          ld (hl),a
+          instr_head_rows - instr_head_type ** inc hl
+          ld (hl),0:inc hl
+          ld (hl),0
+_postlude
+          scf
+_postlude_fail
+          pop hl
+_postlude_
+          pop ix:pop de:pop bc
+          ret
+
+New_instr_chp_down_vib
+;---------------------
+; Create ad-hoc instr reproducing chipnsfx intsrument with
+    ; - Volume going down
+    ; - No noise
+    ; - Vibrato
+; In  b = initial volume (8 bits)
+   ;  c = step volume to be substracted (8 bits) 
+          ld a,instr_chip_down_vib AND &FF
+          call _select_new_instr
+          call get_instr_pnt
+          instr_head_ext ** inc hl
+          ld (hl),c:inc hl
+          ld (hl),b
+          ret
+
+New_instr_chp_down_arp_noise
+;---------------------------
+; Create ad-hoc instr reproducing chipnsfx intsrument with
+    ; - Volume going down
+    ; - Constant noise (can be off = 0)
+    ; - Arpegio
+; In  b = initial volume (8 bits)
+   ;  c = step volume to be substracted (8 bits) 
+   ;  d = noise (set first)
+          ld a,instr_chip_down_arp_noise AND &FF
+          call _select_new_instr
+          call get_instr_pnt
+          instr_head_ext ** inc hl
+          ld (hl),d:inc hl
+          ld (hl),c:inc hl
+          ld (hl),b
+          ret
+
+instr_ayane_append_rows
+;----------------------
+; Ayanes version: full row
+          ld a,instr_row_size_max
+          jr instr_append_rows
+
+instr_chip_append_rows_byte
+;--------------------------
+; chip version: 1 byte per row (e.g. arpegio)
+          ld a,1
+          jr instr_append_rows
+
+instr_chip_append_rows_word
+;--------------------------
+; chip version: 1 word per row (e.g. vibrato)
+          ld a,2
+;enchaine
+instr_append_rows
+;----------------
+; Set all rows in bulk (typically when importing from other tracker)
+; In: hl: table with A-sized rows 
+    ;  a: row size
+    ;  b: nb rows
+          call _prelude
+.rowlp
+          call instr_append_row
+          djnz .rowlp
+          jp _postlude
+
+instr_set_loop
+;-------------
+; Set loop link
+; In: B: dest row
+          call instr_goto_row
+;Must point to existing row
+          ld e,(hl):inc hl
+          ld d,(hl)
+          ld a,e:or d:call z,mess
+          call instr_goto_last_row
+          ld (hl),e:inc hl
+          set 7,d       ; marker loop 
+          ld (hl),d
+          ret
+
+instr_get_loop
+;-------------
+; Get at which row the instr loops
+; (for ui, salo, compile)
+; IN:  Instrument selected
+;OUT:  b: dest row
+    ;  HL, DE preserved
+
+          push de:push hl
+          call instr_goto_last_row
+          ld e,(hl):inc hl
+          ld d,(hl)
+          res 7,d       ; de = loop pnt
+
+          call get_instr_pnt
+          instr_head_rows ** inc hl
+          ld b,0
+.lp
+          call ld_hl_link
+; For now all instruments are setup with a loop
+          call z,mess
+          or a:sbc hl,de:add hl,de
+          jr z,.loop_met
+          inc b
+          jr .lp
+.loop_met
+          pop hl:pop de
+          ret
+
+ld_hl_link
+; Read link and check it is in bank (if not null)
+; IN:  Instrument selecet
+    ;  HL points on link field
+; Out: HL = (HL)
+     ; Z iff de = 0
+     ; A trashed
+          push de
+          call ld_de_link
+          ex de,hl
+          pop de
+          ret
+
+ld_de_link
+; Read link and check it is in bank (if not null)
+; IN:  HL points on link field
+; Out: DE = (HL)
+     ; Z iff de = 0
+     ; HL preserved
+     ; A trashed
+          ld e,(hl):inc hl
+          ld d,(hl):dec hl
+          res 7,d       ; remove loop flag
+          ld a,d:or e
+      IF dev_checks
+          ret z
+          ld a,d:cp &40:call c,mess
+          cp &7F:call nc,mess ; also set NZ 
+      END
+          ret
+
+instr_append_row
+;---------------
+; In: hl: row 
+    ;  a= row size (without link)
+; Out: hl: past row source (hl += a)
+    ; de trashed
+    ; a, bc preversed          
+          or a:call z,unexpected
+          push af:push bc
+          call allocate_new_row
+          push de
+row_link = 2
+          row_link ** inc de
+          ld c,a
+          ld b,0
+          ldir
+          pop de
+          push hl
+          call instr_goto_last_row
+      IF dev_checks
+;link can be in row itself or instr header
+          ld a,h
+          cp tables/&0100:call c,fail
+          cp instr_idx_/&0100:call nc,fail
+      END
+          ld (hl),e:inc hl
+          ld (hl),d
+          pop hl
+          pop bc:pop af
+          ret
+
+instr_goto_last_row
+;------------------
+          ld b,255
+instr_goto_row
+;------------- 
+; Goto to link to desired row (stops at loop or null link)
+; In: instr selected
+    ; b = row#
+;Out: hl= points either: 
+            ; to link to next row  
+            ; to null link         
+    ; AF trashed
+; E.g., for b=0  hl=  instr_head_rows  (e.g link field of header)
+          ; b=1  hl= (instr_head_rows) (e.g link field of row 0)
+
+          call get_instr_pnt
+          instr_head_rows ** inc hl
+          push de
+          inc b
+          call .entry
+          pop de
+          ret
+
+.lp
+          ld e,(hl):inc hl
+          ld d,(hl):dec hl
+; If link=0, stay here.
+          ld a,e:or d:ret z
+; Don't follow loop. Loop means we are at last row anyway.
+          bit 7,d:ret nz
+      IF dev_checks
+          ld a,d
+          cp tables/&0100:call c,mess
+          cp tables_/&0100:call nc,mess
+      END
+          ex de,hl
+.entry
+          djnz .lp
+          ret
+
+get_instr_pnt
+; A preserved
+          ld hl,(va_current_instr) ; for l
+      IF instr_head_size-8
+ !! review this
+      END
+      IF instr_idx AND &07FF
+ !! review this
+      END
+          ld h,instr_idx / &0800
+          3 ** add hl,hl
+          ret
+
+      IF 0
+song_clone_instr
+;--------------
+;in: A source instr
+;out: A new instr
+
+;TODO: what if error ?                 
+          push hl:push de:push bc
+          call Song_select_instr
+          ld hl,(va_instr_pnt)
+          push hl
+          call song_select_new_instr
+          pop hl
+          ld de,(va_instr_pnt)
+          ld c,(hl):sl1 c:call z,&BE00
+          ld b,0
+          ldir
+
+ ; !! use bk connected by previous routines
+          ld a,(va_current_instr)
+          pop bc:pop de:pop hl
+          ret
+
+
+instr_get_table_com
+;------------------
+; in: bc= wanted fx
+;out: hl= associated table
+
+          ld hl,(va_instr_pnt)
+          ld a,l:or h:call z,err_no_instr
+          ld a,(hl)     ;nb word
+          inc hl
+      IF dev_checks
+          or a:call z,&BE00
+      END
+
+          ld ixl,a
+igtc_lp
+          call instr_get_fx_and_signi
+; searched fx?
+          ex de,hl:or a:sbc hl,bc:ex de,hl
+          scf
+          jr z,igtc_ok
+
+igtc_skip
+;00: no more param
+;01: unused
+;10: word
+;11: table
+          or a:jr z,igtc_skip_
+          2 ** inc hl
+          2 ** srl a
+          dec ixl
+      IF dev_checks
+          call z,&BE00  ; sign must be consistent with nb words
+      END
+          jr igtc_skip
+
+igtc_skip_
+          dec ixl       ; word associated to adr
+
+          jr nz,igtc_lp
+
+          xor a         ; for NC
+          ld l,a:ld h,a
+
+igtc_ok
+          call c,get_param
+          pop bc        ;discard push hl
+          jp _postlude_
+
+
+param_offset = 5
+  ; Pos of fx signature (for digging, cf instr_get_table_com)
+  ;   (skip jp init_fx and signature)
+
+instr_get_fx_and_signi
+          ld e,(hl):inc hl
+          ld d,(hl):inc hl
+          push de
+          ld a,e:sub param_offset:ld e,a
+          ld a,(de)
+          pop de
+          ret
+
+instr_get_signi
+; out: adr *non consumed*
+          push de
+          ld e,(hl):inc hl
+          ld d,(hl):dec hl
+          ld a,e:sub param_offset:ld e,a
+          ld a,(de)
+          pop de
+          ret
+
+      END
+
+get_fx_sign
+; here we already point to fx_init
+; out: hl+=2 (addr fx consumed)
+
+          push de
+          ld e,(hl):inc hl
+          ld d,(hl):inc hl
+          dec e
+
+      IF dev_checks
+;Player (and then fxs) out of bank.
+          ld a,d:cp &40:call nc,mess
+      END
+          ld a,(de)
+          pop de
+          ret
+
+get_param
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          ret
+
+allocate_new_row
+;...............
+; In:  A = size to reserve (without link)
+;Out: DE = pointer
+    ; Other registers preserved
+          push af
+          row_link ** inc a
+          call allocate
+;reset link
+          xor a
+          ld (de),a:inc de
+          ld (de),a:dec de
+          pop af
+          ret
+
+allocate
+;.......
+; For now, append only without mecanism to free memory        
+; In:  A = size to reserve (without link)
+;Out: DE = pointer
+    ; A, HL preserved
+          or a:call z,unexpected
+          push hl
+          ld de,(va_free_pnt)
+          ld l,a:ld h,0:add hl,de
+          push bc
+          ld bc,tables_
+          or a:sbc hl,bc:add hl,bc:call nc,memory_full
+          pop bc
+          ld (va_free_pnt),hl
+          pop hl
+          ret
+
+Setup_row_r7
+;-----------
+; Adhoc routine: setup r7 according to noise value in raw table
+; In: hl: table of rows (contiguous)
+    ;  b: nb rows
+          ld de,instr_flags
+          add hl,de
+          ex de,hl
+          ld hl,instr_noise-instr_flags
+          add hl,de
+          ld ixl,b
+          ld bc,instr_row_size_max
+.lp
+          ld a,(hl):or a
+          ld a,&38      ; just channel open
+          jr z,.oknoise
+          xor a         ; everything open
+.oknoise
+          ld (de),a
+          add hl,bc:ex de,hl
+          add hl,bc:ex de,hl
+          dec ixl
+          jr nz,.lp
+          ret
+
+set_new_arpg
+;........... 
+;in: BC= table arpg in ram. (might be 0 --why???)
+          call _prelude ; connection to bank not needed
+          ld hl,va_arpgs#
+          ld a,(hl)
+          add a
+          call c,memory_full
+          inc (hl)
+          ld l,a
+          ld h,arpg_idx/&0100
+          ld (hl),c:inc l
+          ld (hl),b
+          jp _postlude
+
+
+get_arpg_from_index
+;..................
+;In: C=arpg idx
+   ; base bk connected
+          sla c:call c,err_invalid_arpg
+          ld l,c
+          ld h,arpg_idx/&0100
+          ld c,(hl):inc l
+          ld b,(hl)
+          ret
+
+      IF st
+; TODO: reactivate for st128
+create_arpeggio_0xy
+;-------------------
+;in: A= valeurs arpege 0 X Y   ;TODO: C instead?
+;out: A= index table arpegio 
+
+          call _prelude
+
+          ld hl,buf_tmp
+          push hl
+          ld (hl),type_table_byte:inc l
+          ld (hl),3:inc l
+          ld (hl),3:inc l
+          ld (hl),0:inc l
+          ld b,a:and &0F
+          ld c,a:xor b
+          4 ** rrca
+          ld (hl),a:inc l
+          ld (hl),c
+
+          pop hl
+          call register_table
+          call set_new_arpg ; TODO:what if mem full ?
+
+          call check_bk_base
+          ld a,(va_arpgs#) ; current arpg+1
+          dec a
+          jp _postlude
+
+_new_table
+; - Store passed array in bank.
+
+;  in: HL: Data to copy.  (including header)
+     ;  C: Length to copy (including header)
+     ; Base bk connected
+; out: Table added in stored_table_idx
+     ; HL: Post data (HL+C)
+     ;  A: Idx table
+
+; Not meant to be used externally.
+; Use register_table & higher level routines (st_make_table_byte...)
+     ;     call _prelude
+     ;     push af
+
+;-- Store in bank 
+          push ix
+          push hl
+          push bc
+          call check_bk_base
+          ld de,(stored_table_back)
+          ld b,e
+          ld ix,new_chunk_ext
+          call append_raw_in_chunk:call nc,memory_full
+          call connect_bk_base
+          ld (stored_table_back),hl
+;-- Update index
+          ld hl,va_table#
+          ld a,(hl):inc (hl)
+          call _get_stored_idx
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+          ld (hl),b
+          pop bc
+          pop hl
+          ld b,0:add hl,bc
+          pop ix
+          ret
+
+
+_linked_copy_byte
+; In: HL: source
+    ; DE: dest
+    ;  B: size
+          push hl
+          push bc
+scp_lp
+          ld a,e:inc a
+          ld (de),a:inc e ;link
+          ld a,(hl):inc hl
+          ld (de),a:inc e ;value        
+          djnz scp_lp
+
+          pop bc
+          pop hl
+          ret
+
+_linked_copy_word
+          push bc:push hl
+stcp2_lp
+          ld a,e:inc a:ld (de),a:inc e ;link
+          ld a,(hl):inc hl:ld (de),a:inc e ; LSB value        
+          ld a,(hl):inc hl:ld (de),a:inc e ; MSB value        
+          djnz stcp2_lp
+
+          pop hl:pop bc
+          ret
+      END
+
+new_chunk_ext
+;------------
+; Like new_phrase_chunk, but no phrase header needed or desirable:
+; it wouldn't make sense, as it is just an extension of the phrase.
+; Also: Out:  A= chunk start (needed by insert_in_chunk)
+
+      IF dev_checks
+; Assume bk phrase already connected
+          call get_bk_connected
+          cp BK_PHRASE:call nz,mess
+      END
+
+          call New_chunk
+          ret nc
+          call _install_ext
+          ld a,chunk_start ; in const.i (shared with ply)
+          ret
+
+_install_ext
+      IF makeroom
+; Can be factorized by
+; 1/ encoding size with chunk_def itself
+; 2/ just passing LSB of chunk_def
+      END
+          push hl
+          push de
+          push bc
+          ld a,l        ; bk for loop
+          ld d,h
+          ld hl,chunk_def
+          ld bc,chunk_def_
+;enchaine
+_install_com
+;header
+          ld e,chead_last
+          ldir
+          ex de,hl
+; We put link to start of chunk
+; It will be copy if phrase takes more chunks,
+; making looping easier
+; NOTE1: lsb already set
+; NOTE2: overwritten when linking to new chunk 
+       ; (insert_new_chunk_from_id)
+      IF phrases_across_banks
+ !!! review that. Use word for id, fx_set_phrase would have to force
+   ; L = phrase_start
+      END
+          ld (hl),h
+      IF todo
+; Why?
+      END
+          ld a,l:inc a
+          pop bc
+          pop de
+          pop hl
+          scf
+          ret
+
+
+err_invalid_arpg
+      BRK
+assert_fail
+      BRK
+err_invalid_ins
+      BRK
+err_no_instr
+      BRK
+
+
+_prelude
+; save registers and sp (for 'exception mechanisme)
+; then connect work bank
+; More space-efficient, we don't need to be fast
+
+          push de:push ix:push hl
+          ld hl,6:add hl,sp
+          push af
+          ld a,&C3:ld (jp_ret),a ; done each time, nevermind
+          ld a,(hl):ld (jp_ret+1),a:ld (hl),c:inc hl
+          ld a,(hl):ld (jp_ret+2),a:ld (hl),b:inc hl
+          ld (va_savesp),hl
+          pop af
+          pop hl
+          push hl
+          call connect_bk_base
+          jp jp_ret
+
+;-------------------------------------------
+      IF st
+st_make_table
+; in: hl =source     (must be connected)
+    ; a  =longueur
+    ; b  =repeat pos (and flag unused here)
+    ; c  =repeat length
+; out: bc=address table in ram (to be plugged with fx)
+     ; hl=source+longueur (post table)
+     ; de trashed
+
+          ld e,c
+          ld d,type_table_byte
+          jr _st_table_com
+
+
+st_make_table_word      ;copy/paste word 16 bits value
+;-----------------
+; in: hl =source
+    ; a  =longueur  (en mots !)
+    ; b  =repeat pos
+    ; c  =repeat length
+; out: bc=new table start
+     ; hl=source+longueur  
+
+;convert ticks -> bytes
+          add a
+          sla b
+          ld e,c
+          sla e
+          ld d,type_table_word
+;enchaine
+_st_table_com
+; Here a=length in bytes  
+     ; b=start loop in bytes
+     ; e=loop len in bytes
+     ; d=type    
+          or a:call z,unexpected
+          bit 7,b:call nz,unexpected ;TODO: handle flag
+
+;Create header, and copy data + loop
+;TODO: Optimize if loop reaches end
+
+          push hl
+          ld hl,buf_tmp
+          ld (hl),d:inc l
+          add e:call c,unexpected ; length + loop > 256
+          ld (hl),a:inc l ; size with loop due to hack
+          sub e         ; size to copy (no loop)
+          ld (hl),c:inc l
+          ld c,e
+          ex de,hl
+          pop hl
+          push bc
+          ld c,a:ld b,0
+          ldir
+          pop bc
+          push hl       ; post table for caller
+
+          inc c:dec c:jr z,_st_noloop
+          ld l,b        ; start loop 
+          table_header_size ** inc l ; in buffer
+          ld h,d
+          ld b,0
+          ldir
+_st_noloop
+          ld hl,buf_tmp
+          call register_table
+          pop hl
+          ret
+
+register_table_from_bank
+; Like register table, when source is from bank
+          ld a,h:cp buf_tmp/&0100:call nz,unexpected ; sanity check
+          call _table_full_len
+          ld de,buf_tmp
+          push de
+          ldir
+          ex (sp),hl
+          call register_table
+          pop hl
+          ret
+
+register_table
+; - Store table in bank
+; - Create ram version
+; in:  hl = table header !! OUT OF BANK !!
+; out: hl = post table
+;    ; bc = address table in ram (to be plugged with fx)
+     ; a, de trashed
+
+          or a:call z,to_be_implemented ; Don't support empty table yet.
+!!! review this
+          call connect_bk_base ; why not _prelude?
+          call _table_full_len
+          call _new_table
+          push hl
+      BRK
+
+_table_full_len
+; In:  hl=table header
+; out: bc=len
+     ; a trashed
+          inc hl:ld a,(hl):dec hl
+          add table_header_size:call c,unexpected
+          ld c,a:ld b,0
+          ret
+      END
+
+;-------------------------------------------
+get_instrs#
+          call check_bk_base
+          ld a,(va_instrs#)
+          ret
+
+chunk
+; NB: insertion itself rewritten with this behavior:
+    ; when no room, put tail in *new* chunk (doesn't try to merge)
+    ; when no room even for bytes to insert,
+    ;  put them in this same new chunk.  
+    ; ??TODO: factorize?
+
+; !! Customized for phrases (cf end tag EOP)
+
+chunk_def
+;--------
+;Standard chunk without phrase header.
+;Used for tables? and phrases continuation (hence tag_end, which will
+;be overwritten for tables)
+      BYTE chunk_def_+3 ;+2: next field. +2-1: word for phrase_end
+      BYTE 0            ;checksum (unused now)
+      BYTE 0            ; row# (mimic line# in orgams's chunk)
+      IF $ - chunk_def + 2 - chunk_start ;2: next field
+  !! inconsistency. check const.i
+      END
+; ROW sentinel: makes sense for phrases cont, not table
+; duration 0 = tag eof of phrase
+      IF todo
+ ; check with ply.empty_phrase which also use 0
+      END
+      BYTE 0
+      BYTE mask_fx0
+      BYTE fx_set_phrase AND &FF
+chunk_def_ = $ - chunk_def
+
+
+; ----------------------------
+vars
+; Private vars alongside code
+
+va_savesp WORD 
+
+jp_ret    3 ** BYTE 
+
+va_current_instr BYTE 
+
+dbg1  WORD 
+dbg2  WORD 
+
+; ----------------------------       
+; Vars in bank
+      IF todo
+; Move that out of bank:
+   ; - easier access
+   ; - free room for chunks
+   ; - uniformity
+; !!! Note applicable for persistent variables.
+      END
+
+save_pc = $
+
+def
+; Doesn't use org va,$$
+; otherwise orgams set high $ = 7cxx, which is inconvenient
+      BYTE "Aya!",0     ; sign: For sanity checks (unused for now)
+      WORD tables       ; va_free_nt: pnt in free zone
+def_size = $-def
+
+      ORG va_chung
+var
+sign  SKIP 5
+va_free_pnt WORD 
+
+      IF $-var - def_size
+ !! inconsistency
+      END
+
+zero_start              ; Not loaded, must follow def (see check below)
+      IF zero_start - [var+def_size]
+ !! must be contiguous to simplify init code
+      END
+va_instrs# BYTE 
+va_arpgs# BYTE 
+va_table# BYTE 
+
+zero_size = $-zero_start
+
+; ---- Must be zeroed at ayane init, but not song reset ----
+
+zero_chung
+stored_table_start WORD  ; chunk id. Needed for free (unused now)
+zero_chung_ = $-zero_chung
+
+; ----
+stored_table_back WORD  ; ID of last chunk for append_raw_in_chunk
+
+
+      ORG buf_chung
+
+arpg_idx SKIP &0100     ; &80 words: &100.
+buf_tmp SKIP &0100      ; Out of bank exchange buffer
+
+      SKIP buf_chung_ - $ ; poor's man limit (defined in memmap.i)
+
+      ORG save_pc       ; for host
+; Align, for more stable addresses
+; -> ease debugging
+; -> less re-assembling when we change just one module
+      SKIP -$ AND &FF
+
+

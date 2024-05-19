@@ -1,0 +1,96 @@
+; Config for player
+
+; 0: Stand-alone 
+; 1: In-tool player
+ayane = 1
+
+; Hard coded dest compile  
+;Buffer first, so we can better concatenate code+data
+compiled_instr_buf = &4000
+compiled_stack = &4100
+compiled_player = &4200 ; instr.o (size:&8c) + ply.o
+compiled_periods = &4500
+compiled_psg_regs = &4500 ; share zone
+compiled_data = &4600   ; tracklist, instr, phrase, tracks
+compiled_instr = compiled_data
+
+      IF ayane
+; Special fx (interleave player with routine in IY)
+sfx   = 0
+
+; How many simultaneous fx are handled
+nb_fx = 1               ; warning: 0 won't work for chung
+
+
+; Can change "master" volume (by track basic)
+use_track_volume = 0
+; Can change volume in phrase
+use_phrase_volume = 0
+
+use_transpose = 1
+
+; Hum. to be reviewed (fx.o)
+use_fx_noise = 0
+use_instr_noise = 1
+
+use_flag_channel = 1    ; 0 if channels always open
+
+use_phrase_pitch = 0    ; chipnsfx: no effect
+
+; Periods on 14 or 13 bits instead of 12?
+increased_precision = 0 ; init (gen periods), instr.o
+
+use_instr_flag = 1      ; Flag not need when always instr in row
+use_note_flag = 1       ; Flag not need when always note in row
+has_phrase_loop = 1     ; 0: no loop, phrase changed on time 
+
+is_instr_indexed = 1
+
+use_event_type = 1
+
+use_hard_env = 1
+
+hack_minimala = 0
+
+      ELSE
+; Special fx (interleave player with routine in IY)
+sfx   = 0
+
+; How many simultaneous fx are handled
+nb_fx = 0               ; warning: 0 won't work for chung
+
+; Can change "master" volume (by track basic)
+use_track_volume = 0
+; Can change volume in phrase
+use_phrase_volume = 0
+
+use_transpose = 1
+
+; Hum. to be reviewed (fx.o)
+use_fx_noise = 0
+use_instr_noise = 1
+use_noise = use_fx_noise OR use_instr_noise
+
+use_flag_channel = 0    ; 0 if channels always open
+
+use_phrase_pitch = 0    ; chipnsfx: no effect
+
+; Periods on 14 or 13 bits instead of 12?
+increased_precision = 0 ; init (gen periods), instr.o
+
+use_instr_flag = 0      ; Flag not need when always instr in row
+use_note_flag = 0       ; Flag not need when always note in row
+has_phrase_loop = 0     ; 0: no loop, phrase changed on time 
+
+is_instr_indexed = 0
+
+use_event_type = 0
+
+use_hard_env = 0
+
+hack_minimala = 1       ; adhoc optimisations
+      END
+
+use_volume = use_track_volume OR use_phrase_volume
+use_noise = use_fx_noise OR use_instr_noise
+use_flags = use_instr_flag OR use_note_flag OR has_phrase_loop

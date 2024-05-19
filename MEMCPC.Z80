@@ -1,0 +1,198 @@
+dev_checks = 1
+todo  = 1
+; << Memory bank handling for ayane >>
+; CPC specific PAGING (out &7fxx,&cX)
+
+; --- 2024 ------
+   ; Feb 21st. Make it ayane specific
+; --- 2023 ------
+   ; Dec 2nd. [ayane] Add /connect_c_c0/ (since IO happens in ... C0)
+   ; Jun 5th. [ayane] Use static AYANE_BK_BASE:
+                ; - Simpler code
+                ; - First step to get ride of vo_*bk variables
+                  ; and free 7cfx zone. 
+   ; May 9th. Extract from liszt VA
+
+      IMPORT "memmap.i"
+
+mess  = &BE00
+
+; Store currently connected bank 
+; (for interruptions or co-routine to be able to store/restore)
+bk_connected = &3C
+;3d reserved (MSB bk).  !!!! Not used for now.
+;3e 3f free
+
+;----------------------------
+; ---- Main work bank ------
+;----------------------------
+
+connect_bk_base
+;--------------
+          push af
+          call get_bk_base
+          call connect_a
+          pop af
+          ret
+
+      IF BK_TRACK - BK_BASE
+ !! review that
+      END
+connect_bk_track = connect_bk_base
+      IF BK_INSTR - BK_BASE
+ !! review that
+      END
+connect_bk_instr = connect_bk_base
+
+connect_bk_phrase
+;----------------
+          push bc
+          ld c,BK_PHRASE
+          call connect_c
+          pop bc
+          ret
+
+connect_bk_io
+;------------
+          push bc
+          ld c,BK_IO
+          call connect_c
+          pop bc
+          ret
+
+
+get_bk_base
+;----------
+;Ayane bk base is static for now (&c6)
+;And I is reserved for another purpose (tba)
+          ld a,BK_BASE
+          ret
+
+get_bk_connected
+;---------------
+          ld a,(bk_connected)
+          call check_bk_a
+          ret
+
+;-----------------------------------------
+; ----- Low-level page connections ------
+;-----------------------------------------
+
+connect_a
+          push bc:ld c,a:call connect_c:pop bc:ret
+connect_b
+          push bc:ld c,b:call connect_c:pop bc:ret
+connect_l
+          push bc:ld c,l:call connect_c:pop bc:ret
+connect_c
+          push bc
+      IF dev_checks
+          push af
+          ld a,c:call check_bk_a
+_connect_com
+          pop af
+      END
+          ld b,&7F
+          ld (bk_connected),bc
+          out (c),c
+          pop bc
+          ret
+
+      IF dev_checks
+connect_c_c0
+;Like connect C, but also allows bank C0 (not only 
+          push bc
+          push af
+          ld a,c:cp &C0:call nz,check_bk_a
+          jr _connect_com
+      END
+
+
+;----------------------------------------
+; ---- Checks related to CPC Paging ----
+;----------------------------------------
+
+      IF dev_checks
+check_b_bank
+          push af
+          ld a,b:call check_bk_a
+          pop af
+          ret
+
+check_bk_a
+          push af
+          cp &C0:jr z,.ok
+; Must be in bank < &c7  (well actually < &cf for chunk.nrt)
+          and &F4
+          cp &C4:call nz,mess
+.ok
+          pop af
+          ret
+
+check_id0
+; Like check_id, but hl can be 0 as well.
+          push af
+          inc l:dec l:jr nz,_check_id
+; l=0, so h **must** be 0
+          ld a,h:or a:call nz,mess
+          pop af
+          ret
+
+check_id
+; All register preserved. Simply BRK if wrong iD
+          push af
+_check_id
+          ld a,l
+          call check_bk_a
+          pop af
+;enchaine
+check_hl_in_bank
+          push af
+          ld a,h:and &C0:cp &40:call nz,mess
+          pop af
+          ret
+
+      IF 0
+check_id0_cde_
+          push af
+          ld a,c:or a:jr nz,_check_id_cde_
+; if c=0, de must be 0
+          ld a,e:or d:call nz,mess
+          pop af
+          ret
+      END
+
+
+check_id_cde
+          push af
+_check_id_cde_
+          ld a,c:and &C4:cp &C4:call nz,mess
+          ld a,d:and &C0:cp &40:call nz,mess
+; cannot point on start of chunk ('last' field)
+          ld a,e:or a:call z,mess
+          pop af
+          ret
+
+check_id_bhl
+          push af
+          ld a,b:ld b,c:ld c,a:ex de,hl ; swap bhl <-> cde
+          call check_id_cde
+          ld a,b:ld b,c:ld c,a:ex de,hl
+          pop af
+          ret
+
+check_bk_base
+; check bk base is connect
+          push af:push bc
+          call get_bk_base
+          ld c,a
+          ld a,(bk_connected)
+          cp c
+          call nz,mess
+          pop bc:pop af
+          ret
+
+; In ayane, we try to leave as much as working variable as possible
+; outside of bank.
+; Anyway, base bk is static for ayane (C6), no need for variable.
+

@@ -1,0 +1,238 @@
+; --- Building blocks for GUI -----
+dev   = 1
+dev_checks = 1
+
+; \/\/\/ 2023  \/\/\/\/\/\ 
+  ; Apr         
+    ; 29 v1. Add signature /SIGN/ for call from track.o (AUM)
+    ; 16 v0. First draft.   
+
+screen = &C000
+r1    = 48
+crtc_r1 = r1
+r2    = 50
+r3    = &8D
+
+green = &E0
+red   = &1C
+blue  = &03
+grey  = &92
+
+mc_set_mode = &BD1C
+
+fail  = &BE00
+
+   ;      IMPORT "memmap.i" ; for rgb? No, keep rgb private here.
+      IMPORT ":lib/rgb256.o"
+
+;---------------------------
+      MACRO SANITIZE_OFFSET_HL
+          set 7,h
+          set 6,h
+      ENDM
+
+      MACRO SET_CRTC reg,val
+          ld bc,&BC00+reg:out (c),c
+          ld bc,&BD00+val:out (c),c
+      ENDM
+
+      MACRO SIGN in#,out#,flags
+;Signatures.
+;'flags' indicate which flags are returned by the routine.
+      BYTE in#,out#,flags
+      ENDM
+NO_FLAGS = 0
+
+;--------------------------- 
+init_widget
+;----------         
+; We init palette here, since we are making rgb table
+; So, let's switch the mode as well
+          xor a:call mc_set_mode
+; Also, since r1 is defined/used here, format screen here
+          SET_CRTC(1,r1)
+          SET_CRTC(2,r2)
+          SET_CRTC(3,r3)
+
+          ld hl,palette
+          xor a
+.palp     ld c,(hl):inc hl
+          ld b,c
+          push af
+          push hl
+          call &BC32
+          pop hl
+          pop af
+          inc a
+          cp 16
+          jr nz,.palp
+
+          ld de,rgb
+          jp make_grb_trames
+
+          SIGN(5,0,NO_FLAGS)
+draw_box
+;-------
+; Fill a box from top lft (included) to botright (not included)
+; In: HL point on structure like draw_horizontal_line, plus field:
+fbot  = 8
+
+; First copy, so we can mutate 'y = top'
+          ld de,struct_copy
+          push de
+          ld bc,fhorizontal_size
+          ldir
+          ld c,(hl)     ; LSB bottom. Don't care about MSB
+          pop ix
+          ld a,(struct_copy+fy)
+.lp
+; Here a=y, c=bottom
+          cp c
+          ret nc
+
+          push af
+          push bc
+          call draw_horizontal_line
+          pop bc
+          pop af
+          inc a
+          ld (struct_copy+fy),a
+          jr .lp
+
+          SIGN(4,0,NO_FLAGS)
+draw_horizontal_line
+;-------------------
+; Draw a colored line from lft (included) to right (not included)
+; In: IX point on structure:
+fcol  = 0               ; Col: word  (for alignement and future extension)
+flft  = 2               ; Lft: word  (pixels mode 0)
+fy    = 4               ; Y: Word (pixels from top) MSB not considered
+frgt  = 6               ; Rgt: word  (pixels mode 0)
+fhorizontal_size = 8
+
+          ld a,(ix+fcol)
+          bit 0,(ix+fy)
+          call get_pixel_color
+          ld (cur_pix),a
+          call get_offset
+;de = x = left
+          ld e,(ix+flft)
+          ld d,(ix+flft+1)
+          bit 0,e
+          jr z,.even
+; Right pix              
+          SANITIZE_OFFSET_HL()
+          ld a,(hl):and &AA:ld c,a
+          ld a,(cur_pix):and &55:or c
+          ld (hl),a:inc hl
+          inc de
+.even
+; Nb bytes = [rgt - x]/2
+          push hl
+          ld l,(ix+frgt)
+          ld h,(ix+frgt+1)
+          or a:sbc hl,de
+          ld c,l:ld b,h
+          pop hl
+          jr z,.done
+          jr c,.done    ; case rgt <= lft
+
+      IF dev_checks
+          ld a,b:cp 4:call nc,fail ; Max size would &300 pix in mode 2
+      END
+          srl b:rr c    ; /2 (pixels to bytes)
+          jr z,.done    ; one pix -> 0 bytes
+          ld a,(cur_pix)
+          ld (hl),a
+          dec c
+          jr z,.done
+          ld e,l:ld d,h
+          inc de
+      IF dev_checks
+; Check we stay on screen.
+          add hl,bc
+          call c,fail
+          sbc hl,bc     ; restore
+      END
+          ldir
+.done
+; Isolated right pix?
+          inc hl
+          bit 0,(ix+frgt)
+          ret z
+
+          SANITIZE_OFFSET_HL()
+          ld a,(hl):and &55:ld c,a
+          ld a,(cur_pix):and &AA:or c
+          ld (hl),a
+          ret
+
+get_offset
+;---------
+; In: IX point on structure draw_orizontal_line
+; Out: HL: screen + bc26(y) + x/2 
+fx    = 2
+          ld a,(ix+fy)
+          call y_to_offset
+          ld e,(ix+fx)
+          ld d,(ix+fx+1)
+          srl d:rr e
+          add hl,de
+      IF dev_checks
+          call c,fail
+      END
+          ret
+
+y_to_offset
+; IN: a = Y (0 = first line)
+; Todo: use table?
+      IF r1 - 48
+ !! must update !!
+      END
+; YYYY'Yyyy -> YY'YYY0'0000 + YYY'YY00'0000
+          ld l,a
+          ld h,0
+          2 ** add hl,hl
+          ld a,l:and &1C:ld b,a
+          xor l
+          ld l,a
+          ld e,l
+          ld d,h
+          add hl,hl
+          add hl,de
+          ld a,b:add a
+          add h
+          or screen/&0100
+          ld h,a
+          ret
+
+
+get_pixel_color
+; IN:  Z if even line
+    ; NZ if odd line
+    ; A = rbg color
+;Out: A = pixel trame for that line
+          ld c,a
+          ld b,rgb/&0100
+          jr z,$+3:inc b
+          ld a,(bc)
+          ret
+
+;---------------------------
+; Work variables -----------
+;---------------------------
+
+cur_pix BYTE 
+struct_copy SKIP fhorizontal_size
+
+;---------------------------
+; Private buffers ----------
+;---------------------------
+
+      SKIP -$ AND &FF
+
+rgb   SKIP &0200
+
+
+
+

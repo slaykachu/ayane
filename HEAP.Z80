@@ -1,0 +1,52 @@
+; Extracted from :lib/heap (orgams FF)
+
+; For non-phrase chunks 
+     ; -> those ones use current phrase for auto-loop sentinel
+     ; There is no current phrase at init time
+
+      IMPORT "chunk.o"
+
+; ========================================
+; Positions dans chunk header  
+; Note: defined in chunk.o
+   ; Don't redefined them here:
+      ; - risk of inconsistency
+      ; - would raise ambiguous label
+
+;chead_next = 0
+;chead_last = 2
+;chead_checksum = 3
+;chead_rows# = 4         ;0 if empty, -1 if unknown
+;chead_flags = 5
+;chunk_header_size = 5
+;chunk_start = chunk_header_size
+;      IF chunk_start - chunk_header_size
+;  !!! inconsistent. (chunk_start defined in chunk)
+;      END
+; ========================================
+
+
+; !!! append_raw_in_chunk in chung.o
+; !!! move it here? (factorize with lib/heap and chunk.o)
+
+New_heap_chunk
+; IN: Bank where we want heap chunk must be connected
+; OUT: HL: id of new chunk (connected)
+          call New_chunk
+          push hl
+          ld a,l        ; bk
+          ld l,chead_last
+          call init_heap_chunk
+          pop hl
+          ret
+
+init_heap_chunk
+; In:  AHL: chead_last field in connected chunk (connected)
+; OUT: AHL: start of this chunk (i.e L is adjusted to start)
+; Note: need to be seperate for append_raw_in_chunk etc
+          ld (hl),chunk_start-1:inc l ; empty (no sentinelle)
+          inc l         ; Checksum: N/A
+          ld (hl),0     ; row#. For chung.
+          ld l,chunk_start
+          ret
+

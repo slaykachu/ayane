@@ -1,0 +1,13 @@
+; Effects/Commands.
+
+; \/\ 2024 /\/\/\/\/\
+  ; Feb
+   ; ---- For ayane v0b ----
+    ; 25 v3: Complete Rewrite. See ply.o for rationale.
+
+fx_code
+
+fx_noFx
+          pop hl        ; skip param
+;todo: tm
+          ret

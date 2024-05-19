@@ -1,0 +1,478 @@
+; ------ Right now --------                  
+; phrase: check API shift_in_row (rotten comments?)
+; chung: allocate &4000-&41ff for index etc.
+; chung: put track_index at &4000. 
+; ply: amorce_song: verify track# < 32      
+
+
+; ------- Style guide / Nomenclatura -----------------
+
+; - Prefix indicate on which structure the routine is applied. Example
+          ; Phrase_select_new_row  -> add a row in current phrase
+          ; P
+; - Uppercase for public routines (called from other modules)
+    ; (TODO, not consitent now)
+
+; TODO: same prefix for "get, create if not exist" behaviors
+                      ; "maybe get" (carry if exist)
+; Also, discriminate routine that can fail from other?
+        ; (e.g. must we check carry ?)
+
+; ------- Todo ----------------------
+
+;Tracks themselve: in chunks or contiguous?
+  ; chunk advantage:
+        ; - easy insertion
+        ; - easy handling of multi-tracks
+  ; disadvantage:
+        ; - must handle 'next_chunk' (not so bad...)
+
+; new_phrase: without row, risk of infinite loop?
+
+; track: move vars in bank, and init them! (Reset_tracks)
+
+chunk
+remove org_insert_new_chunk if unused!
+
+ ; New_track: resolve "conflict"
+     ; - should be empty to easily append stuff   
+     ; - ply expect to have 1 set_phrase RDV at 0
+        ; (current phrase not init, so it would crash)
+   ; -> simply enough! Have 2 apis and or append empty_phrase
+                        ; when called by ui?  
+
+; Chung:     
+ ; - ensure instr after fx and before note, vol. why?
+ ; - new_chunk: 
+      ; must discriminate bank according to type (table vs phrase)
+
+; chung: change "stored_table_start"? only store at one place anyway!
+
+;Ply
+; - Setup stack with channel, delay etc.
+; - Review 
+; - Must ensure all fx share MSB
+
+;st128
+why ? va_instr_pnt WORD       ; Shared by chung and st128
+
+
+; Then: handle track with event (transpose: no phrase playing, no ins)
+      ; handle succession of events at same time stamps
+
+ ; phrase vs clip: choose one term once and for all
+     ; phase is more telling?
+
+; track: track_draw must handle multi-event.
+
+; ------ Log and notes (also see /changelog/) --------
+
+rumination bank. Where to put stuff so that:
+- everything fits
+- avoid shooting ourselves in the foot
+
+track.o: connect clip via AUM routines such as draw_track
+;--------- Tabs -----------------------------------
+
+ayane 2
+memmap.i 3
+track 4
+
+;--------- TODOs ------------------------------
+TODO NEXT:                
+; Find cahier ayane
+; Plug play in ayane
+; Add track (empty track shouldn't impact)
+; Transpose
+; Faster assembling
+; Analysis
+
+; ----- On hold / unnecessary -----
+
+   ; Orgams: more meaningful errors for "ambiguous label"
+           ; and/or new API for control-enter.
+      ; -> Not urgent 
+   ; Fix plynrt
+      ; -> On hold. Maybe the tests themselve are brittle.
+      ; Would require fast "find source" for debug. 
+
+   ; Decoupe track / trackui (so that st128 doesn't have to pull all)
+      ; !!!NO -> both uses AUM. Import not handy enough now
+
+   ; disp: specialise for ayane, so we can tweak API
+         ; (e.g. disp_locate_scr should take HL, not 
+         ; Trim (only copy needed routines)
+         ; More importantly? no double new-line when reaching end of 
+             ; line?  Workaround: 95 chars line long.
+
+TODO LaTER
+ ; Todo: used proper himem rather than hard-coded limit (A000)
+
+ ; Persistance!
+   ; All new variables should be in bank
+
+      IF need_room
+; remove crtc init from widget or whatever it is now
+; (doublon with bandaya: more code, and confusing)
+      END
+
+; Orgams: control-enter with imports
+
+
+TODO (long term)
+Remove bit_phrase (ONLY if need room for flags)
+  ; Replace by dummy instr
+  ; Or dymically insert event in track? NO! More cumbersome and costly
+
+--------- Design choice ---------------------------- 
+ Allow duration 0 for "65536"
+   ; - minimala.chp has a note that lasts all the pattern (&100 ticks)
+     ; Using blank row as intermediates (1+&ff or &80+&80) step
+           ; prevents to use simplification "unconditional instr
+           ; at each row" since we would then cut running instr
+           ; (see compnrt.o in v0h for this bug).
+   ; - 0 is naturally interpreted as 65536 for the player
+       ; (!!!! unless we switch to 8 bits RDV !!!!)
+   ; - special row in-tool (e.g. end of phrase) can and should be 
+       ; detected in another way (if we don't want to add a test).
+
+
+
+!!!! Instr: link before row
+  ; Skip hard period for free if there is no hard env.
+        ; Note: for compiled instr we remove useless fields,
+        ; But in-tool it's more practical to have fixed-size row.
+  ; HL being saved first, we can use l or h to read last value
+
+!!!! Tables/Instruments -> linked rows with 16 bits pointer
+  ; - link: ease row insertion (without impacting all other instrument)
+               ; (well, an alternative would be to reallocate the
+                 ;whole instr in a new place. Less reactive for
+                 ;"edit while playing").
+          ; facilitate looping?
+               ; (well, the alternative: 00 for next, Hi,Lo for loop pnt
+                 ;would cost as much when non looping, and more 
+                 ;when looping)
+  ; - 16 bits: - avoid complexities of chunking
+             ; - not a big overhead.
+             ; - some bits free for flags (e.G. looping)
+  ; At some point we might use same mecanism that for phrases:
+    ; - remove chunk complexity
+    ; - reuse code
+
+!!!! Don't use listz.o anymore         
+  -> We don't need 24 bits anymore for links (since confined in banks)
+  -> Stateful lists are cumbersome
+      ; (we can move the state in an iterator)
+
+- Null link instead of sentinel for end of event list
+ ; Sentinel is useful for compiled player (no test, same mem footprint)
+ ; But in-tool, that's more memory and more code.
+
+- Tracks may not loop.
+  ; Required for funny looping (cf MadMix patterns of different size)
+  ; We check for null link anyway
+
+- In tracks encoding: RDV sur 16 bits plutot que 24 (change v0d)
+  ; A 300Hz, 16 bits couvrent 1820 lignes en "delai 36" (every 6 frames)
+  ; Track multi-events: surely things (transposition, sid.) will happen
+    ; before that.
+  ; Rationale for change: keeping 24 bits would have required to change
+    ; the player to handle "dummy gaps" -> as much code. So it's smarter
+    ; to let the tool create dummy events to go past 65536 duration.
+
+
+
+- One bank by type of chunk.     
+  ; c4: phrases
+  ; c5: tracks (same than BK_BASE, as it doesn't take much space)
+  ; c6: instr and table (WIP).
+      ; - Simpler and faster:
+             ; - pointer on 16 bits
+             ; - no bank switch to follow linked chunk
+      ; - 16k for phrases and 16k for tables considered sufficient
+      ; - Phrases: will use minichunks limited to &40 (less wasteful)
+           ; then 256 phrases max: fit in &4000.
+
+- Same structure in each bank: index at 4000
+      ; - Simpler code 
+      ; - 
+
+
+- instr: encode its number
+          ; - take less space (1 byte vs 3 for adr + param)
+          ; - ease compile (hu?)
+          ; - more future proof (ease changing instr while played)
+                                   ; e.g. "alternate instr"
+
+- fx: encode its address
+   ; Just LSB anyway
+   ; Faster
+   ; FX don'tneed indirection (static).
+
+- fx param (in phrase): inconditionnaly word
+  ; Simpler: less code and faster.
+  ; Still generic (use table if needed)
+  ; Con: some space waster for 1-byte param. I don't care.
+
+- fx param (in track_stack): inconditionnaly word
+  ; Same rationale!
+  ; Plus, easy to skip from one fx to the next
+        ; -> simple to replace or stop fx depending on "column".
+
+- Possibility to attach several events / phrases in same track 
+ - needed anyway so that e.g. transposition is set in one given track
+ - avoid to multiply tracks (memory) and counters (tm)
+
+- Persistance
+ ; - Tables doesn't fit in central ram anyway
+ ; - will be super useful to switch with orgams
+      ; in order to finetune (for synchro or size crunching)
+!!! But yagni yet (simpler to decode)
+
+
+- Same code for all channels.
+ ; More scalable (for more tracks)
+ ; Less code: more crunchable
+
+- Tick counter: 16 bits
+ ; Economical for track events RDV (new phrase, etc).
+    ; - otherwise, at 100hz, would need a re-trigger every 2.56 seconds
+
+- Delai: only an UI settings, not a replay one
+ ; Instead each duration is encoded with note/row.
+    ; - Allow triplet or slightly off the beat human-like playing.
+    ; - Faster replay as we don't have to count and skip empty rows
+    ; - Less memory taken as we don't have to store empty rows
+    ; - All that especially for "swing delay"
+ ; To replay a same section at different speed, we can always change
+ ; replay frequence, which is more precise anyway
+ ; (e.g. from 50Hz to 55Hz)
+-> Actually, no "delai" parameter, instead:
+  - row_ticks  : for visualisation
+  - skip_ticks : for edition
+; E.g. if row_ticks = 6, skip_ticks = 12, each note will skip every
+     ; two rows.
+
+- phrase: mini-chunks of &40 
+; !!! Yagni yet !!!
+  ; All fit in one bank 
+       ; -> far simpler handling (id= address directly)
+  ; For now, 256 max anyway
+
+------- Ideas for later ------------------
+
+(NO!) Having just one RDV of linked events for all tracks?
+; (Instead of one RDV by track)
+    ; hmm, save counter, but then must store stack_track pnt 
+       ; (so each event is associated with the right track)
+    ; prevent optim consisting of delaying tracks?
+
+--------- Errors -----------------------------------
+; Favorising optimisation over api uniformity.
+    ; E.G. aum.eval returns out0 in AHL, but in ext_* routines it's CDE
+; Leaving thing in unfinished state. Hard to dive back.
+; Not doing the simplest thing
+     ; E.G. trying to juggle with push/pop rather than storing in vars
+     ; !! No premature optimisation. Especially if it works as is
+; Not having everything outlined on paper
+     ; still to many back and forth will writing code
+; Renaming clip to phrase:
+    ; - wasn't important or urgent
+    ; - actually wrong if different types of clip.
+; - bandaya: assuming AF,BC,HL were saved each ints (read code too fast)
+; - importing lib/status.o without checking client.
+      ; -> calling disp in ROM = crash
+; - API not respected (disp_text, scan_key)
+    ; Harder to see when imported routines, as cannot CONTROL-ENTER
+; - file_name not init. get_len searching for 0 in whole bank: hang.
+; - skip_nt was bugged!! Morale: use library, even for tiny routines.
+                   ; or at least copy paste
+; - trying to display file_name (lives in C6) with disp (in C7)
+
+changelog
+; \/\/\/ 2024 \/\/\/\/\/                  
+; Also see cahier!
+; ------ v0j ------------------
+ ; Well, using phrase_set_row_at for clip.o was a bad idea:
+    ; then last note of each phrase has duration 0, which means
+    ; we get the wrong phrase duration.
+    ; Fixing that would be too hackish?
+         ; - add a "phrase_set_duration" or dummy row ourselves
+         ; - well, interpret 0 as 256 in-tool, which would be 
+           ; cumbersome and needed special treatment in compile anyway
+   ; --> Revert comp to v0h version
+   ; --> Instead, hack in comp for this particular &100 notes
+; May                      
+; ------ v0i ------------------
+ ; 15 Allow duration 0 for "65536". See design choice
+; ------ v0h ------------------
+ ; 14 Reprise. Voir cahier.
+; Apr
+ ; 24 compile.o And ayane=0 version for ply
+    ; New dedicated instr for minimala
+       ; -> Remove need for instr_default
+       ; -> More crunchable (same volume handling than chip_down_vib..)
+       ; -> All instr fits
+; ------ v0g ------------------
+ ; 24 Yeah. chipnrt.o pass: conversion and replay of minimal.chp
+          ; (some vibratos too ample: tolerance 4 on high notes)
+
+; ------ v0f ------------------
+; Mar                            
+ ; 28 memmap/chung: Move tables to bank.
+      ; - allow persistance
+      ; - give more room for code
+ ; 13 No more "evt_end" as sentinel after list of event.
+    ; Instead: null link. CF Design choices
+; ------ v0e ------------------
+  ; !!! Not functional
+ ; 10 Remove track_index: track.tracks already serve as index,
+                        ; since fixed size header for each track.
+ ;  4 Track: Adapt event structure to support multi-event.
+
+; ------ v0d -------------------
+; Feb
+ ; 29 Track: init 3 empty voices by default (avoid)
+           ; RDV sur 16 bits au lieu de 24 bits (see design choice)
+           ; Ok tracknrt
+ ; Oh! Complication: AUM VM works with 24 bits register.
+     ; -> resolved by conv16 opcode.
+
+; ------ v0c -------------------
+ ; 27 
+   ; WIP Finish initiated design change:
+    ; 1 bank by kind of chunks (phrase, table)
+    ; See rationale in design choice
+   ; tracknrt.ok
+; ------ v0b -------------------
+ ; 26
+   ; Design change:  
+   ; Fix st128nrt.test_convert_pcrb3
+        ; Memory full in chung.register_table, as we reach A000
+   ; Fixed by **moving bandrupt** at c0:4000
+   ; Fix plynrt assembling:
+       ; - s/regs/psg_regs (no more ambiguity)
+       ; - Before: st_song word track0,track1,track2 (explicit)
+         ; Now: Use /rewind_song/
+   ; Partially fix ply (plynrt.test_play)
+       ; - chung was skipping clip header (color and stuff),
+           ; but not ply!!!
+
+   ; Stauts chungnrt: ok.
+   ; Status str128nrt: ???
+   ; Status plynrt: ko.
+; ------ v0a -------------------
+   ; Rapatrie all libs (chunk, liszt). Same rationale:
+      ; - Disable unused code
+      ; - More integrity   
+   ; Fix chungnrt.test_make_table itself:
+        ; Loop len = 0, so we didn't set B (loop pos).
+        ; But then we check b.bit7 isn't set (since flag no handled yet)
+   ; Fix st128nrt.test_convert_pcrb3
+        ; Memory full in chung.register_table, as we reach A000
+   ; Status chungnrt: ok.
+
+ ; Dec                            
+   ;23. Put BK base at c7 as well.
+      ; And most code in BK:
+          ; - Free ram for tables
+          ; - No risk of forgetting CALL_DISP
+          ; - Crunched help with be in another bank ultimately
+          ; - Better separation: all "connect" done in chung
+                 ; (well st128 as well for now)
+
+   ;22. Rapatrie status, disp 
+        ; - So it's easier to make them ayane specific
+        ; - Also, comment out unused code.
+      ; Arrange order of imports to have main sources first
+      ; Reserve &300 for bandaya
+      ; Fccck. Crashing. What now?
+          ; -> Oh! help_init wasn't called under CALL_DISP
+      ; OH.... no more room in tables.
+
+   ;22. (again?) Copy lib/scan_key and status to ide:
+   ;22. !!!Export trackui from track, so ui doesn't get pulled by plynrt
+      ; !!!NO. ON HOLD!!!   Both depends on AUM, it's better to keep
+      ; them together 
+
+   ;16. Use libs from ":lib" (so we don't have to rely on USB stick)
+   ;15. Replace lib/bandrupt by bandaya
+             ; - simpler to have specialised code in dedicated source
+      ; Fix bug, r1 wasn't reset to 48 after IO (bandeau doesn't do
+             ; that anymore)
+      ; Move crtc set in bandaya (cheaper to do it there
+
+      ; Introduce help.o (with helpnrt.o companion)
+
+; ------ v09 -------------------
+ ; Dec
+   ; 1.  s/st128.st_bk/memmap.BK_IO (from c6 to c0)
+      ;  ayane: plug st_convert and refresh_all_track
+      ;  st128nrt: Assert in
+                     ; st_128.st_map
+                     ;   chung.get_phrase_chunk
+          ; A = &21, but there is only &21 phrases 
+       ; Oh! The assert was legit, we weren't processing all patterns
+       ; (off by one: max pattern vs nb patterns)
+ ; Nov                      
+   ; 29. Move file_name to c7.
+       ; Reuse status bar from orgams:
+           ; - Neater
+           ; - cur2pos, invCursor etc not meant for r1 = 48
+   ; 28. lib/chunk: Fix bug, bk base wasn't connected for init_chunk
+       ; Remove vo_basebk for ayane, since it's static for now (c6).
+       ; chungnrt PASS.
+       ; init: use ums:lib/shortcut.o (consistent with ayane.o)
+       ; ayane: fix help, open...
+
+   ; 24. Reprise !
+     ; chungnrt: didn't even assemble. nrtchlast undefined!
+               ; -> For now deactived non-assembling tests.
+     ; init.fullinit -> chung.ayane_init ASSERT!
+
+ ; Jun     
+   ; 3 v09 ayane.o: Main entry point
+            ; CONTROL-O: Open
+            ; CONTROL-Space: Play
+    ; Remove vibrato cut at row 0 in st128.st_convert:
+       ; We plan to change vibrato handling, we won't need to explicitly
+       ; reset x_period at the end of the effect.
+    ; -> No more conflict if there is a new effect at row 0
+    ; Reorder banks:
+        ; c7 for disp (for c3 connect to display in 4000)
+        ; c6 for base (to leave contiguous c5-c4 for chunks)
+        ; c0 for st128 (since temp. We don't need extra screen then) 
+
+ ; May        
+   ;19 v08 Don't have subwindow for scrolling:
+            ; - v07 bugged since refresh while < left threshold
+                  ; even when going right (starting from 0). 
+            ; - Since refresh is slow and we don't have scrolling,
+                ; it's better to scroll as few as possible. 
+     ; Move instr_idx @ &4000 (for persistence and make room)
+
+   ;14 v07 WIP Introduce ui (tracknrt.test_sequencer_ui)
+
+   ;12 v06 Proper colors for clips (ok tracknrt.test_proper_colors)
+
+   ; 9 v05 track.track_get_clip_at: returns both start and end
+             ; (will be useful for UI navigation)
+         ; chung.song_select_new_phrase: header (type, idx, name, color)
+
+   ; 2 v04 st128: Must use new 'track' struct.
+
+ ; Apr 
+  ; 30
+   ;   v03  Display track
+  ; 16
+   ;   v02  Put shared addresses in memmap.i 
+         ;  First tests widget ok (see "widget.nrt")
+
+    ;  v01  Yeah. st convert + test_playing ok (pbcr3.128)
+         ;  Extract "compile" from chung
+  ;15  v00  Yeah. plynrt 3 tests work (doNrt=1)
+
+Erreur: BUG in debug helper!!
+        ; RET_ROUT was checking ret address with POP HL,
+        ; but HL was used at some places.

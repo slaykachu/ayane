@@ -1,0 +1,2684 @@
+dev_checks = 1
+todo  = 1
+makeroom = 1
+; TODO: move get_cur_bk and co in chung.
+
+; ----------------------------------------------------------------
+; Track handling for ayane (replace map/songlist concept)
+; ----------------------------------------------------------------
+
+ ; TOC (to be completed)
+    ; Song_add_map
+    ; Song_select_track
+    ; Song_select_new_track
+
+      IF todo
+; move clip struct here?  (or in dedicated clip.o)
+      END
+
+      IMPORT "const.i"  ; for clip structure (fc_color etc)
+      IMPORT "widget.o"
+      IMPORT "phrase.o" ; song_get_phrase_id, phrase_start
+                        ; + all needed by Song_add_map
+ ; !!! No, let ayane do the setup (or introduce trackui)
+ ;      IMPORT "bandaya.o" ; to set-up /mode_sequencer/
+      IMPORT "chunk.o"  ; for chunk_start
+      IMPORT "shortcut.o"
+      IF dev_checks
+      IMPORT "memmap.i" ; for check BK_TRACK
+      END
+      IMPORT "memcpc.o" ; for check get_bk_connected
+ ;  import "lizst.o" !!! don't use, see rationale in journal
+      IMPORT "ply.o"    ; For event ids (LSB of routines)
+
+reg32 = 0
+      IF reg32
+reg_size = 4
+      ELSE
+reg_size = 3
+      END
+
+;2024
+; --- For v0h ----
+  ; Apr  
+   ; 24 Set_phrase_at_t: add check (Get_phrase must return NZ)
+      ; Song_add_map: idem
+; --- For v0g ----
+   ; 10 Fix dest_deref16: wasn't adding operand like ind does.
+   ; 09 Put missing signatures for ext_* routines
+      ; prepend_event: replace AUM code by good old z80! 
+      ; Song_add_map.prep was initializing the wrong variable!
+               ; (time instead of timestamp)
+         ; Morale: use local variable instead?
+   ; 08 Introduce eval_init (for tracknrt)
+      ; Finish s/regs/aum_regs
+          ; NOTE: why is "regs" even visible from here?
+      ; Fix another typo
+      ; Song_select_new_track: don't report flags:
+              ; - for now it cannot fail 
+              ; - if at some point we allocate something, we'll use
+                ; assertion mechanisme.
+  ; Mar 
+   ; 31 Add CALL_EXT01()
+   ; 25 Add Song_add_map
+   ; 14 Dismiss track_append_current_phrase (make no more sense with
+             ; RDV based paradigm)
+      ; Introduce Set_phrase_at_t
+      ; Deactive ui (first we must validate new APIs for convertion)
+            ; And, faster to assemble!
+; --- For v0e ----
+   ; 11 Design change: Duration in event node, not in phrase node
+                 ; - new phrase can happen before end of phrase
+                 ; - phrase is auto-looping
+                 ; - !!! actually still useful for drawing track
+                       ; (for optimisation, otherwise we would have to
+                         ;compute duration for each repetition)
+      ; Discard track_get_event_at (doesn't fit new structre very well)
+      ; introduce get_event_hook_at
+                ; set_event_hook_at
+      ; aum: introduce lit20 operand
+   ; 10 Track can have multiple events at given timestamp
+         ; Adapt structure to reflect that
+         ; ONHOLD: Introduce track_get_phrase_at
+                 ; Priority is player and convertion
+  ; Feb            
+   ; 29 Init_track: create 3 tracks with channel A, B, C
+; --- For v0c ----
+   ; 28 shortcut.o, memcpc.o: use local ones
+
+; --- For v0A ----
+;2023
+ ; Dec
+   ; 22 Arrange order of imports to have main sources first
+   ; 21. Rollback previous: multi mode done by ayane,
+               ; so we don't add bandaya dependency        
+   ; 16. Set up multi-mode (under int)
+
+; --- For v09 ----  
+  ; Dec 3. lib/shortcut.o : use the one in ums: for consistency
+
+; --- For v08 ----  
+  ; May 19. Only scroll when reaching screen boundaries (no sub window)
+              ; -> less refresh overfall
+              ; -> simpler for now
+       ; Replace goto_pos by go_left/go_right
+       ; skip: add missing opcode and modifiers, fix skip_fun_com
+
+; --- For v07 ----  
+
+; v9: AUM: Change encoding to allow more modifiers
+        ; - introduce /max/
+        ; - now only 16 registers allowed: more than enough.
+    ; Introduce ui_sequencer (cursor handling for navigation)
+
+; --- For v06 ----
+
+; v8: Introduce track_append_current_phrase (nrt helper)
+    ; track_draw: must follow indirection for actual clip stucture.
+    ; Use memcpc.o (for check_hl_in_bank)
+
+; --- For v05 ----
+
+; v7: track_get_clip_at: Also return starting time
+    ;   (will be useful for navigation) 
+
+; --- For v04 ----
+
+; v6: Reverse part of v5: pointers **MUST** be little endian
+          ; to allow indexing (ind + lit n)
+      ; -> song_select_new_track: store list id little endian
+         ; (liszt routine will have proper CDE id no matter what)
+    ; binary_common: properly set Z flag.
+    ; fun_com: keep aum_af as is.
+
+; v5: --- WIP --- 
+    ;  Extract test in track.nrt
+      ; -> Avoid double ENT issue
+      ; -> Less space and faster to assemble.
+    ; Fix /track_append_clip/
+    ; Set /current_track/ (was readonly!)
+    ; [harmonisation] Set BK, MSB, LSB in that order (expected by liszt)
+    ; Remove cur_bk, set/get_bk: handled by chunk.o via liszt
+    ; call_ext_com: read 24bits regs in c,d,e to match liszt expectation
+
+; v4: API for st128 /track_append_clip/...
+    ; track_draw: Divide time by 64 to show outline.
+
+; v3: Boulet! It's not track that has color, but each clip
+
+; v2: Implement /draw_track/
+    ; + /min/ modifier
+    ; + /call_ext_to_words/
+    ; eval_operand_and_store: must return
+
+; v1: Implement /track_get_event_at/ -> Yeah.
+    ; Restrict AUM registers to 24 bits (see /reg32/)
+       ; - That fits our needs (time, epnt - extended pointeurs)
+       ; - More wouldn't help
+    ; We still align every 4 bytes though, for debugging purpose
+; v0: 4 tests aum ok.
+
+;Note: Using liszt can be error-prone (stateful iteration prevents
+     ; some concurrent use if not careful). Yet we try to use as 
+     ; much orgams code as possible:
+         ; - Exercise the code intensively
+         ; - Not reinventing the wheel
+
+scr_set_border = &BC38
+
+;-------------------------
+structs
+;-------------------------
+
+idsz  = 2               ; size of id node (just pnt: not cross bank)
+
+savepc = $
+saveobj = $$
+
+; ---- Struct of track amorce (at /tracks/) -----
+      ORG 0
+tf_clips SKIP idsz      ; list of clips/events (evt0 below)
+tf_output BYTE          ; Channel. 0: main/no ouput. 1..3 = PSG: A..C
+tf_struct_size
+
+
+; ---- Struct of event amorce (hook)  -----
+      IF todo
+ ; s/evt0/hook/ 
+      END
+      ORG 0
+;evt0_link0 skip idsz  ; Next evt0 at <> timestamp (implicit in node)
+evt0_dur SKIP 2         ; Duration in 16 bits (see design)
+evt0_dur_
+evt0_link SKIP idsz     ; link to 1st event
+evt0_size
+; Note: we use indirection, otherwise amorce would be bigger than
+      ; subsequent nodes. Since we work with static node size, that's
+      ; something we want to avoid
+      ; Everything is inlined at compilation anyway.
+; No room left (node7)
+
+; ---- Struct of event (after node link) -----
+      ORG 0
+;evt_link skip idsz   ; Next evt at this timestamp
+evt_type SKIP 1
+evt_param SKIP 2        ; E.g. link to phrase
+evt_size
+
+      IF 0
+      MACRO EVENT_NODE link,type,param
+      IF evt_type OR [evt_param-1]
+ !! review this
+      END
+      FILL idsz,0
+      BYTE type AND &FF ; Only LSB
+      WORD param
+      ENDM
+      END
+
+; ---- clip/phrase structure -----
+; see const.i
+
+      ORG savepc,saveobj
+
+;===================================
+      MACRO EMPTY_NAME
+      FILL 3,0
+      ENDM
+
+      MACRO COLOR n
+      BYTE n
+      ENDM
+
+      MACRO LINK bk,adr
+;!!! Must keep little endian order: LSB, MSB, BK
+;!!! So we can do pointer arithmetic 
+      WORD adr:BYTE bk
+      ENDM
+
+      MACRO LINK_NULL
+      FILL 3,0
+      ENDM
+
+      MACRO PNT adr
+; Regular pointer, but must set bk byte:
+  ; - We work with 24bits register
+  ; - Needed for sanity checks  (todo: use c0 instead?)
+          LINK(0,adr)
+      ENDM
+
+      MACRO DURATION val
+; Encode value 16 bytes
+      IF evt0_dur_ - 2
+ !! review this
+      END
+      WORD val
+      ENDM
+
+      MACRO TIME val
+; Encode value 24 bytes. Timestamp
+      WORD val AND &FFFF:BYTE val/&0100/&0100
+      ENDM
+
+
+; -----------------------------
+; MACRO for AUM virtual machine
+; -----------------------------   
+      MACRO LD2 dest,arg1
+; Variants to make for orgams' lack of overloading.
+      BYTE ld,dest,arg1
+      ENDM
+
+      MACRO LD2_C dest,arg1
+      BYTE ld + if_c,dest,arg1
+      ENDM
+
+      MACRO LD3 dest,arg1,arg2
+; Variants to make for orgams' lack of overloading.
+      BYTE ld,dest,arg1,arg2
+      ENDM
+
+      MACRO LD3_C dest,arg1,arg2
+      BYTE ld + if_c,dest,arg1,arg2
+      ENDM
+
+      MACRO LD3_NZ dest,arg1,arg2
+      BYTE ld + if_nz,dest,arg1,arg2
+      ENDM
+
+      MACRO LD4 dest,arg1,arg2,arg3
+; Variants to make for orgams' lack of overloading.
+      BYTE ld,dest,arg1,arg2,arg3
+      ENDM
+
+      MACRO LD5 dest,arg1,arg2,arg3,arg4
+; Variants to make for orgams' lack of overloading.
+      BYTE ld,dest,arg1,arg2,arg3,arg4
+      ENDM
+
+      MACRO FUN1 fun,arg1
+; Output result implicitly in out0
+      BYTE fun1:WORD fun:BYTE arg1
+      ENDM
+
+      MACRO FUN1' fun,arg1,arg2
+; Output result implicitly in out0
+      BYTE fun1:WORD fun:BYTE arg1,arg2
+      ENDM
+
+      MACRO FUN1_Z' fun,arg1,arg2
+; Output result implicitly in out0
+      BYTE fun1 + if_z:WORD fun:BYTE arg1,arg2
+      ENDM
+
+      MACRO FUN2 fun,arg1,arg2
+; Output result implicitly in out0, out1
+      BYTE fun2:WORD fun:BYTE arg1,arg2
+      ENDM
+
+      MACRO CALL_EXT01 rout
+      BYTE call_ext01:WORD rout
+      ENDM
+
+      MACRO CALL_EXT10 rout,arg1
+;Arg passed in CDE
+      BYTE call_ext10:WORD rout:BYTE arg1
+      ENDM
+
+      MACRO CALL_EXT11 rout,arg1
+;Arg passed in CDE, 
+      BYTE call_ext11:WORD rout:BYTE arg1
+      ENDM
+
+      MACRO CALL_EXT1'1 rout,arg1,arg2
+;Arg passed in CDE
+; Still one input parameter, but computed from 2 operands
+      BYTE call_ext11:WORD rout:BYTE arg1,arg2
+      ENDM
+
+      MACRO JP rout
+      BYTE jp:WORD rout
+      ENDM
+
+      MACRO JP_Z rout
+      BYTE jp + if_z:WORD rout
+      ENDM
+
+      MACRO JP_NZ rout
+      BYTE jp + if_nz:WORD rout
+      ENDM
+
+      MACRO JP_C rout
+      BYTE jp + if_c:WORD rout
+      ENDM
+
+      MACRO JP_NC rout
+      BYTE jp + if_nc:WORD rout
+      ENDM
+
+      MACRO RET0
+      BYTE ret
+      ENDM
+
+      MACRO RET_Z
+      BYTE ret + if_z
+      ENDM
+
+      MACRO RET_C
+      BYTE ret + if_c
+      ENDM
+
+      MACRO RET_NC
+      BYTE ret + if_nc
+      ENDM
+
+      MACRO BRK
+      BYTE break
+      ENDM
+
+      MACRO BRK_Z
+      BYTE break + if_z
+      ENDM
+
+      MACRO BRK_NZ
+      BYTE break + if_nz
+      ENDM
+
+      MACRO BRK_C
+      BYTE break + if_c
+      ENDM
+
+      MACRO BRK_NC
+      BYTE break + if_nc
+      ENDM
+
+      MACRO SIGN in#,out#,flags
+;Signatures.
+;'flags' indicate which flags are returned by the routine.
+      BYTE in#,out#,flags
+      ENDM
+
+  ; For signature
+NO_FLAGS = 0
+FLAG_Z = &60
+
+; -------------------------
+;   Track constants
+; -------------------------
+
+MAX_TRACKS = 16
+; We center box on char line: 14 = 3 + 8 + 3
+; So that text can be displayed on a regular char line (easier, faster)
+TRACK_Y0 = 4            ; For cursor
+TRACK_Y0' = 5           ; For box (don't display border) 
+TRACK_BOX_HEIGHT = 14
+TRACK_INTERLINE = 16    ; Distance between 2 tracks
+CURSOR_HEIGHT = 16
+TICKS_PER_PIXEL = 64    ; For sequencer
+
+; --------------------------
+;   Misc constants
+; --------------------------
+
+SCREEN_WIDTH = 192
+TIME_WIDTH = SCREEN_WIDTH * TICKS_PER_PIXEL
+
+; -----------------------------
+;    AUM constants/enums
+; -----------------------------
+
+FRAME_REGS_SIZE = 32 * 4 ; 32 * 32-bits regs 
+
+MAX_FRAMES = 4          ; recursion level admitted
+MAX_OUTPUT_PARAMETERS = 4
+MAX_EXT_PARAMETERS = 8
+
+LIT_MIN = -1            ; a ajuster selon besoin
+LIT_MAX = 15            ; 14 used (TRACK_BOX_HEIGHT)
+      IF LIT_MAX - LIT_MIN AND &E0
+ !!! cannot be encoded in 5 bits
+      END
+
+CONDITION_MASK = %00000111
+MODIFIER_MASK = %11110000
+
+; ---- Opcodes ----------------------
+; We leave 3 LSB for conditions (Z, NZ, ...) 
+      IF CONDITION_MASK - 7
+ !!! must review encoding
+      ENDM
+ret   = &00
+ld    = &08
+fun1  = &10
+fun2  = &18
+call_ext01 = &20
+call_ext10 = &28
+call_ext11 = &30
+jp    = &38
+break = &40             ; clin d'oeil
+call_ext50' = &48
+; Re-evaluate encoding when reaching 16 opcodes.
+      ; -> Shall we continue adding opcode?
+         ; Or we can have one escape code, and leverage the free bit.
+      ; Compare with RISC-V !
+
+; ---- Conditions -------------------
+always = 0              ; default: unconditional
+if_z  = 1
+if_nz = 2
+if_c  = 3
+if_nc = 4
+; Re-evaluate encoding when reaching 8 conditions.
+      ; Should "don't change flags" a la ARM be a special bit, 
+      ; or one of the condition.
+
+; ---- Operand modifiers ------------
+      IF MODIFIER_MASK - &F0
+ !! review encoding 
+      END
+reg   = 0               ; DEFAULT register 0..15 
+      IF reg
+!! must be 0, so we don't 
+      END
+lit_opcode = &10        ; integers from -lit_min..lit_max (inlined)
+lit   = lit_opcode - LIT_MIN ; For encoding correction
+lit_opcode' = &20
+      IF lit_opcode' - lit_opcode - &10
+!! must be contiguous
+      END
+lit20 = &30             ; followed by word (with LSQ: 20 bits)
+add   = &40
+sub   = &50
+ind   = &60             ; indexed indirection: (reg + oper)
+ind16 = &70             ; same, but troncated to 16 bits
+ind_post = &80          ; indirection indexed: (reg) + oper
+min   = &90
+;Note: Min introduced as modifier:
+     ;  - faster to code and to execute
+     ;  - we still have room
+     ; We might reconsider this choice later
+        ; (e.g. if nested operations are rare, we can implement
+              ; idea below)
+max   = &A0
+; You gotta respect the symettry.
+conv16 = &B0            ; Convert 16 bits to reg_size
+      IF todo
+ ; 1/ should conv update flag Z/NZ?
+ ; 2/ generic conv (with size in LSB)
+      END
+shift = &C0
+; Shift rather than div, to allow division by 64
+; (otherwise, need a way to encode 64!)
+
+;Note: instead of add, sub,... opcodes, 
+     ; we could introduce a 'binary op' escape code
+; !!! Careful. For now we rely than one of the operands is necessary
+; a reg. So we *cannot* have two 'ind' for instance, which allows to
+; reuse same tmp 'internal register' (tmp_lit in that case, incidentaly)
+; If we introduce complex combination tree, we'll have to change that
+; (by a rolling buffer for instance).
+
+; A voir ?
+;fun
+;and
+;or
+;xor
+
+; ------- Registers ----------------
+; Start by input registers,
+; since we init a new frame with them. 
+in0   = 0
+in1   = 1
+in2   = 2
+in3   = 3
+r0    = 4
+r1    = 5
+r2    = 6
+r3    = 7
+out0  = 8
+out1  = 9
+out2  = 10
+out3  = 11
+; Reevaluate when reaching 16
+
+; -----------------------------
+;      AUM Virtual Machine
+; -----------------------------
+
+; Some caracteristics: 
+ ;- Function calls with local scope (1 set of register by stack frame)
+    ; -> That's why there is no push/pop opcodes.
+       ; Local registers should be enough.
+ ;- 'add', 'xor', ... aren't opcodes, but an operand modifiers
+    ; -> avoid temporary register
+ ;- No 'cp' either: use 'sub' instead
+ ;- Doesn't use IY, EXX or AF'
+ ;- Speed isn't a goal.
+
+eval
+;---
+; Main entry point.
+;IN: hl = bytecode
+;OUT: ahl = (out0) for convenience.
+    ; ARGL!!! why not CDE like the others?
+    ; How costly it would be to uniformize?
+      IF todo
+; Lift flags as well?
+      END
+
+; Init frame 0
+          call eval_init
+          call eval_loop
+          ld hl,(aum_regs + out0*4)
+          ld a,(aum_regs + out0*4 + 2)
+          ret
+
+eval_init
+; In dedicated routine for nrts
+          ld de,aum_regs:ld (frame_pnt),de
+          ld de,aum_stack_:ld (aum_sp),de
+          ret
+
+eval_loop
+; (exit happens at _ret)
+          ld (aum_pc),hl ; for debug 
+
+; ---- Check invariants
+      IF dev_checks
+          push hl
+          ld a,(time_cursor+2):or a:call nz,mess
+          pop hl
+      END
+
+; ---- Decodes
+          ld a,(hl)
+          and CONDITION_MASK:jr z,.exec ; 0= always execute
+          add a
+          add cond_table AND &FF
+          ld e,a
+          ld d,cond_table/&0100
+          ex de,hl
+          ld a,(aum_af)
+          and (hl):inc l ; Mask flag
+          cp (hl)       ; Expected value of flag
+          ex de,hl
+          jr nz,skip
+
+.exec
+          ld a,(hl)     ; opcode # * 8
+          and &FF-CONDITION_MASK
+          inc hl
+          add a:call c,not_implemented ; # * 16 for address
+          ld ixl,a
+          ld ixh,opcodes/&0100
+          jp ix
+
+skip
+;---
+; almost as complex as eval, since instr length depends not only
+; on opcode, but on operands.
+          ld a,(hl)     ; opcode # * 8
+          and &FF-CONDITION_MASK
+          inc hl
+          add a:call c,not_implemented ; # * 16 for address
+          ld ixl,a
+          ld ixh,skipcodes/&0100
+          jp ix
+
+
+previous_frame
+;------------- 
+;1/ Set flag Z if out0 = 0
+  ; -> This is an adhoc need. Might be revisited.
+;2/ Copy output registers to previous frame
+;[optim] TODO? Let outX registers at absolute place (not in frame).
+   ; -> automatic tail call optim! 
+   ; -> but _reg routine would be a bit slower, since we'll need
+      ; to discriminate.
+   ; !! Would hinder co-routines?
+; Simpler optim: reduce MAX_OUTPUT_PARAMETERS to 2! 
+  ; (pass bigger things via struct?)
+;3/ Set pointer to previous frame and pop pc.
+
+          ld hl,(frame_pnt)
+; Check we are not in frame 0
+          ld bc,aum_regs:or a:sbc hl,bc:add hl,bc
+          call z,programming_error
+
+; Prepare source/dest
+          ld bc,-FRAME_REGS_SIZE + out0*4
+          add hl,bc
+
+          ex de,hl      ; de = out0 in previous frame
+          ld hl,FRAME_REGS_SIZE
+          add hl,de     ; hl = out0 in this frame
+;[optim] TODO? Let outX registers at absolute place (not in frame).
+   ; -> automatic tail call optim! 
+   ; -> but _reg routine would be a bit slower, since we'll need
+      ; to discriminate.
+   ; !! Would hinder co-routines?
+; Simpler optim: reduce MAX_OUTPUT_PARAMETERS to 2! 
+  ; (pass bigger things via struct?)
+          ld bc,MAX_OUTPUT_PARAMETERS*4
+          ldir
+
+;Update pnt and return to callee.
+          ld bc,-MAX_OUTPUT_PARAMETERS*4 - out0*4 - FRAME_REGS_SIZE
+          add hl,bc
+          ld (frame_pnt),hl
+          call pop_hl
+          jp eval_loop
+
+dest_reg
+; destination is a plain register
+;Note: dedicated routine so ld's code can fit in 16 bytes.
+          ld a,(hl):inc hl
+          call _reg
+          call eval_operand_and_store
+          jp eval_loop
+
+dest_deref16
+; destination is a (register + operand)
+          xor (hl):inc hl
+          call _add     ; = _reg + _add_op
+          call deref
+          call eval_operand_and_store16
+          jp eval_loop
+
+eval_operand_and_store
+;---------------------
+;In: HL points on operand in bytecode
+   ; DE result pnt.
+;OUT: HL past operands evaluated (several if arithmetic modifier)
+    ; DE += reg_size
+          push de
+          call eval_operand
+          ex (sp),hl
+          ex de,hl
+          reg_size ** ldi
+          pop hl
+          ret
+
+eval_operand_and_store16
+;-----------------------
+; Same than eval_operand_and_store, but only copy 2 bytes
+          push de
+          call eval_operand
+          ex (sp),hl
+          ex de,hl
+          2 ** ldi
+          pop hl
+          ret
+
+eval_operand
+;-----------  
+;In: HL points on operand in bytecode
+;OUT: HL past operands evaluated (several if arithmetic modifier)
+    ; DE points on result value.
+          ld a,(hl)
+          and MODIFIER_MASK:ld ixl,a
+          xor (hl)      ; parameter (register or litteral)
+      IF dev_checks
+          cp 16:call nc,mess
+      END
+      IF makeroom
+; Read reg here (like _reg),
+; as it is done for any modifier.
+      END
+          inc hl
+          ld ixh,modifiers/&0100
+jp_ix     jp ix
+jp_hl = jp_ix + 1
+
+_lit
+;Litteral in LIT_MIN..LIT_MAX
+          ld c,0        ; MSB: 0 for positive, &ff otherwise
+      IF LIT_MIN AND &80:ELSE
+ !! assumed LIT_MIN < 0
+      END
+          sub -LIT_MIN:jr nc,$+3:dec c
+          ex de,hl
+; Ridiculous cast from 5 bits to 24/32 bits.
+      IF reg32
+          ld hl,tmp_lit+3
+          ld (hl),c:dec l
+      ELSE
+          ld hl,tmp_lit+2
+      END
+          ld (hl),c:dec l
+          ld (hl),c:dec l
+          ld (hl),a
+          ex de,hl
+          ret
+
+_sub_op
+          push de
+          call eval_operand
+          ex (sp),hl
+          ld bc,tmp_binary
+          ld ixl,reg_size
+          or a          ; for first sbc
+          ex de,hl
+.sublp
+          ld a,(de):inc e
+          sbc (hl):inc l
+          ld (bc),a:inc c
+          dec ixl
+          jr nz,.sublp
+          jp binary_common ; will pop hl
+
+_min_op
+;Unsigned min
+          push de
+          call eval_operand
+          ex (sp),hl
+
+          ld b,reg_size
+          or a          ; for first sbc
+          ex de,hl
+.cplp
+          ld a,(de):inc e
+          sbc (hl):inc l
+          djnz .cplp
+          jr c,$+3:ex de,hl ; carry: de is <= 
+          reg_size ** dec e
+          pop hl
+          ret
+
+_max_op
+;Unsigned max
+          push de
+          call eval_operand
+          ex (sp),hl
+
+          ld b,reg_size
+          or a          ; for first sbc
+          ex de,hl
+.cplp
+          ld a,(de):inc e
+          sbc (hl):inc l
+          djnz .cplp
+          jr nc,$+3:ex de,hl ; carry: de is <= 
+          reg_size ** dec e
+          pop hl
+          ret
+
+
+_add_op
+          push de
+          call eval_operand
+          ex (sp),hl
+          ld bc,tmp_binary
+          ld ixl,reg_size
+          or a          ; for first adc
+.addlp
+          ld a,(de):inc e
+          adc (hl):inc l
+          ld (bc),a:inc c
+          dec ixl
+          jr nz,.addlp
+; Enchaine (will pop hl)
+binary_common
+;------------
+;Post add/sub modifier, store flags.
+          push af
+          pop de
+;Carry flag is ok with last operation on MSB
+;For Z flag we must consider the whole value.
+          ld hl,tmp_binary + reg_size - 1
+          ld a,(hl):dec l
+          or (hl):dec l
+          or (hl)
+;TM-stable
+          ld a,&40      ; Z flags
+          jr z,$+3:xor a
+          res 6,e
+          or e
+          ld e,a
+
+          ex de,hl
+          ld (aum_af),hl
+;here de= tmp_binary
+          pop hl
+          ret
+
+conv16_to_reg_size
+;In:  DE points on 16 bits unsigned value
+;Out: DE points on same value padded with 0 to fit reg size.
+    ; HL preserved
+          push hl
+          ex de,hl      ; hl: point on 16 bits value
+          ld de,tmp_arg
+          push de
+          ldi:ldi
+          xor a
+      reg_size-3 ** [ld (de),a:inc e]
+          ld (de),a
+          pop de
+          pop hl
+          ret
+
+
+skip_operand
+;-----------  
+; Like eval_operand, but don't perform evalutaion
+;In: HL points on operand in bytecode
+;OUT: HL past operands (several if arithmetic modifier)
+          ld a,(hl)
+          inc hl
+          and MODIFIER_MASK:ld ixl,a
+          ld ixh,skip_modifiers/&0100
+          jp ix
+
+call_ext0_com
+;-----------
+;Call from aum to asm (no return arg)
+;IN: HL points on address
+   ; B = number params
+;OUT; Z/NZ set
+
+          call call_ext_com_input
+          jp eval_loop
+
+
+call_ext_com
+;-----------
+;Call from aum to asm 
+;IN: HL points on address
+   ; B = number params (can be 0)
+;OUT: Return value put back in ext0
+    ; Z/NZ setup
+;!!!! For now just 1 return arg handled.
+
+          call call_ext_com_input
+
+;Put returned BCDE in out0 register
+          push hl
+          ld hl,(frame_pnt)
+          ld a,out0*4
+          add l:call c,programming_error ; regs should be confined
+          ld l,a
+          ld (hl),e:inc l
+          ld (hl),d:inc l
+          ld (hl),c
+      IF reg32
+          inc l
+          ld (hl),b
+      END
+          pop hl
+          jp eval_loop
+
+
+
+call_ext_com_input
+;----------------
+;Call from aum to asm 
+;IN: HL points on address
+   ; B = number params (can be 0)
+;OUT: Flags lifted 
+          call get_rout
+          push de
+
+          inc b
+          dec b:jr z,.noargs
+          dec b:call nz,not_implemented
+; 1 argument: pass it via BCDE
+          call eval_operand
+          pop ix        ; was de: address routine
+          push hl
+          ex de,hl
+      IF dev_checks
+;dereferenced argument can be in bank,
+;but not before bytecode, as we don't have variables before that.
+          ld a,h
+          cp bytecode_start/&0100:call c,mess
+          cp &80:call nc,mess
+      END
+          ld e,(hl):inc l:call z,mess
+          ld d,(hl):inc l:call z,mess
+          ld c,(hl)
+      IF reg32
+          inc l:ld b,(hl)
+      END
+          jr .com
+.noargs
+          pop ix        ; was de: address routine
+          push hl
+.com
+          call jp_ix
+;Store flags
+          push af:pop hl:ld (aum_af),hl
+          pop hl
+          ret
+
+call_ext_to_words
+;----------------
+;Call from aum to asm 
+; Like call_ext_com, with convert 24bits regs to 16bits word
+; + pass IX to the beginning 
+; !!! This is an arbitrary choice, as we could modified called routine
+; !!! to accept 24bits alignement.
+; -> Simpler for now 
+
+;IN: HL points on address
+   ; B = number params
+;!!!! For now just 1 return arg handled.
+          call get_rout
+          push de
+          ld de,tmp_ext_args
+.arglp
+          push bc
+          call eval_operand_and_store
+          pop bc
+          dec de        ; discare msb
+;Note: MSB can contain garbage, as we might do 24 bits operands
+     ; pointing on 16 bits words.
+; Ed: xshift = x0 - t0   (with x0 a 16 bits field inside topleft struct)
+          djnz .arglp
+
+          pop de
+          push hl
+          ld hl,tmp_ext_args ; draw_box takes hl=struct pnt
+
+          call jp_de
+
+;Store flags
+          push af:pop hl:ld (aum_af),hl
+;For now, no result arg considered.
+
+          pop hl
+          jp eval_loop
+
+jp_de     push de
+          ret
+
+deref
+;Dereference: DE = (DE)
+          ex de,hl
+          call read_pnt_bc
+          ex de,hl
+          ld e,c
+          ld d,b
+          ret
+
+read_pnt_bc
+;in:  hl= points to extended pointer
+;out: bc= point, check proper bank connect
+
+; Since v0g, all pointers are 16 bits
+; Note: when we add 'op' (on 24 bits), 
+      ; it change the word pointer (16 bits),
+      ; but won't overflow, since we don't reach &ffff.
+          ld c,(hl):inc hl
+          ld b,(hl)
+          ld a,b
+          cp &80:call nc,mess
+; This assert might be too strong!
+          cp bytecode_start/&0100
+          ret nc
+      BRK
+; Mess.
+      BRK               ; for visu: read_pnt_bc failed
+
+fun_com
+;------
+; Call sub-routine with new local scope. 
+; IN: C: Number of args.
+
+          call get_rout
+          push de
+
+          push bc
+; Last frame? For now, programming error: too many nested calls.
+; If we make recursive functions, can become a runtime error dependent
+; on parameters.
+          ex de,hl      ; save hl
+          ld hl,(frame_pnt)
+          ld bc,aum_regs_:or a:sbc hl,bc:add hl,bc
+          call z,stack_overflow
+; Destination for parameters: inputs of next frame.
+          ld bc,FRAME_REGS_SIZE + in0
+          add hl,bc
+          ex de,hl      ; hl restored, de = dest
+
+          pop bc
+
+          push de
+.lp
+          push bc
+          call eval_operand_and_store
+      IF reg_size - 3
+ !! double check
+      ELSE
+ ; 24 bits are stored, but for now we align to 32
+          inc de
+      END
+          pop bc
+          djnz .lp
+
+          call push_hl  ; Return address for AUM
+
+; Now that paramaters have been evaluated,
+; move frame_pnt to new set of registers.
+      IF in0
+ !!! must correct to point start of registers
+      END
+          pop hl
+          ld (frame_pnt),hl
+          pop hl        ; function address
+          jp eval_loop  ; Unstack done by _ret
+
+skip_fun_com
+; IN: HL = PC
+    ; B = nb args (can be 0)
+          inc hl:inc hl ; skip routine adr
+          inc b
+          jr .entry
+.lp
+          push bc
+          call skip_operand
+          pop bc
+.entry
+          djnz .lp
+          jp eval_loop
+
+get_rout
+;In: HL: pointeur in byc
+   ;  B: nb args passed
+;Out: DE: verified function/routine address.
+    ; HL += 2
+
+          ld e,(hl):inc hl ; address function / routine
+          ld d,(hl):inc hl
+; Sanity check:
+; No routine should be in 00XX or above 4000
+;TODO: Refine checks
+          ld a,d:or a:call z,mess
+          cp &40:call nc,mess
+; Check signature:
+   ; - Argument matching (a la type system).
+   ; - It would also help detect a bogus address.
+          dec de
+          dec de
+          dec de
+          ld a,(de):cp b:call nz,mess
+          inc de
+          inc de
+          inc de
+          ret
+
+      MACRO OPCODE_ALIGN opcode
+      FILL opcode*2 - [$ AND &FF],&F7
+      ENDM
+
+      MACRO MODIFIER_ALIGN modifier
+      FILL modifier - [$ AND &FF],&F7
+      ENDM
+
+      FILL -$ AND &FF,0
+;------
+opcodes
+;------
+          OPCODE_ALIGN(ret)
+_ret
+;RET 
+          ld hl,(frame_pnt)
+          ld de,aum_regs
+          or a:sbc hl,de
+          jp nz,previous_frame
+;---- Evaluator exit -----
+          ret
+
+          OPCODE_ALIGN(ld)
+_ld
+          ld a,(hl)
+          and MODIFIER_MASK:jp z,dest_reg
+          cp ind16:jp z,dest_deref16
+      BRK
+; Error programming: modifier not handled for dest register
+
+          OPCODE_ALIGN(fun1)
+          ld b,1        ; 1 parameter
+          jp fun_com
+
+          OPCODE_ALIGN(fun2)
+          ld b,2        ; 2 parameters
+          jp fun_com
+
+          OPCODE_ALIGN(call_ext01)
+          ld b,0
+          jp call_ext_com
+
+          OPCODE_ALIGN(call_ext10)
+          ld b,1
+          jp call_ext0_com
+
+          OPCODE_ALIGN(call_ext11)
+          ld b,1
+          jp call_ext_com
+
+          OPCODE_ALIGN(jp)
+;!!! Don't use get_rout since we don't do signature check here.
+          ld e,(hl):inc hl
+          ld d,(hl):inc hl
+          ex de,hl
+          jp eval_loop
+
+          OPCODE_ALIGN(break)
+          push hl
+          ld bc,&0601:call scr_set_border
+          call km_wait_char
+          pop hl
+      BRK
+; BREAK triggered from AUM bytecode itself.
+; HL = PC = past BRK() bytecode.
+          jp eval_loop
+
+          OPCODE_ALIGN(call_ext50')
+          ld b,5
+          jp call_ext_to_words
+
+      FILL -$ AND &FF,&F7
+
+;-------
+skipcodes
+;-------
+          OPCODE_ALIGN(ret)
+;Already skipped, nothing to do
+          jp eval_loop
+
+          OPCODE_ALIGN(ld)
+          ld a,(hl)
+; destination should be a plain register
+          and MODIFIER_MASK:call nz,programming_error
+          inc hl
+          call skip_operand
+          jp eval_loop
+
+          OPCODE_ALIGN(fun1)
+          ld b,1
+          jp skip_fun_com
+
+          OPCODE_ALIGN(fun2)
+          ld b,2        ; 2 parameters
+          jp skip_fun_com
+
+          OPCODE_ALIGN(call_ext01)
+          ld b,0
+          jp skip_fun_com
+
+          OPCODE_ALIGN(call_ext10)
+          ld b,1
+          jp skip_fun_com
+
+          OPCODE_ALIGN(call_ext11)
+          ld b,1
+          jp skip_fun_com
+
+          OPCODE_ALIGN(jp)
+          2 ** inc hl
+          jp eval_loop
+
+          OPCODE_ALIGN(break)
+          jp eval_loop
+
+          OPCODE_ALIGN(call_ext50')
+          ld b,5
+          jp skip_fun_com
+
+      FILL -$ AND &FF,&F7
+
+;--------
+modifiers
+;--------
+; Common input: A = LSQ 0..&f  (reg, literal, ...)
+              ;HL = past modifier
+; Common output: DE points to computed value
+               ; HL = past operand (if any)
+          MODIFIER_ALIGN(reg)
+_reg
+; Each register is 4-bytes aligned
+          2 ** add a
+          ld de,(frame_pnt)
+          add e:call c,programming_error ; assume confined
+          ld e,a
+          ret
+
+          MODIFIER_ALIGN(lit_opcode)
+          jp _lit
+
+          MODIFIER_ALIGN(lit_opcode')
+          add &10
+          jp _lit
+
+          MODIFIER_ALIGN(lit20)
+          ld de,tmp_lit
+          push de
+          ldi
+          ldi
+          ld (de),a     ; LSQ becomes MSQ (bits 19..16)
+          pop de
+          ret
+
+          MODIFIER_ALIGN(add)
+_add
+;Add register with result of next operand
+          call _reg
+          jp _add_op
+
+          MODIFIER_ALIGN(sub)
+;Remove result of next operand from register
+          call _reg
+          jp _sub_op
+
+          MODIFIER_ALIGN(ind)
+; Like add, but then dereference.
+; Add: dest:= reg + op
+; Ind: dest:= (reg + op)
+          call _add     ; = _reg + _add_op
+          jp deref
+
+          MODIFIER_ALIGN(ind16)
+; Like ind, but unsigned convertion to 24 bits (pad with 0)
+; Ind16: dest:= (reg + op) (16 bits, converted to 24)
+          call _add     ; = _reg + _add_op
+      BRK
+ ; TODO: Right now just used for /_ld/
+          di:halt       ; marker for visu
+;          jp deref16
+
+          MODIFIER_ALIGN(ind_post)
+; Dereference then add
+; ind_post: dest:= (reg) + op
+          call _reg
+          call deref
+          jp _add_op
+
+          MODIFIER_ALIGN(min)
+;Unsigned min
+;similare to sub, but: don't store result (actually perform compare)
+;de points to less reg (second one if eq)
+          call _reg
+          jp _min_op
+
+          MODIFIER_ALIGN(max)
+;Unsigned max
+;similare to sub, but: don't store result (actually perform compare)
+;de points to bigger reg (second one if eq)
+          call _reg
+          jp _max_op
+
+          MODIFIER_ALIGN(conv16)
+      IF reg_size - 2:ELSE
+  !! replace by noop
+      END
+          call eval_operand
+          jp conv16_to_reg_size
+
+          MODIFIER_ALIGN(shift)
+          call _reg
+          push de
+          call eval_operand
+          ex (sp),hl
+;Sanity: check bits8..15 are 0
+;(don't check for 16..23, are they might contain garbage when 
+; input is 16 bits)
+          inc de:ld a,(de):or a:call nz,mess
+          dec de:ld a,(de)
+          or a
+          call m,not_implemented ; Shift to left
+;Sanity: for now shouldn't be 0, as it would mean no-op
+; (might happen in the future with dynamic parameter)
+          call z,mess
+;Copy for in-place shift (needed since several iterations)
+          ld de,tmp_binary
+          ld bc,reg_size
+          ldir
+          ld c,a
+.shflp
+          push de
+          ld b,reg_size
+          or a          ; First nc
+.lp
+          dec e:ld a,(de)
+          rra
+          ld (de),a
+          djnz .lp
+          pop de
+          dec c
+          jr nz,.shflp
+          jp binary_common ; will pop hl
+
+pad                     ; some free space here.
+      FILL -$ AND &FF,&F7
+;------------
+skip_modifiers
+;------------
+; Common input: HL past operand
+; Common output: HL past all operands (in case of binary operand)
+          MODIFIER_ALIGN(reg)
+; Nothing to do already skipped
+          ret
+
+          MODIFIER_ALIGN(lit_opcode)
+          ret
+
+          MODIFIER_ALIGN(lit_opcode')
+          ret
+
+          MODIFIER_ALIGN(lit20)
+          2 ** inc hl
+          ret
+
+          MODIFIER_ALIGN(add)
+          jp skip_operand
+
+          MODIFIER_ALIGN(sub)
+          jp skip_operand
+
+          MODIFIER_ALIGN(ind)
+          jp skip_operand
+
+          MODIFIER_ALIGN(ind_post)
+          jp skip_operand
+
+          MODIFIER_ALIGN(min)
+          jp skip_operand
+
+          MODIFIER_ALIGN(max)
+          jp skip_operand
+
+          MODIFIER_ALIGN(shift)
+          jp skip_operand
+
+      FILL -$ AND &FF,&F7
+; TODO: skip other existing modifiers
+
+push_hl
+;------
+; PUSH HL to AUM stack
+; Out: HL in aum_stack, aum_sp --
+     ; HL trashed 
+          ex de,hl
+          ld hl,(aum_sp)
+          ld bc,aum_stack:or a:sbc hl,bc:add hl,bc
+          call z,stack_overflow
+          call c,stack_overflow
+          dec l:ld (hl),d
+          dec l:ld (hl),e
+          ld (aum_sp),hl
+          ret
+
+pop_hl
+;-----
+; POP HL from AUM stack
+; Out: HL = aum_sp[0]
+          ; aum_sp ++
+          ld hl,(aum_sp)
+          ld bc,aum_stack_:or a:sbc hl,bc:add hl,bc
+          call nc,stack_overflow ; well, "empty stack" rather
+          ld e,(hl):inc l
+          ld d,(hl):inc l
+          ld (aum_sp),hl
+          ex de,hl
+
+          ld a,h:cp bytecode_start/&0100:call c,mess
+;Note: bytecode can live among hosts, so past end of this source.
+          cp &40:call nc,mess
+          ret
+
+cond_table
+;Mask for each flag (e.g Z: bit 6) and then expected value
+      BYTE 0,0          ; Note: not used as we shortcut for /always/
+      BYTE &40,&40      ; /if_z/
+      BYTE &40,0        ; /if_nz/
+      BYTE &01,&01      ; /if_c/   
+      BYTE &01,0        ; /if_nc/
+
+      IF $-1/&0100 - cond_table/&0100
+ !! Error confignement
+      END
+
+nrtfail = &BE00
+not_implemented = &BE00
+mess  = &BE00
+programming_error = &BE00
+stack_overflow = &BE00
+
+          SIGN(1,0,NO_FLAGS)
+ext_set_time
+;-----------
+; it is ok to also copy rtime_at_left (which hasn't changed)
+; Enchaine
+copy_regs_ui
+;-----------
+; updates time_cursor and time_at_left
+          ld hl,aum_regs
+          ld de,time_cursor
+          ld b,2
+;enchaine
+copy_regs
+;--------    
+; Recopy regs (skip padding due to 32bits alignment)
+; That's the inverse fonction of setup_regs'
+; in: hl = source (regs)
+    ; de = dest 
+    ;  b = nb regs
+.lp
+          push bc
+          push hl
+          ld bc,reg_size
+          ldir
+          pop hl
+          ld a,l:add 4:call z,nrtfail
+          ld l,a
+          pop bc
+          djnz .lp
+          ret
+
+setup_regs_ui
+;------------
+; Common preparation for left, right, up, down
+          ld hl,time_cursor
+          ld b,4
+          jr setup_regs
+
+setup_one_reg
+;-------------
+          ld b,1
+setup_regs
+;---------
+; Loop input registers
+; IN: hl: source
+    ;  b: nb register 
+          ld de,aum_regs + in0*4
+setup_regs'
+;---------
+.lp
+          push bc
+          push de
+          ld bc,reg_size
+          ldir
+          pop de
+          ld a,e:add 4:call z,nrtfail
+          ld e,a
+          pop bc
+          djnz .lp
+          ret
+
+; -----------------------------
+;    Sequencer ui main loop 
+; -----------------------------
+      IF 0
+ui_sequencer
+; Refresh + cursor
+          call refresh_all_tracks
+          call cursor_on
+ui_loop
+; Invariant: in0..in3 contains time_cursor etc...
+          call km_wait_key ; use km_read_key for no wait
+          cp kesc
+          ret z
+
+          push af
+          call cursor_off
+;Setup each time, as e.g. in0 is overwritten with track pnt. 
+;The invert operation (var update) is done in /ext_refresh/
+          call setup_regs_ui
+          pop af
+          ld c,a
+          ld hl,shortcuts
+          call SCAN_KEY
+          jr nc,.nokey
+
+          call jp_hl
+
+.nokey
+          call cursor_on
+          jr ui_loop
+
+
+cursor_on
+          call setup_regs_ui
+          ld hl,aum_cursor_on ; setup+call ext_cursor_locate
+          jp eval
+
+
+ui_left
+          ld hl,left
+          jp eval
+
+ui_right
+          ld hl,right
+          jp eval
+
+ui_up
+          ld hl,current_track
+          ld a,(hl)
+          or a
+          ret z         ; Exit if top already 
+          call m,mess   ; still &ff? Must have been init in some way
+          dec (hl)
+          ret
+
+ui_down
+          ld hl,current_track
+          ld a,(used_tracks)
+          ld c,(hl)
+          inc c
+          cp c:ret z    ; Exit if at bottom already
+          ld (hl),c
+          ret
+
+refresh_sequencer
+;refresh_all_tracks 
+          ld hl,dorefresh
+          jp eval
+
+shortcuts
+      BYTE kleft:WORD ui_left
+      BYTE kright:WORD ui_right
+      BYTE kup:WORD ui_up
+      BYTE kdown:WORD ui_down
+      BYTE 0
+
+      END
+
+; -----------------------------
+;    Routines in AUM bytecode
+; -----------------------------
+bytecode_start
+      IF 0
+track_draw'
+;----------
+;Like track_draw, but in2 = width
+          LD3(t_end,t_lft + add,in2)
+          JP(track_draw)
+
+          SIGN(2,2,NO_FLAGS)
+track_draw
+;---------
+; Draw one box per clip.
+; 1 pix = 64 ticks, so tack 1 standard 64*6 pattern tacks 6 pixels,
+; enough to display number#
+
+track = in0
+t_lft = in1             ; time at left
+t_end = in2             ; time at right
+topleft = in3           ; points to (x0, y0) corner
+top   = in3             ; Reuse register
+; note: x0 might be >0 when we redraw just part of the stuff
+xlft  = r0
+clip  = r1
+t_cur = r2
+t_nxt = r3
+          LD2(t_cur,t_lft) ; t0
+          LD3(xlft,topleft + ind,lit + 0) ; x0
+          LD3(top,topleft + ind,lit + 2) ; top
+.while
+          LD3(out2,t_cur + sub,t_end) ; out2: void
+          RET_NC()
+          FUN2(track_get_event_at,track,t_cur)
+          JP_Z(.past_clip)
+;assert t < t of next clip                              
+;As for now, we don't accept clip with duration 0
+;It helps detecting mistakes and breaking out infinite loop
+          LD3(void,t_cur + sub,t1)
+          BRK_NC()
+
+          LD3(clip,out0 + ind,lit + idsz + evt0_link)
+
+;Clipping at t_end 
+          LD3(t_nxt,t1 + min,t_end)
+;Convert time to x
+          FUN2(time_to_x,t_nxt,t_lft)
+xrgt  = out0            ; 
+      BYTE call_ext50':WORD draw_box
+      BYTE clip + ind,lit + fc_color ; color
+      BYTE xlft
+      BYTE top
+      BYTE xrgt
+      BYTE top + add,lit + TRACK_BOX_HEIGHT
+
+          LD2(xlft,xrgt)
+          LD2(t_cur,t_nxt)
+          JP(.while)
+
+.past_clip
+; - No more event: clear with color 0 
+;Convert time to x
+          FUN2(time_to_x,t_end,t_lft)
+
+      BYTE call_ext50':WORD draw_box
+      BYTE lit + 0      ; color
+      BYTE xlft
+      BYTE top
+      BYTE xrgt
+      BYTE top + add,lit + TRACK_BOX_HEIGHT
+          RET0()
+
+          SIGN(2,1,NO_FLAGS)
+time_to_x
+;--------
+;Given time and offset, return X position
+time  = in0
+rtime_at_left = in1
+          LD3(out0,time + sub,rtime_at_left)
+          BRK()         ; To be recovered!
+;          LD3(out0,xrgt + shift,lit + 6)
+          RET0()
+
+          SIGN(4,1,NO_FLAGS) ; 4 params for goto_pos
+left
+;---
+time  = in0
+;in1 ... in3 as for goto_pos
+; ret if t = 0
+          LD3(void,time + sub,lit + 0)
+          RET_Z()
+          FUN1(collect_pred_succ_at,time)
+; Retry from t-1 if:
+; - same pos: we were already at a beginning of a clip, for each track
+; - pos 0: we were past end, so routine didn't collect anything
+          LD3(void,out0 + sub,time)
+          LD3_NZ(void,out0 + sub,lit + 0)
+          FUN1_Z'(collect_pred_succ_at,time + sub,lit + 1)
+          LD2(in0,out0)
+;enchaine
+go_left
+; Refresh if new cursor position out of screen
+time  = in0             ; new time pos
+rtime_at_left = in1
+time_width = in2        ; window width (constant)
+time_overlap = in3      ; how much to repeat when "scrolling" (constant)
+tmp   = r0
+void  = r1
+          LD3(tmp,time + sub,rtime_at_left)
+          JP_NC(norefresh)
+; Refresh so that cursor is at right of screen (minus overlap)
+          LD3(tmp,time_width + sub,time_overlap)
+; Enchaine
+dorefresh
+;time_at_left = max(0, time - cursor target)
+          LD3(rtime_at_left,time + sub,tmp)
+          LD2_C(rtime_at_left,lit + 0)
+      IF todo
+; use CALL_EXT00 when introduced, as (2) regs are copied implicitly
+      END
+          CALL_EXT11(ext_refresh,rtime_at_left)
+          RET0()
+
+norefresh
+;We still have to copy back new time pos
+;(it cannot be done in /ui_loop), as ext_refresh overwrites in0)
+      IF todo
+; use CALL_EXT00 when introduced, as (2) regs are copied implicitly
+      END
+          CALL_EXT11(ext_set_time,time)
+          RET0()
+
+
+          SIGN(4,1,NO_FLAGS) ; 4 params for goto_pos
+right
+;----
+time  = in0
+          FUN1(collect_pred_succ_at,time)
+; ret if pos = +inf
+          LD3(void,out1 + sub,lit -1)
+          RET_Z()
+          LD2(time,out1)
+;Enchaine
+goto_right
+;-------  
+; Refresh if new cursor position out of threshold window 
+; Same input as goto_left
+          LD3(tmp,time + sub,rtime_at_left)
+          BRK_C()       ; going right, shouldn't be < left pos
+          LD3(void,tmp + sub,time_width)
+          JP_C(norefresh)
+; Refresh so that cursor is at left (plus overlap)
+          LD2(tmp,time_overlap)
+          JP(dorefresh)
+
+aum_cursor_on
+;--------
+          FUN2(time_to_x,time,rtime_at_left)
+;Reuse opcode, but actually no return value
+          CALL_EXT11(ext_cursor_locate,out0)
+          RET0()
+      END
+
+      IF 0
+          SIGN(1,2,FLAG_Z)
+collect_pred_succ_at
+;-------------------
+; Given t, return out0: max of starting point for all clips (can be t)
+                ; out1: min of end point (can be infinite) 
+;t     = in0
+track# = r0
+maxstart = r1
+minnext = r2
+
+          LD2(track#,lit + 0)
+          LD2(maxstart,lit + 0) ; init max = 0
+          LD2(minnext,lit + -1) ; init min = +inf (comparision is unsigned)
+.while
+          CALL_EXT11(ext_get_track,track#)
+          JP_Z(.retparams)
+          FUN2(track_get_event_at,out0,in0)
+          JP_Z(.next)
+
+          LD3(maxstart,maxstart + max,t0)
+          LD3(minnext,minnext + min,t1)
+.next
+          LD3(track#,track# + add,lit + 1)
+          JP(.while)
+
+.retparams
+          LD2(out0,maxstart)
+          LD2(out1,minnext)
+          RET0()
+
+      END
+
+prepend_in_aum = 0
+
+      IF prepend_in_aum
+!!! aum_prepend_event still WIP
+; For now that's harder for me to get it right in AUM!
+; Plus, AUM is handy for its handling of time in 24 bits,
+; Note so much for 16 bits pnt manipulation:
+   ; -> longer code than z80
+   ; -> use hacks (ind16)
+
+          SIGN(2,1,FLAG_Z)
+aum_prepend_event
+;----------------                            
+; Insert blank event at time t
+
+; in0: track   (pnt in tracks)  
+; in1: t 
+
+tmp   = r0
+void  = r1
+pnt0_link = r2
+          FUN2(set_event_hook_at,track,t)
+          LD3(pnt0_link,out0 + add,lit + idsz + evt0_link)
+; tmp = hook.evt0_link  (copy reg_size = 3 bytes, nevermind)
+          LD3(tmp,pnt0_link + ind,lit + 0)
+; create event
+          CALL_EXT01(ext_new_event_node)
+; hook.evt0_link = new_event
+          LD2(pnt0_link + ind16,out0)
+; new_event.link = tmp
+; !!! note: only 16bits are copied, despite generic node with 24bits
+          ; link
+      IF todo
+; ensure we use dedicate 'follow_next' (in ply that's an adhoc routine)
+; at some point, just reserve 16 bits for links (YAGNI YET) 
+      END
+          LD4(out0 + ind16,lit + 0,tmp + ind,lit + 0)
+          RET0()
+      END
+
+          SIGN(2,3,FLAG_Z)
+set_event_hook_at
+;----------------             
+; Add event_hook if not already present.
+; in0: track   (pnt in tracks)
+; in1: t: target time    
+; out0: existing or new hook
+
+; Get hook at t0 <= t 
+dur   = r0
+          FUN2(get_event_hook_at,track,t)
+;t0= start of current hook (or 0 if none)
+          LD3(dur,t + sub,t0)
+          RET_Z()       ; Nothing to do if already event here
+; We must insert hook at t > t0
+; If t >= t0 + &10000, we must insert intermediate 
+          CALL_EXT10(ext_is_24bits,dur)
+          JP_Z(.ok)
+;Recursive call.
+;Note: not worth if to make a special macro for additional operands
+          FUN2(set_event_hook_at,track,t + add):BYTE lit20:WORD &FFFF
+;retry (quadratic behaviour, nevermind)
+          JP(set_event_hook_at)
+
+.ok
+; hook.dur = t-t0
+          LD3(out0 + ind16,lit + idsz + evt0_dur,dur)
+          CALL_EXT11(ext_insert_hook_node_after,out0)
+; new_hook.dur = t1-t
+          LD4(out0 + ind16,lit + idsz + evt0_dur,t1 + sub,t)
+          RET0()
+
+          SIGN(2,3,FLAG_Z)
+get_event_hook_at
+;----------------
+; Given t, return NZ, event spanning from t0..t1 such than t0 <= t < t1
+; (or t0 <= t for last clip)
+; Note: necessarily such a clip 
+
+; in0: track   (pnt in tracks)
+; in1: t: target time    
+; out0: clip node
+; out1: t0 (start of event)  
+; out2: t1 (start of following event)  
+track = in0
+t     = in1
+tgcaclip = out0
+t0    = out1
+t1    = out2
+void  = r1
+; t0 := 0
+          LD2(t0,lit + 0)
+; clip (out0) := track.events
+          LD3(tgcaclip,track + ind,lit + tf_clips)
+          BRK_Z()       ; Programming error. At least one event
+.loop
+; t1 = t0 + cur_clip.duration
+          LD5(t1,t0 + add,conv16,tgcaclip + ind,lit + idsz + evt0_dur)
+; if t < t0, try next clip 
+          LD3(void,t + sub,t0)
+          JP_C(.next)
+; ret if t < t1
+          LD3(void,t + sub,t1)
+          RET_C()       ; NZ
+.next
+; next clip  
+; clip := clip.next() (unless last one, unchanged)
+          CALL_EXT11(ext_next_node,tgcaclip)
+          RET_Z()
+; Only update t0 if we effectively went to next clip
+          LD2(t0,t1)
+          JP(.loop)
+
+      IF 0
+          SIGN(2,2,FLAG_Z)
+track_get_phrase_at
+;------------------
+; Like track_get_event_at, but follow
+; Given t, return NZ, clip spanning from t0..t1 such than t0 <= t < t1
+; or Z if no such clip.
+
+; in0: track   (pnt in tracks)
+; in1: t: target time    
+; out0: clip node
+; out1: t1 (start of following clip)  
+track = in0
+t     = in1
+tgcaclip = out0
+t0    = out1
+t1    = out2
+void  = r1
+; t0 := 0                            
+          BRK()
+;!! todo
+          LD2(t0,lit + 0)
+; clip (out0) := track.events.head()
+!!! review that, no indirection anymore
+          CALL_EXT1'1(ext_connect_head,track + ind,lit + tf_clips)
+.loop
+; ret if end of list 
+          RET_Z()
+; t1 = t0 + cur_clip.duration
+          LD5(t1,t0 + add,conv16,tgcaclip + ind,lit + idsz + evt0_dur)
+; if t < t0, try next clip 
+          LD3(void,t + sub,t0)
+          JP_C(.next)
+; ret if t < t1
+          LD3(void,t + sub,t1)
+          RET_C()       ; NZ
+.next
+; next clip
+; t0 := t1
+          LD2(t0,t1)
+; clip := clip.next()                      
+          CALL_EXT11(ext_next_node,tgcaclip)
+          JP(.loop)
+      END
+
+Song_select_track
+;----------------
+;IN: A= track id
+          ld (current_track),a
+          ret
+
+Song_select_new_track
+;--------------------
+;IN: A = output channel (0: master unused now, 1..3: psg channel A..C)
+;Out: Track selected for track_* routines
+    ; Assert if memory full.
+; Note: we plug an empty event hook (necessarily at t=0 since
+                                    ;no duration in header)
+      ; It simplifies code (no test needed "null vs not-null")
+      ; Especially when first real event inserted at t>0:
+; We must have  header -> HOOK(dur=t, evt=null) -> HOOK(evt)
+; Without dummy first HOOK already there,
+; we would have to create 2 hooks. Ugly.
+
+      IF todo
+; !! proper assertion mecanishm
+      END
+          call connect_bk_track
+          push af
+          or a:call z,not_implemented_yet
+          ld a,(used_tracks):cp MAX_TRACKS:call nc,mess
+          inc a
+          ld (used_tracks),a
+          dec a
+          ld (current_track),a
+          call get_track_pnt
+; --- Init list: dummy hook at t=0    
+          ld a,idsz + evt0_size
+          call New_node_x
+          call hook_setup
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+; --- Output channel
+          pop af
+      IF tf_output - 2
+ !!! review this 
+      END
+          ld (hl),a
+      IF tf_struct_size - 3
+ !!! oversight
+      END
+          ret
+
+      END
+
+Set_phrase_at_t
+;--------------
+; Set phrase into current track 
+; In: A = id phrase        
+    ; hl = pnt to t
+      IF todo
+;!!! right now we use prepend_event, as we know that converter
+; will call that first.
+; Instead, we should
+ ; - check if event exist (and replace it)
+ ; - or, put it last
+      END
+          push hl
+          call Get_phrase:call z,mess
+          ex de,hl
+ ; Directly phrase itself instead of header
+      IF dev_checks
+ ; check assumption. May change with tiny chunks
+          ld a,e:cp chunk_start:call nz,fail
+      END
+          ld e,phrase_start
+          pop hl
+          ld a,evt_change_phrase AND &FF
+;enchaine
+prepend_event
+;------------
+; In:  A = type event  
+    ; de = param event      
+    ; hl = pnt to t
+          call connect_bk_track
+          push af:push de
+          call setup_track_t
+
+      IF prepend_in_aum
+          ld hl,aum_prepend_event
+          call eval
+!! cleanup. It's rotting
+      ELSE
+          ld hl,set_event_hook_at
+          call eval
+ ; here hl= hook
+          idsz + evt0_link ** inc hl
+          ld a,idsz + evt_size
+          call Insert_new_node:call nc,mess
+      END
+
+          ex de,hl
+      IF dev_checks
+          ld a,h
+          cp track_events/&0100:call c,mess
+          cp track_events_/&0100:call nc,mess
+      END
+
+; Setup node itself
+  ; We do it in z80 rather than aum for convenience
+  ; (as time of writing no modifier to read/write single bytes)
+          idsz ** inc hl ; skip link
+          pop de:pop af
+      IF evt_type
+ !! review this
+      END
+          ld (hl),a:inc hl
+      IF evt_param - 1
+ !! review this
+      END
+          ld (hl),e:inc hl
+          ld (hl),d
+          ret
+
+Set_transpose_at_t
+;-----------------
+; Set phrase into current track 
+; !!See note at Set_phrase_at_t
+; In: A = transpose (signed)        
+    ; hl = pnt to t
+      IF todo
+;!!! right now we use prepend_event, as we know that converter
+; will call that first.
+; Instead, we should check if event exist (and replace it)
+      END
+; Premultiply by 2 to match periods table.
+          add a
+          ld e,a
+          ld a,evt_set_transpose AND &FF
+          jr prepend_event
+
+      IF 0
+is_last_event
+; Return Z if terminating event 
+          cp evt_change_phrase AND &FF
+          ret
+      END
+
+setup_track_t
+;------------
+; Setup aum registers:
+  ; in0=current track
+  ; in1=t
+; In: hl = pnt to t 
+;Out: aum.in0 and in1
+          push af
+          ld de,aum_regs + in1*4
+          ld bc,reg_size
+          ldir
+          call get_current_track_pnt
+      IF reg_size-3
+ !! review that
+      END
+          ld (aum_regs + in0*4),hl
+          ld a,BK_TRACK
+          ld (aum_regs + in0*4 + 2),a
+          pop af
+          ret
+
+
+get_current_track_pnt
+;--------------------
+;out: hl: track pnt
+          ld a,(current_track)
+get_track_pnt
+;------------
+;in : a : track #
+;out: hl: track pnt*
+          cp MAX_TRACKS:call nc,mess
+      IF tf_struct_size - 3
+!!! Review that
+      END
+          ld l,a
+          add a:call c,mess
+          add l:call c,mess
+          ld l,a
+          ld h,tracks/&0100
+          ret
+
+Get_tracks
+;---------
+; Give pointer to tracks, and number of them.
+; Used for ply.song_amorce
+          ld a,(used_tracks)
+          ld hl,tracks
+          ret
+
+set_empty_list
+;in: pnt to list 
+          ld b,idsz
+.raz      ld (hl),0:inc hl:djnz .raz
+          ret
+
+mess  = &BE00
+memory_full = &BE00
+not_implemented_yet = &BE00
+
+Init_track_module
+;----------------
+
+; No need to reset tracks table.
+; Instead, we keep all active tracks contiguous
+; and maintain /used_tracks/.
+; The order matter, so when inserting a track it's easier to shift
+; the other ones, and when deleting by symettry just shift left.
+
+;enchaine
+Reset_tracks
+;-----------
+          call connect_bk_track
+
+          ld hl,zero
+          ld b,zero_
+.raz      ld (hl),0:inc hl:djnz .raz
+
+; Create one track for each channel. Good default, and
+; then we don't have to handle empty song.
+; (well, we would have since user can delete all tracks manually)
+          ld a,1
+.lp
+          push af
+ ; No need to select it per se, only the "new_track" is of interest
+          call Song_select_new_track
+          pop af
+          inc a
+          cp 4
+          jr nz,.lp
+          ret
+
+clip_struct_size = 6
+
+Song_add_map
+;-----------
+; In: 3 tracks init
+    ; hl=table song map (3x phrase id, transpose)
+    ;  b=patterns#
+
+; Note: this routine lives here,
+      ; as we don't want chung->track dependency
+
+      IF todo
+; [crunch] Don't set phrase or transpose if same! 
+      END
+
+; Start by set_phrase since at time of writing we can only prpend events
+; and 'set_phrase' must come last.
+          xor a
+          call .onechannel
+          call .onechannel
+          call .onechannel
+
+          xor a
+          call .onetranspose
+          call .onetranspose
+          call .onetranspose
+          ret
+
+.onechannel
+; IN: a= channel number (0,1,2)
+          push af:push bc:push hl
+          call .prep
+.lpc
+          push bc:push de:push hl
+          add hl,de
+          ld a,(hl)
+          push af
+          cp &28:call nc,&BE00
+          ld hl,timestamp
+          call Set_phrase_at_t
+
+; time += phrase duration (chipnsfx and madmax behavior)
+      IF todo
+; Starkos: how to do respect "phrase height"?
+; -> answer dedicated table 
+      END
+          pop af
+          call .advancetime
+          pop hl
+          ld de,6:add hl,de ; new pos in table
+          pop de
+          pop bc
+          djnz .lpc
+
+          pop hl:pop bc:pop af
+          inc a
+          ret
+
+.onetranspose
+; IN: a= channel number (0,1,2)
+          push af:push bc:push hl
+          call .prep
+.lpt
+          push bc:push de:push hl
+          add hl,de
+          ld a,(hl):push af
+          inc hl:ld a,(hl)
+          ld hl,timestamp
+          call Set_transpose_at_t
+
+; time += phrase duration (chipnsfx and madmax behavior)
+      IF todo
+; Starkos: how to do respect "phrase height"?
+; -> answer dedicated table 
+      END
+          pop af
+          call .advancetime
+          pop hl
+          ld de,6:add hl,de ; new pos in table
+          pop de
+          pop bc
+          djnz .lpt
+
+          pop hl:pop bc:pop af
+          inc a
+          ret
+
+.prep
+          ld de,0
+          ld (timestamp),de
+          ld (timestamp+1),de
+          ld e,a:sla e  ; de=a*2 (shift in table)
+          jp Song_select_track
+
+.advancetime
+;A:phrase id
+          call song_select_phrase:call z,mess
+          call phrase_get_duration
+          ld hl,timestamp
+          ld a,e:add (hl):ld (hl),a:inc hl
+          ld a,d:adc (hl):ld (hl),a:inc hl
+          ld a,c:add (hl):ld (hl),a
+          ret
+
+
+      IF 0
+!!! replaced by Set_phrase_at_t
+; 
+
+track_append_current_phrase
+;--------------------------
+;In: track and phrase selected
+;Out: like /track_append_clip/
+          call song_get_phrase_id
+          ld a,l:ld (_cliplink+2),a ; bk
+          ld l,chunk_start ; point sur phrase header
+          ld (_cliplink),hl
+          ld hl,_clip
+;Enchaine
+track_append_clip
+;----------------
+;in: HL: pnt to clip structure
+   ; - Use (current_track)
+   ; - Assume track.clips list not reseted
+       ; (since append = 'insert at current point')
+
+!!! a revoir
+          push hl
+          call get_current_track_pnt
+;ID list (pointer to head)
+          ld e,(hl):inc l
+          ld d,(hl):inc l
+          ld c,(hl):inc l
+          ld a,clip_struct_size+3
+          call list_insert
+      IF dev_checks
+          call check_hl_in_bank
+      END
+          ex de,hl
+          pop hl
+          ld bc,clip_struct_size
+          ldir
+          ret
+
+_clip
+HACK_DURATION = 64 * 6  ; Todo: use phrase duration
+          DURATION(HACK_DURATION)
+_cliplink SKIP 3
+
+      END
+
+          SIGN(1,0,NO_FLAGS)
+ext_cursor_locate
+;----------------
+; CDE= pos x. Must be < SCREEN_WIDTH
+      IF dev_checks
+          ld a,c:or a:call nz,mess
+          or d:call nz,mess
+          ld a,e:cp SCREEN_WIDTH:call nc,mess
+      END
+          push de
+          call get_cursor_y
+          call y_to_offset
+          pop de
+          ld a,&AA      ; mask pixel lft
+          srl e
+          jr nc,$+3:cpl
+          add hl,de
+          set 7,h:set 6,h ; sanity 
+          ld (cursor_screen_pos),hl
+          ld de,cursor_backup
+          ld b,CURSOR_HEIGHT
+          ld c,a
+.lp
+          ld a,(hl):ld (de),a:inc de
+          or c:ld (hl),a
+          call bc26
+          djnz .lp
+          ret
+
+
+cursor_off
+;---------
+          ld hl,(cursor_screen_pos)
+          ld a,l:or h
+          ret z
+          ld de,cursor_backup
+          ld b,CURSOR_HEIGHT
+.lp
+          ld a,(de):inc de
+          ld (hl),a
+          call bc26
+          djnz .lp
+          ld hl,0
+          ld (cursor_screen_pos),hl
+          ret
+
+
+get_cursor_y
+;-----------
+      IF TRACK_INTERLINE - 16
+  !! review that
+      END
+          ld a,(current_track)
+          4 ** add a
+          add TRACK_Y0
+          ret
+
+bc26
+;---
+;Works for &c000
+          ld a,h:add 8:ld h,a
+          ret nc
+          ld a,l:add crtc_r1 * 2:ld l,a
+          ld a,h:adc &C0:ld h,a
+          ret
+
+      IF 0
+          SIGN(1,0,NO_FLAGS)
+ext_refresh
+;----------
+;Update time_cursor and /time_at_left/ and refresh consequently
+;Note: time_at_left passed as CDE, but we it's cheaper to copy both
+     ; variables. We only used CALL_EXT11 as it was the only signature
+     ; available at that time.
+          call copy_regs_ui
+;enchaine
+refresh_all_tracks
+;----------------- 
+          ld hl,TRACK_Y0':ld (track_y0),hl
+          ld hl,tracks
+          ld a,(used_tracks)
+          or a
+          ret z
+          ld b,a
+.lp
+          push bc
+;Copy pnt
+          ld (aum_regs + in0*4),hl
+          xor a
+          ld (aum_regs + in0*4+2),a
+
+;All active tracks are keept contiguous, they should be initialised.
+          ld a,(hl):or a:call z,mess
+
+          push hl
+          ld hl,time_at_left
+          ld de,aum_regs + in1*4
+          ld b,1
+          call setup_regs'
+          ld hl,.input
+          ld b,2
+          call setup_regs'
+
+          ld hl,track_draw'
+          call eval
+
+; Go to next track Y pos
+          ld hl,(track_y0)
+          ld bc,TRACK_INTERLINE
+          add hl,bc
+          ld (track_y0),hl
+
+          pop hl
+          tf_struct_size ** inc hl
+          pop bc
+          djnz .lp
+          ret
+
+.input
+          TIME(TIME_WIDTH)
+          PNT(track_x0)
+
+track_x0 WORD 0
+track_y0 WORD 0
+      END
+
+;---------------------------------
+;  ASM routines called from AUM
+;---------------------------------
+
+
+          SIGN(1,0,FLAG_Z)
+ext_is_24bits
+;------------
+; In: CDE = value
+;Out: NZ if CDE > &ffff
+          ld a,c
+          or a
+          ret
+
+          SIGN(1,1,NO_FLAGS)
+ext_insert_hook_node_after
+;-------------------------
+;  IN: DE = pointer to link to next node, either in:
+          ; - current node
+          ; - track header
+; OUT: DE = pnt new node 
+     ; HL = pointer (was DE.in). Only used when called directly
+
+; Ensure node is allocated in proper bank
+          call connect_bk_track
+; Just reserve the right size
+      IF todo
+; when freeing those nodes, they most by collected by free_list7
+; (or should we do generic nodes knowing their own size?)
+      END
+          ex de,hl
+          ld a,idsz + evt0_size
+          call Insert_new_node
+          call nc,mess  ; TODO: handle memory full
+      IF dev_checks
+          ld a,d:or a:call z,fail
+      END
+; Enchaine
+hook_setup
+          push de
+; Init hook.
+; Note: duration shouldn't matter:
+    ; for last node there is no next event after this duration. 
+; Yet we set it up:
+   ; - ensure same code path is used when inserting a new hook
+   ; - less perturbing than garbage when debugging
+   ; - more thorough hook construction check in tracknrt
+      IF evt0_dur
+ !! review this
+      END
+          idsz ** inc de
+last_duration = &DDDD   ; "grepable" 
+          ld a,last_duration AND &FF
+          ld (de),a:inc de
+      IF last_duration/&0100 - [last_duration AND &FF]
+          ld a,last_duration/&0100
+      END
+          ld (de),a
+
+; -- Init link event to NULL. For now it's just the hook.
+      IF evt0_link - 2
+ !! review this
+      END
+          xor a
+          inc de:ld (de),a
+          inc de:ld (de),a
+          pop de
+          ret
+
+      IF 0
+!!! use Insert_new_node
+
+          SIGN(0,1,NO_FLAGS)
+ext_new_event_node
+;----------------- 
+; IN: N/A
+; OUT: If ok, DE = pnt node
+     ; HL preserved (useful when called in non-aum context)
+; Can also be call as-is
+
+; Ensure node is allocated in proper bank
+          call connect_bk_track
+; Just reserve the right size
+      IF todo
+; when freeing those nodes, they most by collected by free_list6
+; (or should we do generic nodes knowing their own size?)
+      END
+          ld a,idsz + evt_size
+          call New_node_x
+          call nc,mess  ; TODO: handle memory full via assertion
+          ret
+      END
+
+          SIGN(1,1,FLAG_Z)
+ext_next_node
+;------------  ; Same routines
+ext_connect_head
+;---------------
+; In: DE = pnt node 
+; Out: If has next: NZ, DE = pnt next node (connected)
+     ; Otherwise, Z, DE inchanged     
+; Note: generic routine in liszt, this is just to have signature
+      ; and additional checks                            
+
+          call connect_bk_track ; at least needed for head
+          ex de,hl
+          call Next_node ; hl=(hl) with checks
+; Force C to 0:
+  ; - Mark "regular pointer" (not really enforced in v0g)
+  ; - Less perturbing than random value when debugging.
+          ld c,0
+          ex de,hl
+          ret z
+      IF dev_checks
+          push af
+; Bank musn't have changed
+          call get_bk_connected
+          cp BK_TRACK:call nz,mess
+          pop af
+      END
+          ret
+
+      IF 0
+          SIGN(1,1,FLAG_Z)
+ext_get_track
+;------------
+;In: CDE = track#  (well, just E)
+          ld a,c:or d:call nz,mess
+;Out: If invalid #, Z
+    ; Otherwise, NZ, CDE = track
+;Valid if e+1 <= used_tracks 
+          ld a,(used_tracks)
+          inc e:cp e:jr c,.outofbond
+          dec e
+          ld a,e:call get_track_pnt
+          ex de,hl
+          or d          ; force NZ
+          call z,mess   ; check NZ
+          ret
+.outofbond
+          cp a          ; Z
+          ret
+      END
+
+end_of_code
+
+;---------------------
+; Buffer and Variables     
+;---------------------
+
+      MACRO ALIGN n
+; FILL rather than SKIP for easier debugging and crunching
+      FILL -$ MOD n,&F7
+      ENDM
+
+          ALIGN(&0100)
+aum_regs
+;32 regs * 4 = &80.
+      FILL MAX_FRAMES * FRAME_REGS_SIZE,0 ; fill for easier debugs
+aum_regs_
+
+          ALIGN(&0100)  ; align for easier debug
+vars
+
+zero
+used_tracks BYTE 0
+zero_ = $-zero
+
+current_track BYTE &FF
+      FILL 3,0          ; padding for dbg purpose
+timestamp SKIP 3        ; tmp variable
+
+;---- Keep this order for /goto_pos/
+time_cursor TIME(0)     ; Position in sequencer
+time_at_left TIME(0)    ; Position at left of screen
+          TIME(TIME_WIDTH) ; Constant: screen width in ticks
+          TIME(6*64)    ; Constant: overlap when "scrolling"
+
+cursor_screen_pos WORD 0
+cursor_backup SKIP CURSOR_HEIGHT ; save background
+
+;-----------------
+; AUM Variables     
+;-----------------
+          ALIGN(&10)    ; align for easier debug
+
+frame_pnt WORD          ; point 
+aum_af WORD             ; A: Unused, but makes F easier to store
+aum_sp WORD 
+aum_pc WORD             ; for debug
+aum_stack SKIP MAX_FRAMES*2 ; only AUM'S PC saved.
+aum_stack_
+      IF $/&0100 - aum_stack/&0100
+  !! error align
+      END
+
+; Since we manipulate all values by reference,
+; we must store literals.
+; The alternative would be a static array of litterals.
+  ; -> Faster but requires &80 bytes.
+tmp_lit SKIP 4
+      IF $-1 / &0100 - tmp_lit/&0100
+  !! error align
+      END
+tmp_arg = tmp_lit
+tmp_binary SKIP 4       ; We could reuse tmp_lit if thight in memory
+      IF $-1 / &0100 - tmp_binary/&0100
+  !! error align
+      END
+tmp_ext_args SKIP MAX_EXT_PARAMETERS * 2
+      IF $-1 / &0100 - tmp_ext_args/&0100
+  !! error align
+      END
+
+          ALIGN(&0100)
+tracks
+;-----                                
+; Directly struct: less indirection, less max memory (when all used)
+                 ; easier to debug.
+;TODO: move in bank
+    ;  BUT LATER, AS YAGNI YET, for now it's easier to debug here
+      SKIP MAX_TRACKS * tf_struct_size
+
+      IF tracks AND &FF
+  !! must review get_track_pnt
+  !! and ext_get_track
+      END
+      IF $-1 /&0100 - tracks/&0100
+  !! confinement issue
+      END
+
+

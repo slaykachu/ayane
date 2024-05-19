@@ -1,0 +1,35 @@
+; ---- Init all modules ------
+
+; Question: should we keep that, on only init immediate dependencies?
+          ; YAGNI!!!
+
+; 2024 
+  ; Apr  8. Do "ayane_init" part, and Init_track_module        
+      ;  3. ayane_init now lives in phrase.o
+  ; Feb 21. Use local shorcut and chunk.
+
+; This middle-man module avoid unnecessary imports.
+; They are replaced by transitive imports, which are more efficient.
+; (well for now it's not exact sadly).
+; It also avoid cyclic dependency between chunk and ply.
+
+      IMPORT "track.o"
+      IMPORT "phrase.o" ; for song_reset
+      IMPORT "chung.o"
+      IMPORT "chunk.o"
+      IMPORT "widget.o" ; for init_widget
+      IMPORT "shortcut.o"
+
+bk_ayane = &C7
+
+full_init
+; ayane_init  ; hide the label to make sure everybody is calling 
+              ; full_init
+; in:  N/A     
+          call Init_chunk_module
+          call Init_chung
+          call song_reset
+          call Init_track_module
+          call setup_keys
+          call init_widget ; compute RGB so we see the boxes
+          ret

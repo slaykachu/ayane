@@ -1,0 +1,173 @@
+; Tests compilation
+
+; 2024 May 14. Proper psg_regs and periods addresses.
+
+do_play = 0             ; 0: check  1: play tune
+
+      ORG &0100
+      ENT tests
+
+      IMPORT "memmap.i"
+      IMPORT "plyconf.i" ; just for check below
+      IF 1-ayane
+ !! Compile: in-tool routine, so ayane must be set.
+      END
+      IMPORT "memcpc.o"
+      IMPORT "chipn.o"
+      IMPORT "init.o"
+      IMPORT "testlib.o"
+      IMPORT "compile.o"
+
+; -- compiled version
+play  = compiled_player+&A8
+psg   = compiled_player+&0120
+Amorce_song = compiled_player+&01E9
+psg_regs = compiled_player+&0300
+periods = psg_regs      ; sharing same chunk
+data  = compiled_data
+
+tests
+          call full_init
+          call test_compile_minimal
+          ret
+
+test_compile_minimal
+; That's the name of the song.
+; Not really minimal!
+
+; We use conv_chipn routine since SAVE/LOAD of 
+          ld hl,minimala:call conv_chipn
+
+          call compile
+
+          call connect_bk_compile
+          call get_bk_connected
+          cp BK_IO:call nz,mess ; inconsistency
+
+; -- Test via compiled player
+;"Install player"
+          ld hl,playcomp
+          ld de,compiled_player
+          ld bc,playcomp_
+          ldir
+
+; Sanity checks
+; We manually set the address,
+; so crudely check it points to expected code
+          ld a,(compiled_instr_null):cp &E1:call nz,fail
+; Not compiling this one for minimala!!
+    ;      ld a,(compiled_instr_default):cp &E1:call nz,fail
+          ld a,(compiled_instr_chip_down_vib):cp &21:call nz,fail
+          ld a,(compiled_instr_chip_down_arp_noise):cp &21:call nz,fail
+          ld a,(psg):cp &01:call nz,fail
+          ld a,(Amorce_song):cp &11:call nz,fail
+; -- 
+          ld a,3:ld hl,compiled_data:call Amorce_song
+
+; Check period table properly init.
+          ld a,(periods+&30):cp &77:call nz,fail
+
+      IF 1-do_play
+          ld a,BK_REF:call connect_a
+          call chip_init
+      END
+frame_lp
+      IF do_play
+          call &BD19
+          call &BB1B
+          ret c
+
+          halt
+          halt
+          halt
+      END
+
+frame_cpt ld hl,-1
+          inc hl
+          ld (frame_cpt+1),hl
+; Here HL should match play.tick
+          ld bc,&1480
+          or a:sbc hl,bc:jr z,end_of_tune
+
+          di
+          exx:push bc
+          call connect_bk_compile
+          ld bc,&7F10:out (c),c:ld c,&5F:out (c),c
+          ld hl,(frame_cpt+1)
+          ld bc,&0520
+       ;   or a:sbc hl,bc:call z,&BE00
+          call play
+      IF do_play
+          ld bc,&7F10:out (c),c:ld c,&40:out (c),c
+          call psg
+      END
+          ld bc,&7F10:out (c),c:ld c,&44:out (c),c
+          pop bc:exx
+
+      IF 1-do_play
+; Check against chipnsfx player
+          ld a,BK_REF:call connect_a
+          call chip_play+&50
+          ld hl,psg_ref
+          call psg_read
+
+;notes: period diff 3 at 683
+                  ; 4 at a83
+
+          call connect_bk_compile
+          ld hl,psg_regs
+          ld de,psg_ref
+          call compare_regs
+      END
+
+          jr frame_lp
+
+end_of_tune
+; success!
+          ret
+
+
+chip_play = &5000
+chip_sng = &7000
+song_a = chip_sng+&00
+song_b = chip_sng+&0175
+song_c = chip_sng+&01F8
+song_list
+      WORD song_a-song_list-2
+      WORD song_b-song_list-4
+      WORD song_c-song_list-6
+
+chip_init
+          di
+          ld bc,&7F00+BK_REF:out (c),c
+
+          call chip_play
+
+          ld hl,song_list
+          call chip_play+&15
+          ret
+
+      FILL -$ AND &FF,0
+psg_ref SKIP 14
+
+      SKIP &4000-$      ; poor man's limit
+
+BK_REF = &C6
+
+      BANK BK_REF
+      ORG chip_play
+      LOAD "chipnsfx.out"
+
+      ORG chip_sng
+      LOAD "minimala.bin"
+
+      BANK BK_IO
+      ORG &4000
+minimala
+      LOAD "ums:music/tj/minimala.chq" ; binary version
+;Compile uses BK_IO, so put player in same bank
+playcomp
+      LOAD "plycomp.bin"
+playcomp_ = $ - playcomp
+      SKIP &8000 - $    ; limit
+

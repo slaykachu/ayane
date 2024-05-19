@@ -1,0 +1,202 @@
+
+; Dispatch key -> routine.
+
+; 27 March 2023
+
+; v0: Extracted from ed.o vBRAL for reuse in vectoria
+
+ksetkey = &BB27         ; aka km_set_translate
+kgetkey = &BB2A         ; aka km_get_translate
+ksetshift = &BB2D
+ksetctrl = &BB33
+
+km_wait_char = &BB06
+km_wait_key = &BB18
+km_read_key = &BB1B
+km_disarm_break = &BB48
+
+setup_keys
+;---------
+; Ensure keys (with or w/o control / shift) are mapped to the codes
+; we use for dispatch, for each CPC keyboard en/es/fr
+
+          call km_disarm_break
+
+; --- function keys --------------
+
+          ld hl,keyfunc
+          ld de,"0"*&0100 + 150
+setfun_lp
+          ld a,(hl):inc hl
+          push hl
+          ld c,a
+          ld b,d
+          call ksetkey  ; fx == x so fun keys work to enter digits.
+; Sanity: we remap all ctrl-fx, even if firmware default.
+; We don't know if they have been remapped. 
+; Also, we don't want to use km_itialize (bb00) since it would
+; remove existing expansions.
+          ld a,c
+          ld b,e
+          call ksetctrl
+          pop hl
+          inc d:inc e
+          bit 5,e       ; stop at 160 = &a0
+          jr z,setfun_lp
+
+; --- key -> code ---------
+
+      IF 0:ld hl,keymap:END ; already placed
+          ld ix,ksetkey
+          call setkeymap
+
+; --- shift+key -> code  ---------
+
+      IF 0:ld hl,keymap_shift:END ; already placed
+          ld ix,ksetshift
+          call setkeymap
+
+; --- ctrl+key -> code  ---------
+
+      IF 0:ld hl,keymap_ctrl:END ; already placed
+          ld ix,ksetctrl
+          call setkeymap
+
+; --- ctrl for FR/EN/ES ---------
+
+          ld a,29
+          call kgetkey
+          ld hl,keymap_ctrl_fr:cp "m":jr z,setkeymap
+          ld hl,keymap_ctrl_en:cp ":":jr z,setkeymap
+          ld hl,keymap_ctrl_es
+setkeymap
+setkey_lp
+          ld a,(hl):inc hl:or a:ret z
+          ld b,(hl):inc hl
+          push hl
+          call jp_ix
+          pop hl
+          jr setkey_lp
+
+jp_ix     jp ix
+
+; Regroup all key codes.
+; k: normal key
+; kc: with ctrl
+; ks: with shift
+
+; --- Default ones ---
+kc1   = &1B             ;defaut on AZERTY, set to QWERTY as well
+kc2   = &7E
+kc6   = &A6             ;defaut on AZERTY, set to QWERTY as zell
+kcenter = 140
+kcf0  = 150
+; CTRL-function key handled in /GERE_KEY/
+kcf1  = 151
+kcf2  = 152
+;kcf3  = 153
+;kcf4  = 154
+;kcf5  = 155
+;kcf6  = 156
+;kcf7  = 157
+;kcf8  = 158
+kcf9  = 159
+
+kreturn = &0D
+kdel  = &7F
+kcopy = &E0
+
+kup   = &F0
+kdown = &F1
+kleft = &F2             ; For ayane's UI 
+kright = &F3            ; Handled in fieldEditor, but also for completion
+
+kcup  = &F8
+kcdown = &F9
+kcleft = &FA
+kcright = &FB
+
+kesc  = &FC
+
+; --- Custom ---
+
+kcreturn = 141
+kcdel = 142
+kcspc = 143
+kc4   = 144
+kcpercent = 145
+kcstar = 146
+kcm   = 147             ; remap from 13 (RETURN)
+kcp   = 148             ; remap from 10 (CLR)
+ktab  = 149             ; remap from  9 (CTRL-I)
+; 150-159 used for kcf0 kcf9
+ksdel = 160             ; Mapping done here. Plugged in field.o
+ksclr = 161
+kc5   = 162
+
+keyfunc
+      BYTE 15,13,14,5,20
+      BYTE 12,4,10,11,3
+
+keymap
+      BYTE 68,ktab      ; remapped
+      BYTE 7,".",6,&0D
+      BYTE 0
+
+keymap_shift
+      BYTE 79,ksdel
+      BYTE 16,ksclr
+      BYTE 0
+
+keymap_ctrl
+      BYTE 64,kc1
+      BYTE 65,kc2
+      BYTE 56,kc4
+      BYTE 49,kc5
+      BYTE 48,kc6
+      BYTE 27,kcp
+      BYTE 47,kcspc
+      BYTE 18,kcreturn
+      BYTE 79,kcdel
+      BYTE 28,kcpercent ; ";" on en/es
+      BYTE 0
+
+keymap_ctrl_fr
+      BYTE 29,kcm
+      BYTE 17,kcstar
+      BYTE 0
+
+keymap_ctrl_en
+      BYTE 38,kcm
+      BYTE 29,kcstar
+      BYTE 0
+
+keymap_ctrl_es
+      BYTE 38,kcm
+      BYTE 17,kcstar
+      BYTE 0
+
+
+SCAN_KEY
+;In:  C=code cherch{, HL=table
+;Out: Si trouv{, Carry, HL=routine
+;     sinon, NC
+
+.lp
+          ld a,(hl)
+          inc hl
+          cp c
+          jr z,.found
+          inc hl        ; Saute la routine associ{e
+          inc hl
+          or a          ; Fin de table
+          jr nz,.lp
+          ret           ; Combinaison non g{r{e
+.found
+          ld e,(hl)
+          inc hl
+          ld d,(hl)
+          ex de,hl
+          scf
+          ret
+
