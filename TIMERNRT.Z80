@@ -1,0 +1,561 @@
+do_profile = 1
+; <<<<< Automated test for timer >>>>>
+
+      IMPORT "const.i"
+      IMPORT "memmap.i"
+      IMPORT "plyconf.i"
+
+      ORG code_start
+      ENT tests
+
+      IMPORT "testlib.o"
+      IMPORT "timer.o"
+      IF do_profile
+      IMPORT ":orgrel/prof.o"
+      END
+
+; /\/\/\/ 2025 \/\/\/\/\/
+   ; ----- v0.0ab ------
+  ; Mar
+    ; 1 Use :orgrel/prof.o (rather than ums:) 
+
+; /\/\/\/ 2024 \/\/\/\/\/
+   ; ----- v0.0z ------
+  ; Nov
+    ; 1 Fix test_program_next_event
+   ; ----- v0.0w ------ 
+  ; Oct
+    ; 3 All tests ok
+   ; ----- Ayane v0.0.0v ------
+  ; Sep 
+    ;29 First version
+
+; ------------------------------------------------
+      MACRO VOL n
+; Encode as expected -> xxxx0
+      BYTE n*2
+      ENDM
+
+      MACRO EX_AF'
+      IF sfx
+          ex af,af
+      END
+      ENDM
+
+      MACRO SUB_TM n
+; Copy-paste from timer.o                  
+      IF sfx
+; Update counter TM (+2 for 'sub n' itself)
+      IF n AND 1
+; Resolution: 2-nops. Must compensate
+          ld a,a:sub [n+3]/2
+      ELSE
+          sub [n+2]/2
+      END
+      END
+      ENDM
+
+      MACRO SUB_TM'' tm
+      IF sfx
+          ex af,af
+          SUB_TM(tm+2)  ; +2 for "ex af,af"
+          ex af,af
+      END
+      ENDM
+
+      MACRO RET_ROUT tm
+      IF sfx
+          SUB_TM(tm+4)
+          ret p
+          exx:jp hl
+      ELSE
+          ret
+      END
+      ENDM
+
+      MACRO RET_ROUT' tm
+          EX_AF'()
+          RET_ROUT(tm+1)
+      ENDM
+
+
+fail  = &BE00
+nrtfail = &BE00
+
+tests
+      2 ** [
+          call test_null
+          call test_start_sync_buzzer
+          call test_start_sync_buzzer_fx_end
+          call test_change_sync_buzzer
+          call test_stop_sync_buzzer
+          call test_program_next_event
+          call test_double_event
+          ]
+          ret
+
+test_null
+;--------
+; Mainly test testing framework itself: proper profiling?
+; (boilerplate + almost empty routine fx_end)
+          call nrt_init
+
+          ld hl,stack_null
+          call run_fx
+          ret
+
+test_start_sync_buzzer
+;---------------------
+          call nrt_init
+
+          ld hl,stack0
+          call run_fx
+          ld hl,ref0
+          ld de,events
+          ld bc,ref0_
+          call compare_sized
+
+; sanity
+          call check_no_cut
+          call check_no_change
+; just for TM checks
+          call run_set_timer
+          ret
+
+ref0
+      BYTE &10          ; link to next free slot
+      BYTE [clock0 AND &FF] / 2 ; cpt
+      BYTE anchor+hdr_cpt AND &FF ; link to next event
+      BYTE clock0 / &0100
+      BYTE clock0 AND &FF
+; installed routine
+          ex af,af
+          ld a,env_type0
+period0 = &D4D4         ; c# + arp 1
+          ld de,period0 + shift0
+          jp set_reg13_insert_and_program
+ref0_ = $ - ref0
+
+test_start_sync_buzzer_fx_end
+;----------------------------   
+; Same but jump to fx_end
+          call nrt_init
+
+          ld hl,stack0_fx_end
+          call run_fx
+          ld hl,ref0
+          ld de,events
+          ld bc,ref0_
+          call compare_sized
+
+          call check_no_cut
+          call check_no_change
+          ret
+
+
+test_double_event
+;----------------   
+; Two events at time 0
+          call nrt_init
+
+          ld hl,stack_double
+          call run_fx
+          ld hl,refd0
+          ld de,events
+          ld bc,ref0_
+          call compare_sized
+          ld hl,refd1
+          ld de,events + EVENT_MAX_SIZE
+          ld bc,ref0_
+          call compare_sized
+
+          call check_no_cut
+          call check_no_change
+          ret
+
+.refd0
+      BYTE &10          ; link to next free slot (once this one freed)
+      BYTE [clock0 AND &FF] / 2 ; cpt
+      BYTE EVENT_MAX_SIZE+hdr_cpt ; link to next event
+      BYTE clock0 / &0100
+      BYTE clock0 AND &FF
+          ex af,af
+          ld a,env_type0
+          ld de,period0 + shift0
+          jp set_reg13_insert_and_program
+.refd1
+      BYTE &20          ; link to next free slot
+      BYTE [clock0 AND &FF] / 2 ; cpt
+      BYTE anchor+hdr_cpt AND &FF ; link to next event
+      BYTE clock0 / &0100
+      BYTE clock0 AND &FF
+          ex af,af
+          ld a,env_type1
+          ld de,period0 + shift1 ; !!! period0: same base note
+          jp set_reg13_insert_and_program
+
+
+
+stack0
+      WORD sync_buzzer_register
+env_type0 = 7
+      BYTE env_type0
+      BYTE 1*2
+shift0 = 13
+      WORD shift0
+      WORD nrt_ret
+
+stack0_fx_end
+      WORD sync_buzzer_register
+      BYTE env_type0
+      BYTE 1*2
+      WORD shift0
+stack_null
+      WORD fx_end
+
+stack1
+      WORD sync_buzzer_register
+env_type1 = 8
+      BYTE env_type1
+      BYTE 1*2
+shift1 = -12
+      WORD shift1
+      WORD fx_end
+
+stack_double
+; Program two events -> pseudo conflit at time 0
+      WORD sync_buzzer_register
+      BYTE env_type0
+      BYTE 1*2
+      WORD shift0
+      WORD sync_buzzer_register
+      BYTE env_type1
+      BYTE 1*2
+      WORD shift1
+      WORD fx_end
+
+
+test_change_sync_buzzer
+;----------------------
+; At second iteration, mustn't install routine but bufferize changes.
+
+          call nrt_init
+
+          ld hl,stack0:call run_fx
+;Sanity checks
+          call check_no_cut
+          ld hl,ref0
+          ld de,events
+          ld bc,ref0_
+          call compare_sized
+          ld a,(fx_by_track)
+          cp fx_type_sync_buzzer:call nz,fail
+
+;New iter
+          ld hl,stack1:call run_fx
+          ld a,(fx_by_track)
+          cp fx_type_sync_buzzer:call nz,fail
+          call check_no_cut
+          ld hl,refchange
+          ld de,change_list
+          ld bc,4
+          call compare_sized
+;Event mustn't have been touched
+          ld hl,ref0
+          ld de,events
+          ld bc,ref0_
+          call compare_sized
+
+          call run_set_timer
+
+;Now event updated
+          ld hl,ref1
+          ld de,events
+          ld bc,ref1_
+          call compare_sized
+          ret
+
+refchange
+      BYTE fx_type_sync_buzzer
+      BYTE 0+hdr_code+skip_prelude
+      BYTE env_type1
+      WORD &D4D4+shift1
+
+ref1
+      BYTE &10          ; link to next free slot
+      BYTE [clock0 AND &FF] / 2 ; cpt
+      BYTE anchor+hdr_cpt AND &FF ; link to next event
+      BYTE clock0 / &0100
+      BYTE clock0 AND &FF
+; installed routine
+          ex af,af
+          ld a,env_type1
+          ld de,&D4D4 + shift1 ; c# + arp 1 
+          jp set_reg13_insert_and_program
+ref1_ = $ - ref1
+      IF ref1_-1 AND &F0
+ !!! routine too big
+      END
+
+
+test_stop_sync_buzzer
+;--------------------
+          call nrt_init
+
+          ld hl,stack0_fx_end:call run_fx
+          ld hl,stack_null:call run_fx
+
+          ld a,(cut_list):cp 0+hdr_code:call nz,fail
+          ld a,(cut_list+1):or a:call nz,fail
+;Event mustn't have been touched
+          ld hl,ref0
+          ld de,events
+          ld bc,ref0_
+          call compare_sized
+
+          call run_set_timer
+
+;Event replaced by no-op
+          ld hl,ref_null
+          ld de,events
+          ld bc,ref_null_
+          call compare_sized
+
+;Slot should have been released
+          ld a,(free_slot)
+          cp hdr_link_free:call nz,fail
+          ld a,(events+hdr_link_free)
+          cp hdr_link_free+EVENT_MAX_SIZE:call nz,fail
+          ret
+
+ref_null
+      BYTE &10          ; link to next free slot
+      BYTE [clock0 AND &FF] / 2 ; cpt
+      BYTE anchor+hdr_cpt AND &FF ; link to next event
+      BYTE clock0 / &0100
+      BYTE clock0 AND &FF
+; routine replace by no-op
+          SUB_TM(4)
+          exx
+          ret
+ref_null_ = $ - ref_null
+
+
+test_program_next_event
+;----------------------
+
+          call nrt_init
+
+          ld hl,stack0
+          call run_fx
+;sanity check
+          ld hl,ref0
+          ld de,events
+          ld bc,ref0_
+          call compare_sized
+
+period1 = &BABE
+          ld de,period1
+; Current event cpt will be removed, so must be null for comparison
+          xor a:ld (events+hdr_cpt),a
+          ld hl,events+hdr_code
+          call run_set_psg_insert_and_program
+nxtevt = clock0 + period1
+          ld hl,header_events + nxtevt/&0100
+          ld a,(hl)
+          cp 0+hdr_cpt:call nz,fail ; Should points to event 0
+          ld hl,events
+          ld de,ref0'
+          ld bc,ref0'_
+          call compare_sized
+          ret
+
+ref0'
+; Same event with updated clock
+      BYTE &10          ; link to next free slot
+      BYTE [nxtevt AND &FF] / 2 ; cpt
+      BYTE anchor+hdr_cpt AND &FF ; link to next event
+      BYTE nxtevt / &0100
+      BYTE nxtevt AND &FF
+; installed routine
+          ex af,af
+          ld a,env_type0
+          ld de,&D4D4 + shift0 ; c# + arp 1 
+          jp set_reg13_insert_and_program
+ref0'_ = $ - ref0'
+
+
+;------------------------------------------
+; -------- Helpers ---------------------
+;------------------------------------------
+
+check_no_cut
+;cut_list must be empty
+          ld hl,(cut_pnt)
+          ld de,cut_list:or a:sbc hl,de:add hl,de:call nz,fail
+          ld a,(hl)
+          or a:call nz,fail
+          ret
+
+check_no_change
+;cut_list must be empty
+          ld hl,(change_pnt)
+          ld de,change_list:or a:sbc hl,de:add hl,de:call nz,fail
+          ld a,(hl)
+          or a:call nz,fail
+          ret
+
+
+
+run_fx
+;------
+;In: HL = SP stack
+          ld (nrt_sp+1),hl
+          call nrt_fx_setup
+          call preplay_init
+          ex af,af
+          ld a,TM_MAX
+          ld ixl,26     ; note (c#0)
+      IF do_profile
+          ld iy,nrt_fx
+          call nrt_profile_check
+      ELSE
+          call nrt_fx
+      END
+          call postplay
+          ret
+
+nrt_fx
+;-----
+; Setup sp (cannot do it before for profile)
+          SUB_TM(12)
+          ld (ret_sp),sp
+nrt_sp    ld sp,0
+          ret           ; sync_buzzer_register or fx_end
+; Might also jump back to fx_end (eg /stack1/)
+nrt_ret
+          SUB_TM(9)
+          ld sp,(ret_sp)
+          ret
+
+
+run_set_timer
+;------------     
+; reset psg regs for accurate check
+          ld hl,psg_regs
+          ld b,14
+untouched = &3F         ; avoid setting bit 6 for r7
+.raz      ld (hl),untouched:inc l:djnz .raz
+
+          call nrt_fx_setup
+;     ld a,MAX_TM:BRK:call set_timer
+;/set_timer/ expect TM in A'
+          ld a,MAX_TM
+      IF do_profile
+          ld iy,set_timer
+          call nrt_profile_check
+      ELSE
+          call set_timer
+      END
+          ret
+
+
+run_set_psg_insert_and_program
+;-----------------------------     
+; reset psg regs for accurate check
+; In: HL= event  (hl')
+    ; DE= period  
+          di
+          ld bc,&F40E   ; reg14
+          xor a         ; sanity (don't set bit 6 on reg 7)
+      IF do_profile
+; Cannot use nrt_profile_check (D' is used)
+  ; - 'set_psg_insert_and_program' is meant to be in EXX already.
+  ; - not interrupted 
+  ; - A' is reloaded (TM until next event)
+      ; -> if it is anchor event, shouldn't change anything
+  ; - Time taken by routine isn't counted inside routine,
+      ; but in event (cf set_reg13_insert_and_program_tm)
+          ex af,af
+tm_trigger = -1         ; simulate 
+          ld a,tm_trigger
+          ex af,af
+          call profile_jp:WORD set_psg_insert_and_program
+          neg
+          add a
+;-3: final 'ret' not counted by profile
+;-base_fx_tm: counted inconditionaly, but not executed here
+          add tm_trigger*2-3 - base_fx_tm
+          cp l:call nz,fail
+          ld a,h:or a:call nz,fail ; shouldn't take more than 256 nops
+      ELSE
+          call set_psg_insert_and_program
+      END
+;Some common checks
+          exx
+          ld a,h:cp events/&0100:call nz,fail
+          exx
+          ret
+
+trap
+      BRK
+; shouldn't have been called
+          exx
+          ret
+
+nrt_fx_setup
+; Reset D to 0 (Needed for profiling)
+; Set HL' (since we will jump into it)
+; Preserve all registers
+          di
+          exx
+; Instr routine might > 256 nops.
+          ld d,0        ; MSB cpt
+          ld hl,timer_nop
+          exx
+          ret
+
+      IF do_profile
+nrt_profile_check
+;In: iy = routine to profile
+   ; (we want to pass IX and HL, depending on the routine)
+MAX_TM = &80
+          ld (.jp),iy
+          exx
+          ld d,0
+          exx
+          ex af,af
+          ld a,MAX_TM
+          call profile_jp
+.jp   WORD 0
+          neg
+          add a
+          add MAX_TM*2-3 ;-3: final 'ret' not counted by profile
+          cp l:call nz,fail
+          ld a,h:exx:cp d:call nz,fail:exx
+          ret
+      END
+
+
+nrt_init
+;-------      
+; Kill firmware: needed to setup exx' without interference
+               ; since profile temporarily EI.
+          ld hl,&C9FB:ld (&38),hl
+          call init_timer
+; Clock doesn't have to be init explicitly, 
+; since remaining in sync with anchor_pnt.
+; Only setup for ref checking.
+clock0 = &0146
+          ld hl,clock0:ld (current_clock),hl
+; Similarly, not striclty needed, but ease testing.
+          ld hl,events:ld (free_slot),hl
+;needed since profile temporarily set EI,
+;and we need to setup HL' before that.
+          ld hl,&C9FB:ld (&38),hl
+; Must be done early because even preplay_init might trigger JP HL'
+          exx
+          ld hl,timer_nop
+          exx
+          ret
+

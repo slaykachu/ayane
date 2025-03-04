@@ -1,0 +1,3321 @@
+nrt   = 1               ; 1 to run automated tests. 0: run editor
+todo  = 1
+todo_wrong_chr = 0
+; <<<<<<<<<< Tests (manual and automated) for GEDEiHEN >>>>>>
+
+; TODO???? refresh_focus in gedeihen_enter?
+
+; -- 2025 --       
+ ; --- Ayane 0ab ----
+; Mar:
+  ; 3: test_focus_multiline_struct_refresh: client must 'enter'
+          ; to restore focus/cursor. TODO? re-add it in routine? 
+; -- 2024 --       
+ ; --- Ayane 0aa ----
+; Dec:                               
+  ;25: Add test_set_optional_disabled
+     ; Add test_remove_line (on hold)
+     ; Add test_clipping
+     ; test_double_del: adapt now than w_deci_99_signed auto-validate
+  ;21; Add test_focus_auto_validate
+  ;20; Add test_refresh_all
+     ; !!! On hold: covereded by test_focus_multiline_struct_refresh
+ ; --- Ayane 0z ----
+; Nov:
+  ;12: Add test_flow_multiline
+     ; Add test_flow_struct_refresh0
+  ; 1: Add test_focus_multiline_struct_refresh
+ ; --- Ayane 0y ----
+; Oct          
+  ;21: [cancelled] test_focus_multiline_keyhandler_struct_refresh0
+key_under_multiline = 0
+  ;17: Add test_set_hexa_digit'
+  ;13: nrt_place_cursor: switch flag to mimic firmware
+  ;11: Add test_focus_multiline_optional_readwrite_dynamic
+  ;10: Add test_focus_multiline_optional_readwrite
+ ; --- Ayane 0x ----
+  ; 4: Add test_focus_optional_deactivated'
+ ; --- Ayane 0v ----
+; Sep 25: Add test_disp_toggle_non_zero
+ ; --- Ayane 0m ----
+; Jun                    
+  ;  2: Add test_struct_deci      
+  ; 30: Re-enable tests, but disable cursor testing and some tests
+do_test_cursor = 0
+do_test_handler = 0
+do_test_all_fields_refreshed = 0
+do_test_table = 0
+do_test_disp_table = 0  ; Table code to review anyway
+do_test_frame = 0
+  ; 29: Extracted from ay/gedf
+
+      ORG &0100
+      ENT tests
+
+nrt_width = 16
+nrt_height = 16
+nrt_screen_ = nrt_width * nrt_height
+iotest_cursor_seq = &2C00
+iotest_screen = &3000   ; Represent the screen (1 byte / pos)
+iotest_screen' = &3800  ; Sprites in screen (1 word / pos)
+keys_buffer = &3C00
+
+      IMPORT "ged.o"
+
+      MACRO ASSERT_NOT p
+      IF p
+ !! Error !!
+      END
+      ENDM
+
+      MACRO GET_STATE field
+; All registers preserved but F
+          push bc
+          ld c,field
+          call _get_state
+          pop bc
+      ENDM
+
+      IF nrt
+tests
+; If the tests pass, they simply return.
+; Otherwise, a BRK is trigerred.
+
+          ld a,&F7:ld (0),a
+          call test_focus_multiline_struct_refresh
+          call test_set_optional_disabled
+          call test_focus_auto_validate
+
+; --- test helpers ---
+          call test_field_editing
+
+; --- test flow (setup) ---
+          call test_nested_enter
+          call test_flow_optional_readwrite
+          call test_flow_struct_refresh_optional_readwrite0
+          call test_flow_struct_refresh_optional_readwrite1
+          call test_flow_struct_refresh0
+          call test_flow_multiline
+
+; --- test disp ---
+          call test_disp_text
+          call test_text_dyn
+          call test_disp_deci_custom
+          call test_disp_deci_word_custom
+          call test_disp_hexa
+      IF do_test_disp_table
+          call test_disp_table
+          call test_disp_table_of_sprite
+          call test_disp_table_custom
+      END
+          call test_disp_struct
+          call test_disp_struct_deci
+          call test_struct_display
+      IF do_test_disp_table
+          call test_mem_dump
+      END
+      IF do_test_frame
+          call test_disp_frame
+      END
+          call test_disp_key_handler
+          call test_disp_key_handler'
+          call test_disp_struct_key_handler'
+          call test_disp_toggle
+          call test_disp_toggle_non_zero
+          call test_disp_struct_toggle_hexa_digit
+          call test_disp_multiline
+          call test_disp_multiline_short
+          call test_disp_optional_disabled
+          call test_disp_optional_enabled
+          call test_disp_optional_readwrite_disabled
+          call test_disp_optional_readwrite_disabled'
+          call test_disp_struct_optional_disabled
+          call test_disp_struct_optional_enabled
+          call test_disp_struct_refresh
+          call test_disp_struct_refresh_handler_optional_deactivated
+          call test_disp_struct_vol_env
+          call test_disp_dependent_disabled
+          call test_disp_dependent_enabled
+    ; not meaningful
+    ;      call test_disp_refresh_optional_deactivated
+    ;      call test_disp_refresh_optional_readwrite_disabled
+
+; --- test disp and focus ---
+          call test_disp_focus_optional_readwrite_disabled
+          call test_disp_focus_optional_readwrite_enabled
+
+; --- test run ---
+          call test_null_sequence
+          call test_set_deci
+          call test_set_deci2
+          call test_set_deci2_negate_pre
+ ;         call test_set_deci2_negate_post    Yagni
+ ;         call test_set_deci2_negate_double
+          call test_set_deci_unhandled
+          call test_clipping
+          call test_double_del
+      IF todo_wrong_chr
+          call test_set_deci2_wrong_chr
+      END
+          call test_set_hexa
+          call test_set_hexa_digit
+          call test_set_hexa_digit'
+          call test_set_hexa_digit_wrong_chr
+          call test_struct_setup
+          call test_struct_deci
+          call test_cursor_deci
+          call test_toggle
+          call test_toggle_non_zero
+          call test_set_struct_toggle
+          call test_struct_toggle_left
+          call test_struct_toggle_left'
+          call test_struct_past_last
+          call test_struct_past_last'
+          call test_struct_toggle_hexa_digit_deci99
+          call test_set_first_field
+          call test_set_10_minus
+          call test_set_optional_enabled0
+          call test_set_optional_enabled
+          call test_set_optional_disabled
+          call test_set_struct_optional_disabled
+          call test_set_struct_optional_enabled0
+          call test_set_struct_optional_enabled
+          call test_set_dependent
+          call test_set_past_optional_disabled
+          call test_set_past_optional_enabled
+          call test_set_struct_optional_enabled'
+          call test_set_key_handler
+          call test_set_key_handler'
+          call test_set_key_handler''
+          call test_set_optional_readwrite0
+          call test_set_optional_readwrite
+          call test_set_handler_optional_readwrite
+          call test_set_past_refresh0
+          call test_set_past_refresh
+          call test_set_past_refresh'
+          call test_set_struct_refresh
+          call test_set_struct_refresh'
+          call test_set_struct_refresh_handler_optional_readwrite
+          call test_set_struct_vol_env00
+          call test_set_struct_vol_env0
+          call test_set_struct_vol_env
+          call test_set_struct_optional_readwrite
+          call test_set_struct_optional_readwrite'
+          call test_set_multiline_refresh0
+          call test_set_multiline_refresh
+          call test_set_multiline_refresh'
+          call test_set_multiline_refresh''
+          call test_set_multiline_optional
+          call test_random_keys
+; Not handled !!
+;          call test_set_nested_struct
+      IF do_test_table
+ !! review table code (do as struct)
+          call test_set_first_cell
+          call test_set_second_cell
+      END
+      IF do_test_handler
+          call test_run_handler
+      END
+      IF do_test_all_fields_refreshed
+          call test_all_fields_refreshed
+      END
+
+;--- test focus
+          call test_focus_hexa_digit
+          call test_focus_refresh
+          call test_focus_optional_readwrite
+          call test_focus_optional_deactivated
+          call test_focus_optional_deactivated'
+          call test_focus_past_optional_readwrite
+          call test_autofocus_hexa_digit
+          call test_focus_auto_validate
+          call test_focus_multiline_refresh
+          call test_focus_multiline_optional_readwrite
+          call test_focus_multiline_optional_readwrite_dynamic
+          call test_focus_multiline_struct_optional_readwrite
+          call test_focus_multiline_struct_refresh
+      IF key_under_multiline
+!!! not supported: y pos not propagated (set in w_refresh only)
+          call test_focus_multiline_keyhandler_struct_refresh0
+          call test_focus_multiline_keyhandler_struct_refresh
+      END
+;          call test_remove_line
+          ret
+
+      MACRO TEST_DISP desc,expected
+          ld hl,desc
+          ld de,expected
+          call _test_disp
+      ENDM
+
+      MACRO TEST_DISP_FOCUS desc,expected
+          ld hl,desc
+          ld de,expected
+          call _test_disp_focus
+      ENDM
+
+      MACRO TEST_DISP_SPRITE desc,expected
+          ld hl,desc
+          ld de,expected
+          call _test_disp_sprite
+      ENDM
+
+      MACRO FOCUS chr
+      BYTE chr OR &80
+      ENDM
+
+      MACRO END_OF_STRUCT
+      BYTE " "          ; hack: for now additional separator
+      BYTE 0            ; check no overrun
+      ENDM
+
+      MACRO RESET_NRT_MOCK
+  ; For now, simply put cursor in top left of mocked screen
+          call _reset_nrt_mock
+      ENDM
+
+fail  = &BE00
+
+test_field_editing
+; Check API: unhandled code must be returned in A
+          ld a,k_dwn
+          call field_editing
+          call c,fail   ; expect unhandled
+          cp k_dwn:call nz,fail
+
+; -- Bonus: k_rgt at end of field must be unhandled as well
+          xor a:ld (wv_edit_buffer),a
+          ld a,-1:ld (fe_pos),a ; end pos
+          ld a,k_rgt
+          call field_editing
+          call c,fail
+          cp k_rgt:call nz,fail
+          ret
+
+test_flow_struct_refresh_optional_readwrite0
+;-------------------------------------------
+; Check that gedeihen_enter give focus to first field
+          ld a,13:ld (tmp_vol),a
+          ld hl,ui_struct_vol_env
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+          call nrt_enter
+;1st cell of struct is /vol_ui0/, whose child is w_hexa_digit_custom
+;pick field to discriminate widget type
+          ld hl,(state_stack + 2*state_ + on_enter)
+          ld de,get_hexa_digit_custom
+          or a:sbc hl,de:add hl,de:call nz,fail
+;must be topleft
+          ld hl,(state_stack + 2*state_ + widget_pos)
+          ld de,&0101
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+test_flow_struct_refresh_optional_readwrite1
+;-------------------------------------------
+; Check state_stack 
+          ld a,13:ld (tmp_vol),a
+          ld hl,struct_refresh_handler_optional_readwrite_ui
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+;All stack must be created at setup time
+          call .check_state
+          call nrt_enter
+;Sanity check
+          call .check_state
+          ret
+
+.check_state
+          ld hl,(state_stack + state_ + on_enter)
+          ld de,refresh_on_enter
+          or a:sbc hl,de:add hl,de:call nz,fail
+
+          ld hl,(state_stack + 2*state_ + on_enter)
+          ld de,key_handler_on_enter
+          or a:sbc hl,de:add hl,de:call nz,fail
+
+          ld hl,(state_stack + 3*state_ + on_enter)
+          ld de,optional_readwrite_on_enter
+          or a:sbc hl,de:add hl,de:call nz,fail
+
+          ld hl,(state_stack + 4*state_ + on_enter)
+          ld de,get_hexa_digit_custom
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+test_flow_struct_refresh0
+; Check state_stack 
+          xor a:ld (dummy_byte),a ; toggle off
+          ld a,29:ld (nrt_deci_byte),a
+
+          ld hl,ui_struct_refresh0
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+;All stack must be created at setup time
+          call .check_state
+          call nrt_enter
+;Sanity check
+          call .check_state
+          ret
+
+.check_state
+          ld hl,(state_stack + on_enter)
+          ld de,struct_on_enter
+          or a:sbc hl,de:add hl,de:call nz,fail
+
+          ld hl,(state_stack + state_ + on_enter)
+          ld de,refresh_on_enter
+          or a:sbc hl,de:add hl,de:call nz,fail
+
+          ld hl,(state_stack + 2*state_ + display)
+          ld de,disp_toggle_custom
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+
+struct_refresh_handler_optional_readwrite_ui
+      BYTE w_struct
+      WORD env_type_ui
+      WORD 0
+
+
+test_flow_multiline
+; Check state_stack 
+          ld hl,ui_multiline
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+;All stack must be created at setup time
+          call .check_state
+          call nrt_enter
+;Sanity check
+          call .check_state
+          ret
+
+.check_state
+          ld hl,(state_stack + on_enter)
+          ld de,multiline_on_enter
+          or a:sbc hl,de:add hl,de:call nz,fail
+
+          ld hl,(state_stack + state_ + on_enter)
+          ld de,struct_on_enter
+          or a:sbc hl,de:add hl,de:call nz,fail
+
+          ld hl,(state_stack + 2*state_ + display)
+          ld de,disp_toggle_custom
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+
+
+test_flow_optional_readwrite
+;---------------------------
+; Check state stack 
+          ld a,&13:ld (tmp_vol),a ; disabled
+          ld hl,vol_ui'
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK() ; for cursor position
+          call setup_widget
+          call nrt_enter
+          ld hl,(state_stack + state_ + on_enter)
+          ld de,get_hexa_digit_custom
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ld hl,(state_stack + state_ + handler_table)
+          ld de,h_hexa_digit
+          or a:sbc hl,de:add hl,de:call nz,fail
+;embedded ui must be at same pos
+          ld hl,(state_stack + state_ + widget_pos)
+          ld de,&0101
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+
+test_disp_text
+;-------------
+; Check that text is displayed.
+          TEST_DISP(nrt_text_ui,nrt_text_expected)
+          ret
+
+nrt_text_ui BYTE w_text,"OvL!",0
+nrt_text_expected BYTE "OvL!",nrtend
+
+      IF do_test_frame
+!!! for now we verify id wigdet > w_frame,
+; as we don't use frame
+test_disp_frame
+;--------------
+; Check subwidget is displayed and that hook is invoked.
+          xor a:ld (test_frame_flag),a
+          TEST_DISP(nrt_frame_ui,nrt_text_expected)
+          ld a,(test_frame_flag):cp "!":call nz,&BE00
+          ret
+      END
+
+nrt_frame_ui
+; Same hooks except for write_char and paint_sprite
+      BYTE w_frame
+      WORD nrt_set_cursor
+      WORD nrt_get_cursor
+      WORD nrt_place_cursor
+      WORD nrt_frame_write_char
+      WORD break
+      WORD nrt_text_ui
+
+test_frame_flag BYTE 0
+
+nrt_frame_write_char
+; mini mock
+          ld (test_frame_flag),a
+          jp nrt_write_char
+
+test_disp_key_handler
+; Check subwidget is displayed and that handler is NOT invoked. 
+          TEST_DISP(nrt_handler_ui,nrt_text_dyn_ref)
+          ret
+
+nrt_handler_ui BYTE w_key_handler
+      WORD nrt_text_dyn_ui,nrt_handler_break
+
+nrt_handler_break
+          ld bc,&CAFE
+      BRK
+
+test_disp_key_handler'
+;---------------------
+          ld a,&0B:ld (tmp_env_type),a
+          TEST_DISP(env_type_handler_ui,.ref)
+          ret
+
+.ref  BYTE "B",nrtend
+
+test_disp_struct_key_handler'
+;----------------------------
+          ld a,&0C:ld (tmp_env_type),a
+          TEST_DISP(ui_struct_key_handler,.ref)
+          ret
+
+.ref  BYTE "C",nrtend
+
+
+test_disp_toggle
+;---------------
+          ld a,&FF:ld (dummy_byte),a
+          TEST_DISP(ui_toggle,.ref)
+          ret
+
+.ref  BYTE toggle_char,nrtend
+
+test_disp_toggle_non_zero
+;------------------------
+; Check it works with any non-zero value
+          ld a,&20:ld (dummy_byte),a
+          TEST_DISP(ui_toggle,.ref)
+          ret
+
+.ref  BYTE toggle_char,nrtend
+
+
+test_disp_struct_toggle_hexa_digit
+;---------------------------------
+          ld a,&FF:ld (dummy_byte),a
+          ld a,&0E:ld (nrt_hexa_digit),a
+          TEST_DISP(.ui,.ref)
+          ret
+
+.ui
+      BYTE w_struct
+      WORD ui_toggle
+      WORD ui_hexa_digit
+      WORD 0
+
+.ref  BYTE toggle_char," E",nrtend
+
+
+test_disp_multiline
+;------------------  
+          ld a,63:ld (nrt_lines#),a
+          ld a,&FF:ld (dummy_byte),a
+          ld a,19:ld (nrt_deci_byte),a
+          TEST_DISP(ui_multiline,.ref)
+          ret
+
+.ref  BYTE toggle_char," +19"
+      BYTE 32           ; separator to be removed
+      BYTE 0            ; no overflow
+      BYTE nrt_nl
+;same on second line
+      BYTE toggle_char," +19"
+      BYTE 32
+      BYTE 0
+      BYTE nrt_nl
+      BYTE 0            ; empty 3rd line
+      BYTE nrtend
+
+test_disp_multiline_short
+;------------------------
+; Less line than view: must erase supernumerous lines
+          ld a,1:ld (nrt_lines#),a
+          ld a,&FF:ld (dummy_byte),a
+          ld a,-1:ld (nrt_deci_byte),a
+          TEST_DISP(ui_multiline,.ref)
+          ret
+
+.ref  BYTE toggle_char,"  -1"
+      BYTE nrt_nl
+;same on second line
+      BYTE "------"     ; must be explicitly erased, for (page) scroll
+      BYTE nrtend
+
+
+test_disp_optional_disabled
+;--------------------------
+          xor a:ld (nrt_enabled),a
+          TEST_DISP(ui_optional,.ref)
+          ret
+
+.ref  FILL 3,disabled_char
+      BYTE 0            ; separator to be removed
+      BYTE nrtend
+
+ui_optional
+      BYTE w_optional
+      WORD ui_deci_99
+      WORD get_enabled
+
+test_disp_optional_enabled
+;-------------------------
+          ld a,&FF:ld (nrt_enabled),a
+          ld a,23:ld (nrt_deci_byte),a
+          TEST_DISP(ui_optional,.ref)
+          ret
+
+.ref  BYTE "+23"
+      BYTE 0            ; separator to be removed
+      BYTE nrtend
+
+
+test_disp_optional_readwrite_disabled
+;------------------------------------
+          ld a,4:ld (tmp_vol),a ; no hard env -> disabled
+          TEST_DISP(env_type_optional_readwrite_ui,.ref)
+          ret
+
+.ref  BYTE "-",nrtend
+
+test_disp_optional_readwrite_disabled'
+;-------------------------------------
+          ld a,&14:ld (tmp_vol),a ; hard env -> vol disabled
+          TEST_DISP(vol_ui',.ref)
+          ret
+
+.ref  BYTE "-",nrtend
+
+
+test_disp_struct_optional_disabled
+;---------------------------------
+          xor a:ld (nrt_enabled),a
+          ld a,&0C:ld (nrt_hexa_digit),a
+          TEST_DISP(ui_struct_optional',.ref)
+          ret
+
+.ref  FILL 3,disabled_char
+      BYTE " C",nrtend
+
+
+test_disp_struct_optional_enabled
+;--------------------------------
+          ld a,&FF:ld (dummy_byte),a
+          ld a,&FF:ld (nrt_enabled),a
+          ld a,24:ld (nrt_deci_byte),a
+          ld a,&AA:ld (nrt_hexa_byte),a
+
+          TEST_DISP(ui_struct_optional,.ref)
+          ret
+
+.ref  BYTE toggle_char," +24 AA"
+      BYTE nrtend
+
+      IF 0
+!! no: refresh as top ui makes no sense
+test_disp_refresh_optional_readwrite_disabled
+;--------------------------------------------
+          ld a,5:ld (tmp_vol),a ; no hard env -> disabled
+          TEST_DISP(env_type_ui,.ref)
+          ret
+.ref  BYTE "-",nrtend
+      END
+
+
+
+test_disp_dependent_disabled
+;---------------------------
+          xor a:ld (dummy_byte),a ; toggle off
+          TEST_DISP(ui_struct_refresh,.ref)
+          ret
+
+.ref  BYTE toggle_char_off," "
+      FILL 3,disabled_char
+      BYTE nrtend
+
+ui_struct_refresh0
+; This combination doesn't make much sense, as ui_deci_99 is
+; already "refreshed". But also to test proper key handling.
+      BYTE w_struct
+      WORD ui_refresh_toggle
+      WORD ui_deci_99
+      WORD 0
+
+ui_struct_refresh
+      BYTE w_struct
+      WORD ui_refresh_toggle
+      WORD ui_dependent
+      WORD 0
+
+ui_struct_refresh'
+      BYTE w_struct
+      WORD ui_refresh_hexa_digit
+      WORD ui_deci_word
+      WORD 0
+
+ui_struct_refresh_deci
+      BYTE w_struct
+      WORD ui_refresh_deci
+      WORD 0
+
+ui_refresh_toggle
+      BYTE w_refresh
+      WORD ui_toggle
+
+ui_refresh_hexa_digit
+      BYTE w_refresh
+      WORD ui_hexa_digit
+
+ui_refresh_deci
+      BYTE w_refresh
+      WORD ui_deci_99
+
+ui_dependent
+      BYTE w_optional
+      WORD ui_deci_99
+      WORD get_dummy_byte ; byte set by ui_toggle
+
+ui_struct_vol_env
+      BYTE w_struct
+      WORD vol_ui'
+      WORD env_type_ui
+      WORD 0
+
+ui_struct_key_handler
+      BYTE w_struct
+      WORD env_type_handler_ui
+      WORD 0
+
+ui_nested_struct
+      BYTE w_struct
+      WORD ui_byte_word
+      WORD nrt_struct_ui2
+      WORD 0
+
+ui_struct_hexa_digit
+      BYTE w_struct
+      WORD ui_hexa_digit
+      WORD ui_toggle
+      WORD 0
+
+ui_struct_refresh_vol
+      BYTE w_struct
+      WORD vol_ui0
+      WORD ui_toggle
+      WORD 0
+
+ui_struct_env_toggle
+      BYTE w_struct
+      WORD env_type_optional_readwrite_ui
+      WORD ui_toggle
+      WORD 0
+
+vol_ui
+      BYTE w_refresh
+      WORD vol_ui'
+vol_ui'
+      BYTE w_optional_readwrite
+      WORD vol_ui''
+      WORD is_volume
+vol_ui0
+; non-optional version for simpler test
+      BYTE w_refresh
+      WORD vol_ui''
+vol_ui''
+      BYTE w_hexa_digit_custom
+      WORD _set_vol
+      WORD _get_vol
+
+env_type_ui
+      BYTE w_refresh
+      WORD env_type_handler_optional_readwrite_ui
+env_type_handler_optional_readwrite_ui
+;note: handler must be above w_optional_readwrite
+      BYTE w_key_handler
+      WORD env_type_optional_readwrite_ui
+      WORD env_type_handler
+env_type_optional_readwrite_ui
+; Optional (e.g. deactivated if volume not hard,
+           ;but must be able to change it)
+      BYTE w_optional_readwrite
+      WORD env_type_hexa_ui
+      WORD is_env_hard
+
+env_type_handler_ui
+      BYTE w_key_handler
+      WORD env_type_hexa_ui
+      WORD env_type_handler
+env_type_hexa_ui
+      BYTE w_hexa_digit_custom
+      WORD _set_env_type
+      WORD _get_env_type
+
+env_type_handler
+      BYTE k_clr:WORD _deactivate_env
+      BYTE " ":WORD _toggle_env
+      BYTE 0:WORD 0
+
+
+
+test_disp_dependent_enabled
+;--------------------------
+
+          ld a,&FF:ld (dummy_byte),a ; toggle on
+          ld a,25:ld (nrt_deci_byte),a
+
+          TEST_DISP(ui_struct_refresh,.ref)
+          ret
+
+.ref  BYTE toggle_char," +25"
+      BYTE nrtend
+
+test_disp_struct_refresh
+;----------------------- 
+; Check changing w_refresh's child does the proper thing
+
+          ld a,10:ld (nrt_hexa_digit),a
+          ld hl,33:ld (nrt_word),hl
+
+          TEST_DISP(ui_struct_refresh',.ref)
+          ret
+
+.ref  BYTE "A   +33",nrtend
+
+
+test_disp_struct_refresh_handler_optional_deactivated
+;----------------------------------------------------
+          ld a,10:ld (tmp_vol),a ; no hard env -> deactivated
+          TEST_DISP(struct_refresh_handler_optional_readwrite_ui,.ref)
+          ret
+
+.ref  BYTE "-",nrtend
+
+
+test_disp_struct_vol_env
+;-----------------------
+          ld a,10:ld (tmp_vol),a ; no hard env -> deactivated
+          TEST_DISP(ui_struct_vol_env,.ref)
+;1st field of struct is /vol_ui0/, whose child is w_hexa_digit_custom
+;Like test_flow_struct_refresh_optional_readwrite0, 
+;but after disp
+          ld hl,ui_struct_vol_env
+          call nrt_enter
+          ld hl,(state_stack + 2*state_ + on_enter)
+          ld de,get_hexa_digit_custom
+          or a:sbc hl,de:add hl,de:call nz,fail
+;must be topleft
+          ld hl,(state_stack + 2*state_ + widget_pos)
+          ld de,&0101
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+.ref  BYTE "A -"
+      BYTE " "          ; separator (to be removed)
+      BYTE 0            ; check no garbage
+      BYTE nrtend
+
+test_disp_focus_optional_readwrite_disabled
+;------------------------------------------
+; Inverse video must be there for w_optional_readwrite,
+; as it is a modifiable widget.
+
+          ld a,&1A:ld (tmp_vol),a ; hard env -> vol 
+          TEST_DISP_FOCUS(vol_ui',.ref)
+          ret
+
+.ref      FOCUS("-")
+      BYTE nrtend
+
+test_disp_focus_optional_readwrite_enabled
+;-----------------------------------------
+          ld a,&04:ld (tmp_vol),a ; vol 
+          TEST_DISP_FOCUS(vol_ui',.ref)
+          ret
+
+.ref      FOCUS("4")
+      BYTE nrtend
+
+
+test_nested_enter
+;----------------
+; each 'on_enter' of nested field is called
+; Rely on the fact that:
+   ; - deci's on_enter setups buffer
+   ; - generic /enter/ setups /field_editing/
+          ld a,7:ld (nrt_deci_byte),a
+          ld hl,deci_ui99_in_struct
+          push hl
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+          pop hl
+          call nrt_enter
+; Pos must have been set to -1,
+; otherwise field_editor would pad with space,
+; preventing to add other digits
+          ld a,(fe_pos):cp &FF:call nz,fail
+; Buffer setup without padding
+          ld a,(wv_edit_buffer+0):cp "+":call nz,fail
+          ld a,(wv_edit_buffer+1):cp "7":call nz,fail
+          ld a,(wv_edit_buffer+2):or a:call nz,fail
+          ret
+
+
+test_text_dyn
+          TEST_DISP(nrt_text_dyn_ui,nrt_text_dyn_ref)
+          ret
+
+nrt_text_dyn_ui BYTE w_text_dyn:WORD nrt_text_getter
+nrt_text_dyn_ref BYTE "dynamyte",nrtend
+
+nrt_text_dynamyte BYTE "dynamyte",0
+
+
+test_disp_deci_custom
+          TEST_DISP(ui_deci,.ref)
+          ret
+
+.ref  BYTE " 3",nrtend  ; padded
+
+
+test_disp_deci_word_custom
+          ld hl,1234:ld (nrt_word),hl
+          TEST_DISP(ui_deci_word,.ref)
+          ret
+
+.ref  BYTE "+1234",nrtend
+
+ui_deci BYTE w_deci_99_custom:WORD noop,nrt_deci_3
+ui_deci_word BYTE w_deci_9999_signed:WORD set_word,get_word
+
+test_disp_hexa
+; Check that hexa  is displayed.
+          ld a,&AB:ld (nrt_hexa_byte),a
+          TEST_DISP(ui_hexa,nrt_hexa_ref)
+          ret
+
+ui_hexa BYTE w_hexa_byte:WORD nrt_hexa_byte
+nrt_hexa_ref BYTE "AB",nrtend
+
+ui_hexa_digit
+      BYTE w_hexa_digit_custom
+      WORD set_hexa_digit
+      WORD get_hexa_digit
+
+ui_multiline
+      BYTE w_multiline
+      WORD ui_toggle_deci
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      BYTE 2            ; Height
+      BYTE 0            ; scroll offset (margin)
+
+ui_multiline_refresh
+      BYTE w_multiline
+      WORD ui_struct_refresh_line
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      BYTE 2
+      BYTE 0
+
+ui_multiline_refresh_deci
+      BYTE w_multiline
+      WORD ui_struct_refresh_deci_line
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      BYTE 2
+      BYTE 0
+
+ui_multiline_optional_readwrite
+      BYTE w_multiline
+      WORD vol_ui'
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      BYTE 2
+      BYTE 0
+
+ui_multiline_optional_readwrite_dynamic
+; optional depending on line
+      BYTE w_multiline
+      WORD ui_dynamic_optional
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      BYTE 2
+      BYTE 0
+
+ui_multiline_struct_optional_readwrite
+      BYTE w_multiline
+      WORD ui_struct_optional_readwrite
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      BYTE 2
+      BYTE 0
+
+ui_multiline_struct_refresh
+      BYTE w_multiline
+      WORD ui_struct_refresh'
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      BYTE 2
+      BYTE 0
+
+
+      IF key_under_multiline
+!!! not supported: y pos not propagated
+ui_multiline_key_struct_refresh
+      BYTE w_multiline
+      WORD ui_key_struct_refresh'
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      BYTE 2
+      BYTE 0
+      END
+
+ui_key_struct_refresh'
+      BYTE w_key_handler
+      WORD ui_struct_refresh'
+      WORD null_handler
+
+null_handler BYTE 0:WORD 0
+
+ui_dynamic_optional
+      BYTE w_optional_readwrite
+      WORD vol_ui''
+      WORD is_activated_dynamic
+
+ui_struct_refresh_line
+      BYTE w_struct
+      WORD ui_refresh_line
+      WORD 0
+
+ui_struct_refresh_deci_line
+      BYTE w_struct
+      WORD ui_refresh_line
+      WORD ui_deci99_line
+      WORD 0
+
+ui_refresh_line
+      BYTE w_refresh
+      WORD ui_line
+
+ui_line
+      BYTE w_hexa_digit_custom
+      WORD set_hexa_digit_line
+      WORD get_hexa_digit_line
+
+ui_deci99_line
+      BYTE w_deci_99_signed
+      WORD set_deci99_line
+      WORD get_deci99_line
+
+nrt_get_lines#
+nrt_lines# = $+1
+          ld a,63
+          ret
+
+nrt_select_line
+          ld (selected_line),a
+          scf           ; Carry means ok
+          ret
+
+mockspace = 0           ; Make it easier to analyze iotest_screen
+nrtend = &FF
+nrt_nl = 13
+nrt_width = &10
+
+test_disp_table
+; Check initial table is displayed.
+          TEST_DISP(nrt_table_ui,nrt_table_expected)
+          ret
+
+nrt_table_ui
+; NB! Pas de labels.
+; La structure est implicite. I.e.
+;   +0: set_row
+;   +2: set_col
+;  ...
+
+nrt_max_row = 1
+nrt_max_col = 3
+
+      BYTE w_table
+; Parameter generaux
+      WORD set_dummy_row ; set_row for this particular table
+      WORD set_dummy_col
+
+      WORD ui_null      ; row_header
+      WORD ui_hexa      ; col_header 
+      WORD ui_hexa      ; cell
+
+      WORD nrt_max_row  ; max_row. 0..255 included   !! unused now
+      WORD nrt_max_col  ; max_col. 0..10  included   !! unused now
+;---
+
+      MACRO NRT_PAD ref
+      FILL nrt_width - [$-ref],mockspace
+      ENDM
+
+      MACRO NRT_PAD2 ref
+;for words (sprites pnt)
+      FILL 2*nrt_width - [$-ref],mockspace
+      ENDM
+
+nrt_table_expected
+      BYTE "OvL!ABABABAB":NRT_PAD(nrt_table_expected)
+      BYTE "OvL!ABABABAB",nrtend
+
+
+test_disp_table_custom
+; Check table with custom cell is displayed.   
+          call nrt_cls  ; needed otherwise trailing AB not cleaned 
+          TEST_DISP(nrt_table_ui2,nrt_table_expected2)
+          ret
+
+nrt_table_ui2
+      BYTE w_table
+; Parameter generaux
+      WORD set_dummy_row ; set_row for this particular table
+      WORD set_dummy_col
+
+      WORD ui_null      ; row_header
+      WORD ui_null      ; col_header
+      WORD nrt_cell_ui  ; cell
+
+      WORD nrt_max_row  ; max_row. 0..255 included   !! unused now
+      WORD nrt_max_col  ; max_col. 0..10  included   !! unused now
+
+nrt_cell_ui
+      BYTE w_hexa_custom
+      WORD noop
+      WORD get_dummy_cell
+
+nrt_table_expected2
+      BYTE "00010203":NRT_PAD(nrt_table_expected2)
+      BYTE "10111213",nrtend
+
+test_mem_dump
+; Check table with custom cell reading memory.   
+          call nrt_cls  ; needed otherwise trailing AB not cleaned 
+          call nrt_mdump_reset
+          TEST_DISP(nrt_mdump_ui,nrt_mdump_expected)
+          ret
+
+nrt_mdump_reset
+; Needed to make tests independents.
+          ld hl,nrt_mdumpmem0
+          ld de,nrt_mdumpmem
+          ld bc,nrt_mdumpmem_
+          ldir
+          ret
+
+
+nrt_mdump_ui
+      BYTE w_table
+; Parameter generaux
+      WORD set_dummy_row
+      WORD set_dummy_col
+
+      WORD ui_null      ; row_header
+      WORD ui_null      ; col_header 
+      WORD nrt_mdumpcell_ui ; cell
+
+      WORD nrt_max_row  ; max_row. 0..255 included   !! unused now
+      WORD nrt_max_col  ; max_col. 0..10  included   !! unused now
+
+nrt_mdumpcell_ui
+      BYTE w_hexa_custom
+      WORD set_mdumpdummy_cell
+      WORD get_mdumpdummy_cell
+
+nrt_mdumpmem0
+      BYTE &CA,&FE,&DE,&AD
+      BYTE &12,&34,&56,&78
+nrt_mdumpmem_ = $ - nrt_mdumpmem0
+
+nrt_mdumpmem            ; Modified
+      BYTE &CA,&FE,&DE,&AD
+      BYTE &12,&34,&56,&78
+
+nrt_mdump_expected
+      BYTE "CAFEDEAD":NRT_PAD(nrt_mdump_expected)
+      BYTE "12345678",nrtend
+
+test_disp_table_of_sprite
+; Check sprite are properly put.
+          TEST_DISP_SPRITE(nrt_table_ui3,nrt_table_expected3)
+          ret
+
+nrt_table_ui3
+
+      BYTE w_table
+; Parameter generaux
+      WORD set_dummy_row ; set_row for this particular table
+      WORD set_dummy_col
+
+      WORD ui_null      ; row_header
+      WORD ui_null      ; col_header 
+      WORD nrt_sprite_ui ; cell
+
+      WORD nrt_max_row  ; max_row. 0..255 included   !! unused now
+      WORD nrt_max_col  ; max_col. 0..10  included   !! unused now
+
+nrt_sprite_ui
+      BYTE w_sprite_custom
+      WORD ntr_get_sprite
+
+nrt_table_expected3
+      4 ** [3 ** WORD ##+&0201]:NRT_PAD2(nrt_table_expected3)
+      4 ** [3 ** WORD ##+&0211]:BYTE nrtend
+
+; -----------------------------
+test_disp_struct
+          ld a,&AB:ld (nrt_hexa_byte),a
+          TEST_DISP(.nrt_struct_ui,nrt_struct_expected)
+          ret
+
+.nrt_struct_ui
+
+      BYTE w_struct
+      WORD nrt_field0_ui
+      WORD ui_hexa
+      WORD nrt_text_ui
+      WORD 0
+
+nrt_field0_ui BYTE w_text,"Piou",0
+
+nrt_struct_expected
+      BYTE "Piou AB OvL!",nrtend
+
+
+test_disp_struct_deci
+;--------------------
+          ld a,42:ld (nrt_deci_byte),a
+          TEST_DISP(deci_ui99_in_struct,.expected)
+          ret
+
+.expected
+      BYTE "+42 +42",nrtend
+
+
+; -----------------------------
+
+      MACRO TEST_RUN desc,test_data
+;test_data consist in:
+  ; input (mocked) key sequence
+  ; expected text displayed
+  ; expected cursor sequence
+;We keep track of set_cursor display calls,
+;Because last esc in simulation must remove it -which we check as well.
+          ld hl,desc
+          ld de,test_data
+          call _test_run
+      ENDM
+
+      MACRO TEST_RUN_FOCUS desc,test_data
+;  Idem but check focus
+          ld hl,desc
+          ld de,test_data
+          call _test_run_focus
+      ENDM
+
+
+      MACRO END_OF_NRT_SEQUENCE
+ ; We use 0 as a sentinelle, as it is not a valid code.
+sentinelle = 0
+      BYTE sentinelle
+      ENDM
+
+test_null_sequence
+;-----------------
+; Sanity check: we just exit.
+          ld a,&AB:ld (nrt_hexa_byte),a
+          TEST_RUN(ui_hexa,t_null_sequence)
+          ret
+
+t_null_sequence
+          END_OF_NRT_SEQUENCE()
+      BYTE "AB",nrtend
+      BYTE nrtend
+
+test_cursor_deci
+;---------------
+; As some point value was spuriously changing
+          ld a,47:ld (nrt_deci_byte),a
+          ld hl,2345:ld (nrt_word),hl
+          TEST_RUN(ui_byte_word,.seq)
+          ret
+
+.seq
+      BYTE k_rgt,k_lft,k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "+47 +2345",nrtend
+
+ui_byte_word
+      BYTE w_struct
+      WORD ui_deci_99
+      WORD ui_deci_word
+      WORD 0
+
+test_set_deci
+;------------
+          ld a,3:ld (nrt_deci_byte),a
+          ld a,"x":ld (&3001),a
+          TEST_RUN(deci_ui2,t_set_deci)
+; additional check: no field overflow.
+          ld a,(iotest_screen+2):cp mockspace:call nz,&BE00
+          ld a,(nrt_deci_byte):cp 7:call nz,&BE00
+          ret
+
+deci_ui2 BYTE w_deci_99_custom
+      WORD nrt_deci_setter,nrt_deci_getter
+
+t_set_deci
+      BYTE "7"
+; Note: ENTER must work as well, but i want to check implicit validation
+      BYTE k_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE " 7",nrtend  ; padded
+;cursor: todo
+
+test_set_deci2
+; - Test with 2 digits
+          ld a,3:ld (nrt_deci_byte),a
+          TEST_RUN(deci_ui99,t_set_deci2)
+; additional check: no field overflow.
+          ld a,(iotest_screen+3):or a:call nz,&BE00
+          ld a,(nrt_deci_byte):cp 45:call nz,&BE00
+          ret
+
+deci_ui99 BYTE w_deci_99_signed ; !! Only works for 1 digit
+      WORD nrt_deci_setter,nrt_deci_getter
+
+t_set_deci2
+      BYTE "45"
+; Note: ENTER must work as well, but i want to check implicit validation
+; with rgt at the end of field
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "+45",nrtend
+      BYTE 1,1,1,1,nrtend ; TODO!!
+
+test_set_deci2_negate_pre
+; - Test "-34" 
+          ld a,3:ld (nrt_deci_byte),a
+          TEST_RUN(deci_ui99,.seq)
+; additional check: no field overflow.
+          ld a,(iotest_screen+3):or a:call nz,&BE00
+          ld a,(nrt_deci_byte):cp -34:call nz,&BE00
+          ret
+.seq
+      BYTE "-34"
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "-34",nrtend
+;Todo? cursor
+
+      IF 0
+;!! YAGNI
+test_set_deci2_negate_post
+; - Test "56-" (- entered last: negate field)
+          ld a,3:ld (nrt_deci_byte),a
+          TEST_RUN(deci_ui99,.seq)
+; additional check: no field overflow.
+          ld a,(iotest_screen+3):or a:call nz,&BE00
+          ld a,(nrt_deci_byte):cp -56:call nz,&BE00
+          ret
+.seq
+      BYTE "56-"
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "-56",nrtend
+;Todo? cursor
+
+test_set_deci2_negate_double
+; - Test "42--" (- entered twice: get back positive value)
+          ld a,3:ld (nrt_deci_byte),a
+          TEST_RUN(deci_ui99,.seq)
+; additional check: no field overflow.
+          ld a,(iotest_screen+3):or a:call nz,&BE00
+          ld a,(nrt_deci_byte):cp 42:call nz,&BE00
+          ret
+.seq
+      BYTE "42--"
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "+42",nrtend
+;Todo? cursor
+      END
+
+
+test_set_deci_unhandled
+;----------------------
+          ld a,11:ld (nrt_deci_byte),a
+
+          TEST_RUN(ui_deci_99,.seq)
+          ret
+
+.seq  BYTE 13
+          END_OF_NRT_SEQUENCE()
+      BYTE "+11",0,nrtend
+
+test_clipping
+;------------
+; w_deci_99_signed can accept 3 chars (e.g. "-99")
+; So user could enter number > 127  
+; In this case we "cancel"
+          ld a,31:ld (nrt_deci_byte),a
+          TEST_RUN_FOCUS(deci_ui99,.seq)
+          ld a,(nrt_deci_byte):cp 31:call nz,&BE00
+          ret
+
+.seq
+      BYTE "456"        ; field is seleted, so erased
+          END_OF_NRT_SEQUENCE()
+          FOCUS("+"):FOCUS("3"):FOCUS("1"):BYTE nrtend
+
+test_double_del
+;--------------
+; -- check second del is handled
+          ld hl,&CAFA:ld (nrt_word),hl
+          TEST_RUN(ui_deci_word,.seq)
+          ld hl,(nrt_word)
+          ld de,4:or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+.seq
+      BYTE "456"        ; field is seleted, so erased
+;-> doesn't mind if > 256, as is will be erased
+          2 ** BYTE k_del
+      BYTE k_dwn        ; force validation
+          END_OF_NRT_SEQUENCE()
+      BYTE "   +4",nrtend
+;cursor: todo?
+
+      IF todo_wrong_chr
+!!! right now "-" is cleared
+; so we get +4 instead
+test_set_deci2_wrong_chr
+;-- when char isn't handled, field is validated
+; if just "-", check it doesn't assert and that we can continue editing
+          ld a,32:ld (nrt_deci_byte),a
+          TEST_RUN(deci_ui99,.seq)
+          ld a,(nrt_deci_byte):cp -4:call nz,&BE00
+          ret
+
+.seq
+      BYTE "-?4"
+      BYTE k_dwn        ; force validation
+          END_OF_NRT_SEQUENCE()
+      BYTE " -4",nrtend
+;cursor: todo?
+      END
+
+test_set_hexa
+          TEST_RUN(ui_hexa,t_set_hexa)
+; additional check: no field overflow.
+          ld a,(iotest_screen+2):or a:call nz,&BE00
+          ret
+
+t_set_hexa
+      BYTE "C5"
+      BYTE 13
+          END_OF_NRT_SEQUENCE()
+      BYTE "C5",nrtend
+      BYTE 1,1,1,2,nrtend ; 2-char width cursor from (1,1) 
+
+test_set_hexa_digit
+; digit must be set and displayed even without validation
+; Note: since not validated, nrt_hexa_digit isn't updated
+          ld a,3:ld (nrt_hexa_digit),a
+          TEST_RUN(ui_hexa_digit,.seq)
+; additional check: no field overflow.
+          ld a,(iotest_screen+1):or a:call nz,&BE00
+          ret
+.seq
+      BYTE "A"
+          END_OF_NRT_SEQUENCE()
+      BYTE "A",nrtend
+      BYTE 1,1,1,2,nrtend ; 2-char width cursor from (1,1) 
+
+test_set_hexa_digit'
+;2nd change taken into account
+          ld a,3:ld (nrt_hexa_digit),a
+          TEST_RUN_FOCUS(ui_hexa_digit,.seq)
+          ret
+.seq
+      BYTE "CD"
+          END_OF_NRT_SEQUENCE()
+          FOCUS("D")
+      BYTE nrtend
+
+test_set_hexa_digit_wrong_chr
+          ld a,4:ld (nrt_hexa_digit),a
+          TEST_RUN_FOCUS(ui_hexa_digit,.seq)
+          ret
+.seq
+      BYTE "{"
+          END_OF_NRT_SEQUENCE()
+          FOCUS("4")
+      BYTE nrtend
+
+test_set_first_cell
+          call nrt_mdump_reset
+          TEST_RUN(nrt_mdump_ui,t_set_first_cell)
+          ret
+
+t_set_first_cell
+      BYTE "F8"
+          END_OF_NRT_SEQUENCE()
+;-- 2 lines expected
+; see /test_set_hexa/ about lowercase/uppercase
+t_sfc BYTE "f8FEDEAD":NRT_PAD(t_sfc)
+      BYTE "12345678",nrtend
+;-- cursor
+      BYTE 1,1,1,2
+      BYTE 1,3,1,2,nrtend ;Once validated, next field 
+
+test_set_second_cell
+          call nrt_mdump_reset
+          TEST_RUN(nrt_mdump_ui,t_set_second_cell)
+          ret
+
+t_set_second_cell
+      BYTE k_rgt,"59"
+          END_OF_NRT_SEQUENCE()
+;-- 2 lines expected
+t_ssc BYTE "CA59DEAD":NRT_PAD(t_ssc)
+      BYTE "12345678",nrtend
+;-- nevermind cursor
+      BYTE nrtend
+
+
+test_struct_display
+; Check initial display
+          ld a,&C9:ld (nrt_hexa_byte),a
+          TEST_DISP(nrt_struct_ui2,nrt_struct_exp)
+          ret
+
+test_struct_setup
+; Check initial state 
+          ld a,&C9:ld (nrt_hexa_byte),a
+          TEST_RUN(nrt_struct_ui2,t_struct_setup)
+          ret
+
+t_struct_setup
+          END_OF_NRT_SEQUENCE()
+nrt_struct_exp
+      BYTE "C9 Piou CA ",nrtend ;TODO: last separator should be removed
+      BYTE 1,1,1,2,nrtend
+
+
+test_struct_deci
+; Same as test_set_deci2, but 
+; - Test with 2 digits
+          ld a,5:ld (nrt_deci_byte),a
+          TEST_RUN(deci_ui99_in_struct,.seq)
+; additional check: no field overflow.
+; humm!! for now there is an additional space
+          ld a,(iotest_screen+8):or a:call nz,&BE00
+          ld a,(nrt_deci_byte):cp 67:call nz,&BE00
+          ret
+
+.seq
+      BYTE "67"
+; Note: ENTER must work as well, but i want to check implicit validation
+; with rgt at the end of field
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+; just test first field. 
+      BYTE "+67",nrtend
+      BYTE 1,1,1,1,nrtend ; TODO!!
+
+deci_ui99_in_struct
+      BYTE w_struct
+      WORD ui_deci_99
+      WORD ui_deci_99   ; same widget twice
+      WORD 0
+
+ui_deci_99
+      BYTE w_deci_99_signed
+      WORD nrt_deci_setter,nrt_deci_getter
+
+test_set_first_field
+;-------------------
+; Check 1/ field inside struct is refreshed,
+      ; 2/ Cursor points to second  
+          TEST_RUN(nrt_struct_ui2,t_set_first_field)
+          ret
+
+nrt_struct_ui2
+      BYTE w_struct
+      WORD ui_hexa
+      WORD nrt_field0_ui ; Read Only
+; NB: shared hexa byte would no be not refreshed.
+; TODO: is it expected? Test that separately.
+      ; in the meantine, we use a distinct one.
+      WORD nrt_hexa_ui2
+      WORD 0
+
+nrt_hexa_ui2 BYTE w_hexa_byte:WORD nrt_hexa_byte2
+nrt_hexa_byte2 BYTE &CA
+
+t_set_first_field
+      BYTE "9f"
+          END_OF_NRT_SEQUENCE()
+; see /test_set_hexa/ about lowercase/uppercase
+      BYTE "9F Piou CA ",nrtend ;TODO: last separator should be removed
+      BYTE 1,1,1,2
+      BYTE 1,9,1,2,nrtend ;Once validated, next field 
+
+test_set_10_minus
+;----------------
+; At some point, an assert was raised because the cursor was
+; still >0 while the buffer was emptieed
+          ld hl,0:ld (nrt_word),hl
+          TEST_RUN(ui_deci_word,.seq)
+          ld a,(nrt_word):cp 10:call nz,fail
+          ret
+
+.seq  BYTE "10",13,"-"
+          END_OF_NRT_SEQUENCE()
+      BYTE "-",nrtend
+
+
+test_set_optional_enabled0
+;-------------------------
+; Just entering: must show focus
+          ld a,6:ld (tmp_vol),a
+          TEST_RUN_FOCUS(vol_ui',.seq)
+          ret
+
+.seq      END_OF_NRT_SEQUENCE()
+          FOCUS("6")
+      BYTE nrtend
+
+
+test_set_optional_enabled
+;------------------------
+; Modify enabled field. 
+          ld a,41:ld (nrt_deci_byte),a
+          ld a,&FF:ld (nrt_enabled),a
+          TEST_RUN_FOCUS(ui_optional,.seq)
+          ret
+
+.seq  BYTE "-2",13
+          END_OF_NRT_SEQUENCE()
+          FOCUS(" "):FOCUS("-"):FOCUS("2")
+      BYTE nrtend
+
+
+test_set_optional_disabled
+;-------------------------
+; Try to modify disabled field -> No change.
+; Note: it covers case when we focus on disabled field after deleting
+      ; line
+          ld a,40:ld (nrt_deci_byte),a
+          xor a:ld (nrt_enabled),a
+          TEST_RUN_FOCUS(ui_optional,.seq)
+          ld a,(nrt_deci_byte):cp 40:call nz,fail
+          ret
+
+.seq  BYTE "89",13
+          END_OF_NRT_SEQUENCE()
+          FOCUS("-"):FOCUS("-"):FOCUS("-")
+      BYTE nrtend
+
+
+test_set_struct_optional_disabled
+;--------------------------------
+; Test we skip disabled field and edit 3rd one
+          ld a,&FF:ld (dummy_byte),a
+          xor a:ld (nrt_enabled),a
+          TEST_RUN(ui_struct_optional,.seq)
+          ret
+
+.seq  BYTE k_rgt,"cc",13
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char," "
+      FILL 3,disabled_char
+      BYTE " CC",nrtend
+
+ui_struct_optional0
+      BYTE w_struct
+      WORD ui_toggle
+      WORD ui_dependent
+      WORD 0
+
+ui_struct_optional
+      BYTE w_struct
+      WORD ui_toggle
+      WORD ui_optional
+      WORD ui_hexa
+      WORD 0
+
+ui_struct_optional'
+      BYTE w_struct
+      WORD ui_optional
+      WORD ui_hexa_digit
+      WORD 0
+
+ui_struct_optional''
+      BYTE w_struct
+      WORD ui_hexa_digit
+      WORD ui_optional
+      WORD 0
+
+ui_struct_optional_readwrite
+      BYTE w_struct
+      WORD vol_ui'
+      WORD 0
+
+
+test_set_struct_optional_enabled0
+;--------------------------------
+; Just entering
+          ld a,7:ld (tmp_vol),a
+          TEST_RUN_FOCUS(ui_struct_optional_readwrite,.seq)
+          ret
+
+.seq
+          END_OF_NRT_SEQUENCE()
+          FOCUS("7")
+      BYTE nrtend
+
+
+test_set_struct_optional_enabled
+;-------------------------------
+; Modify enabled field within struct
+          ld a,-1:ld (nrt_deci_byte),a
+          ld a,&FF:ld (nrt_enabled),a
+          ld a,&AC:ld (nrt_hexa_byte),a
+          TEST_RUN(ui_struct_optional,.seq)
+          ret
+
+.seq  BYTE k_rgt,"-3",13
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char,"  -3 AC",nrtend
+
+test_set_dependent
+;-----------------
+; Check field is refreshed when toggle set.
+; (test_disp_dependent_disabled assured "---" displayed with toggle off)
+
+          xor a:ld (dummy_byte),a ; toggle off
+          ld a,26:ld (nrt_deci_byte),a
+
+          TEST_RUN(ui_struct_refresh,.seq)
+          ret
+
+.seq  BYTE " "
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char," +26"
+      BYTE nrtend
+
+test_set_key_handler
+;-------------------              
+; Check "clr" remove hard env flag.
+          ld a,&12:ld (tmp_vol),a
+          ld a,&08:ld (tmp_env_type),a
+          TEST_RUN(env_type_handler_ui,.seq)
+          ld a,(tmp_vol):cp 2:call nz,fail
+          ret
+
+.seq  BYTE k_clr
+          END_OF_NRT_SEQUENCE()
+; we don't test display result: need's optional wrapper for "-"
+; and we want to test in isolation  
+      BYTE nrtend
+
+test_set_key_handler'
+;--------------------              
+; Check regular key is caught
+          ld a,&02:ld (tmp_vol),a
+          ld a,&09:ld (tmp_env_type),a
+          TEST_RUN(env_type_handler_ui,.seq)
+          ld a,(tmp_env_type):cp 7:call nz,fail
+;bonus test: ui mimics instr editor, so env hard flag must be set
+          ld a,(tmp_vol):cp &12:call nz,fail
+          ret
+
+.seq  BYTE "7"
+          END_OF_NRT_SEQUENCE()
+      BYTE "7",0,nrtend
+
+test_set_key_handler''
+;---------------------              
+; Key not handled by anybody
+          ld a,&14:ld (tmp_vol),a
+          ld a,&06:ld (tmp_env_type),a
+          TEST_RUN(env_type_handler_ui,.seq)
+;unchanged
+          ld a,(tmp_vol):cp &14:call nz,fail
+          ld a,(tmp_env_type):cp &06:call nz,fail
+          ret
+
+.seq  BYTE 13
+          END_OF_NRT_SEQUENCE()
+      BYTE "6",nrtend
+
+test_set_optional_readwrite0
+;---------------------------
+; Unhandled key passed to embedded widget:
+
+          ld a,&14:ld (tmp_vol),a ; vol disabled
+          TEST_RUN(vol_ui',.seq)
+          ld a,(tmp_vol):cp &14:call nz,fail
+          ret
+
+.seq  BYTE 13
+          END_OF_NRT_SEQUENCE()
+      BYTE "-",nrtend
+
+
+test_set_optional_readwrite
+;--------------------------
+; key passed to disabled widget: must re-activate it
+
+          ld a,&14:ld (tmp_vol),a ; vol disable
+          TEST_RUN(vol_ui',.seq)
+          ld a,(tmp_vol):cp &0A:call nz,fail
+          ret
+
+.seq  BYTE "A"
+          END_OF_NRT_SEQUENCE()
+      BYTE "A",0,nrtend
+
+test_set_handler_optional_readwrite
+;----------------------------------
+          ld a,14:ld (tmp_vol),a
+          xor a:ld (tmp_env_type),hl
+          TEST_RUN(env_type_handler_optional_readwrite_ui,.seq)
+          ret
+
+.seq  BYTE "8"
+          END_OF_NRT_SEQUENCE()
+      BYTE "8",0,nrtend
+
+
+test_set_struct_refresh_handler_optional_readwrite
+;-------------------------------------------------
+          ld a,14:ld (tmp_vol),a
+          xor a:ld (tmp_env_type),hl
+          TEST_RUN(struct_refresh_handler_optional_readwrite_ui,.seq)
+          ret
+
+.seq  BYTE "9"
+          END_OF_NRT_SEQUENCE()
+      BYTE "9"
+      BYTE " "          ; separator: must be removed at some point
+      BYTE 0,nrtend
+
+
+
+test_set_past_refresh0
+;---------------------
+; Check 'k_rgt' is properly handled by w_refresh
+; (and that there is no issue regarding nested widget)
+
+          xor a:ld (dummy_byte),a ; toggle off
+          ld a,28:ld (nrt_deci_byte),a
+
+          TEST_RUN(ui_struct_refresh0,.seq)
+          ret
+
+.seq  BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char_off," +28",nrtend
+
+test_set_past_refresh
+;--------------------
+; idem but actually update second field (without validation)
+
+          xor a:ld (dummy_byte),a ; toggle off
+          ld a,29:ld (nrt_deci_byte),a
+
+          TEST_RUN(ui_struct_refresh0,.seq)
+          ret
+
+.seq  BYTE k_rgt,"1"
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char_off," 1  ",nrtend ; buffer edition
+
+
+test_set_past_refresh'
+;---------------------
+; idem with validation 
+
+          xor a:ld (dummy_byte),a ; toggle off
+          ld a,29:ld (nrt_deci_byte),a
+
+          TEST_RUN(ui_struct_refresh0,.seq)
+          ret
+
+.seq  BYTE k_rgt,"2",13
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char_off,"  +2",nrtend
+
+test_set_past_optional_disabled
+;------------------------------
+; Check 'k_rgt' is properly handled by w_refresh
+; (and that there is no issue regarding nested widget)
+          xor a:ld (nrt_enabled),a
+          ld a,4:ld (nrt_hexa_digit),a
+          TEST_RUN(ui_struct_optional',.seq)
+          ret
+
+.seq  BYTE k_rgt,"C",13
+          END_OF_NRT_SEQUENCE()
+      BYTE "--- C",nrtend
+
+
+test_set_past_optional_enabled
+;-----------------------------
+          ld a,47:ld (nrt_deci_byte),a
+          ld a,&FF:ld (nrt_enabled),a
+          ld a,5:ld (nrt_hexa_digit),a
+          TEST_RUN(ui_struct_optional',.seq)
+          ret
+
+.seq  BYTE k_rgt,"D",13
+          END_OF_NRT_SEQUENCE()
+      BYTE "+47 D",nrtend
+
+test_set_struct_optional_enabled'
+;--------------------------------
+          ld a,48:ld (nrt_deci_byte),a
+          ld a,&FF:ld (nrt_enabled),a
+          ld a,6:ld (nrt_hexa_digit),a
+          TEST_RUN(ui_struct_optional',.seq)
+          ret
+
+.seq  BYTE "2",k_rgt,"E",13
+          END_OF_NRT_SEQUENCE()
+      BYTE " +2 E",nrtend
+
+test_set_struct_refresh
+;----------------------
+; Check changing w_refresh's child does the proper thing
+          xor a:ld (nrt_hexa_digit),a
+          ld hl,31:ld (nrt_word),hl
+          TEST_RUN(ui_struct_refresh',.seq)
+          ret
+
+.seq  BYTE "9"          ; hexa digit: no need to validate
+          END_OF_NRT_SEQUENCE()
+      BYTE "9   +31",nrtend
+
+test_set_struct_refresh'
+;-----------------------
+; Same with signed field: ensure buffer state is kept
+          ld a,39:ld (nrt_deci_byte),a
+          TEST_RUN(ui_struct_refresh_deci,.seq)
+          ret
+
+.seq  BYTE "-2",13
+          END_OF_NRT_SEQUENCE()
+      BYTE " -2",nrtend
+
+test_set_struct_vol_env00
+;-------------------------------------------
+; 'env type' deactivated but writable
+; Check refresh mecanism itself: we exit "refreshing" field
+          ld a,12:ld (tmp_vol),a
+          TEST_RUN(ui_struct_vol_env,.seq)
+          ret
+
+.seq  BYTE 13           ; not handled -> exit/validate field
+          END_OF_NRT_SEQUENCE()
+      BYTE "C -"
+      BYTE " "          ; separator (to be removed)
+      BYTE 0            ; check no extraneous stuff
+      BYTE nrtend
+
+test_set_struct_vol_env0
+;------------------------------------------
+; 'env type' deactivated but writable
+; To write into it we enter it. 
+; But then we musn't overwrite '-' by the model's value
+          ld a,13:ld (tmp_vol),a
+          TEST_RUN(ui_struct_vol_env,.seq)
+          ret
+
+.seq  BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "D -"
+      BYTE " "          ; separator (to be removed)
+      BYTE 0            ; check no extraneous stuff
+      BYTE nrtend
+
+
+test_set_struct_vol_env
+;----------------------
+; 'env type' deactivated but readwrite to be reactivated
+          ld a,14:ld (tmp_vol),a
+          xor a:ld (tmp_env_type),hl
+          TEST_RUN(ui_struct_vol_env,.seq)
+          ld hl,(state_stack + 4*state_ + on_enter)
+          ld de,get_hexa_digit_custom
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+.seq  BYTE k_rgt,"8"
+          END_OF_NRT_SEQUENCE()
+      BYTE "- 8",nrtend
+
+test_set_struct_optional_readwrite
+;---------------------------------
+          ld a,14:ld (tmp_vol),a
+          TEST_RUN(ui_struct_vol_env,.seq)
+          ret
+
+.seq  BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "E -",nrtend
+
+test_set_struct_optional_readwrite'
+;---------------------------------
+          ld a,&10:ld (tmp_vol),a
+          ld a,8:ld (tmp_env_type),a
+          xor a:ld (dummy_byte),a
+          TEST_RUN(ui_struct_env_toggle,.seq)
+          ret
+
+.seq  BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "8 .",nrtend
+
+test_set_multiline_refresh0
+;--------------------------
+          ld a,6:ld (nrt_lines#),a
+          ld hl,&0908:ld (nrt_hexa_digit_lines),hl
+          TEST_RUN_FOCUS(ui_multiline_refresh,.seq)
+          ret
+
+.seq  BYTE k_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE "8",nrt_nl
+          FOCUS("9"):BYTE nrtend
+
+
+test_set_multiline_refresh
+;-------------------------
+          ld a,63:ld (nrt_lines#),a
+          ld hl,&0E0A:ld (nrt_hexa_digit_lines),hl
+          TEST_RUN_FOCUS(ui_multiline_refresh,.seq)
+          ret
+
+.seq  BYTE k_dwn,k_up
+          END_OF_NRT_SEQUENCE()
+          FOCUS("A"):BYTE nrt_nl
+      BYTE "E",nrtend
+
+test_set_multiline_refresh'
+;--------------------------
+          ld a,63:ld (nrt_lines#),a
+          ld hl,&0201:ld (nrt_hexa_digit_lines),hl
+          TEST_RUN_FOCUS(ui_multiline_refresh,.seq)
+          ld hl,(nrt_hexa_digit_lines)
+          ld de,&0901:or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+.seq  BYTE k_dwn,"9"
+          END_OF_NRT_SEQUENCE()
+      BYTE "1",nrt_nl
+          FOCUS("9")
+      BYTE nrtend
+
+test_set_multiline_refresh''
+;---------------------------
+; Same, but go up at the end
+          ld a,63:ld (nrt_lines#),a
+          ld hl,&0403:ld (nrt_hexa_digit_lines),hl
+          TEST_RUN_FOCUS(ui_multiline_refresh,.seq)
+          ld hl,(nrt_hexa_digit_lines)
+          ld de,&0A03:or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+.seq  BYTE k_dwn,"A",k_up
+          END_OF_NRT_SEQUENCE()
+          FOCUS("3"):BYTE nrt_nl
+      BYTE "A",nrtend
+
+      IF 0
+!! not handled. Needs to review state_sp vs state_sp_handler stacks
+test_set_nested_struct
+;---------------------
+          TEST_RUN(ui_nested_struct,.seq)
+          ret
+
+.seq  BYTE "12",k_rgt,"3456",k_rgt,"7",k_rgt,"8",k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "+12 +3456 07 Piou 08",nrtend
+      END
+
+test_set_multiline_optional
+;--------------------------
+; Just enter
+          ld a,&0F:ld (tmp_vol),a
+          TEST_RUN_FOCUS(ui_multiline_struct_optional_readwrite,.seq)
+          ret
+
+.seq      END_OF_NRT_SEQUENCE()
+          FOCUS("F")
+      BYTE nrtend
+
+test_toggle
+;----------
+          xor a:ld (dummy_byte),a
+          TEST_RUN_FOCUS(ui_toggle,.seq)
+;API: check &ff is sent
+          ld a,(dummy_byte):cp &FF:call nz,fail
+          ret
+
+.seq
+      BYTE " "
+          END_OF_NRT_SEQUENCE()
+          FOCUS(toggle_char) ; also check focus is here
+      BYTE nrtend
+
+test_toggle_non_zero
+;-------------------
+; Check any non_zero value is intreperter as "set"
+          ld a,&20:ld (dummy_byte),a
+          TEST_RUN_FOCUS(ui_toggle,.seq)
+;API: check 0 is sent
+          ld a,(dummy_byte):or a:call nz,fail
+          ret
+
+.seq
+      BYTE " "
+          END_OF_NRT_SEQUENCE()
+          FOCUS(toggle_char_off)
+      BYTE nrtend
+
+
+ui_toggle
+      BYTE w_toggle_custom
+      WORD set_dummy_byte
+      WORD get_dummy_byte
+
+
+
+test_set_struct_toggle
+; Check toggle + deci 
+          xor a:ld (dummy_byte),a
+          ld a,5:ld (nrt_deci_byte),a
+          TEST_RUN(ui_toggle_deci,.seq)
+; additional check: no field overflow.
+; humm!! for now there is an additional space
+          ld a,(iotest_screen+6):or a:call nz,&BE00
+          ld a,(nrt_deci_byte):cp 7:call nz,&BE00
+          ret
+
+.seq
+      BYTE " ",k_rgt,"7"
+      BYTE 13           ; enter to validate
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char
+      BYTE "  +7",nrtend
+
+test_struct_toggle_left
+; when cursor left of 1st field: must re-display at correct place
+          ld a,&FF:ld (dummy_byte),a
+          ld a,6:ld (nrt_deci_byte),a
+          TEST_RUN(ui_toggle_deci,.seq)
+; additional check: no field overflow.
+; humm!! for now there is an additional space
+          ld a,(iotest_screen+6):or a:call nz,&BE00
+          ld a,(nrt_deci_byte):cp 6:call nz,&BE00
+          ret
+
+.seq
+      BYTE k_lft,k_lft
+      BYTE 13           ; enter to validate
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char
+      BYTE "  +6",nrtend
+
+test_struct_toggle_left'
+; even more k_left, and entering new value
+          ld a,&FF:ld (dummy_byte),a
+          ld a,6:ld (nrt_deci_byte),a
+          TEST_RUN(ui_toggle_deci,.seq)
+; additional check: no field overflow.
+; humm!! for now there is an additional space
+          ld a,(iotest_screen+6):or a:call nz,&BE00
+          ld a,(nrt_deci_byte):cp 7:call nz,&BE00
+          ret
+
+.seq
+          6 ** BYTE k_lft
+      BYTE " "
+      BYTE k_rgt
+      BYTE "7"
+      BYTE 13           ; enter to validate
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char_off
+; "+" missing
+      BYTE "  +7",nrtend
+
+test_struct_past_last
+; k_rgt must stay on last field
+          ld a,&FF:ld (dummy_byte),a
+          ld a,9:ld (nrt_deci_byte),a
+          TEST_RUN(ui_toggle_deci,.seq)
+; additional check: no field overflow.
+; humm!! for now there is an additional space
+          ld a,(iotest_screen+6):or a:call nz,&BE00
+; see note below
+          ld a,(nrt_deci_byte):cp 3:call nz,&BE00
+          ret
+
+.seq
+      BYTE k_rgt,k_rgt,"3"
+      BYTE 13           ; enter to validate
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char
+      BYTE "  +3",nrtend
+
+
+test_struct_past_last'
+; Same with multiple k_rgt
+          ld a,&FF:ld (dummy_byte),a
+          ld a,8:ld (nrt_deci_byte),a
+          TEST_RUN(ui_toggle_deci,.seq)
+; additional check: no field overflow.
+; humm!! for now there is an additional space
+          ld a,(iotest_screen+6):or a:call nz,&BE00
+          ld a,(nrt_deci_byte):cp 4:call nz,&BE00
+          ret
+
+.seq
+          5 ** BYTE k_rgt
+      BYTE "4"
+      BYTE 13           ; enter to validate
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char,"  +4",nrtend
+
+test_struct_toggle_hexa_digit_deci99
+;-----------------------------------
+; Go to last field, back to first, supernumerous k_lft
+          ld a,&FF:ld (dummy_byte),a
+          ld a,&0C:ld (nrt_hexa_digit),a
+          ld a,42:ld (nrt_deci_byte),a
+          TEST_RUN(ui_toggle_hexa_deci,.seq)
+; additional check: no field overflow.
+; humm!! for now there is an additional space
+          ld a,(iotest_screen+8):or a:call nz,&BE00
+          ld a,(nrt_deci_byte):cp 42:call nz,&BE00
+          ret
+
+.seq
+          2 ** BYTE k_rgt
+          5 ** BYTE k_lft
+      BYTE " "
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char_off," C +42",nrtend
+
+ui_toggle_deci
+      BYTE w_struct
+      WORD ui_toggle
+      WORD ui_deci_99
+      WORD 0
+
+ui_toggle_hexa_deci
+      BYTE w_struct
+      WORD ui_toggle
+      WORD ui_hexa_digit
+      WORD ui_deci_99
+      WORD 0
+
+
+
+test_run_handler
+;---------------
+; Check subwidget is functional and that handler is invoked. 
+          xor a:ld (nrt_handler_byte),a
+          TEST_RUN(nrt_hui,t_run_handler)
+          ld a,(nrt_handler_byte):cp "h":call nz,break
+          ret
+
+nrt_hui BYTE w_key_handler
+      WORD ui_hexa,nrt_handler_mock
+nrt_handler_mock
+          cp ev_child_exit:jr nz,nhmok
+          inc a:ret     ; Set back nc nz for parent handler
+nhmok
+          ld (nrt_handler_byte),a
+          xor a:scf     ; C, Z: Handled, no need to propagate.
+          ret
+
+nrt_handler_byte BYTE 
+
+t_run_handler
+      BYTE "9h4"        ; the 'h' must be caught by wrapper.
+          END_OF_NRT_SEQUENCE()
+      BYTE "94",nrtend
+      BYTE 1,1,1,2,nrtend
+
+test_all_fields_refreshed
+;------------------------
+; Check both field of a struct are refreshed after handling
+; by wrapper. (reproduce test from uipat)
+          xor a:ld (nrt_deci_byte),a
+
+          TEST_RUN(ui_notefull,t_all_fields_refreshed)
+          ret
+
+t_all_fields_refreshed
+      BYTE &36          ; mock code for G 3 
+          END_OF_NRT_SEQUENCE()
+      BYTE "G 3",nrtend
+      BYTE nrtend       ; Nevermind for now
+
+ui_note
+      BYTE w_text_dyn
+      WORD note_getter
+
+ui_octave
+      BYTE w_deci_99_custom
+      WORD octave_setter
+      WORD octave_getter
+
+ui_notefull
+; Note + Octave
+; Custom key handler set at this level for now
+; Later we want to catch at a higher level.
+      BYTE w_key_handler
+      WORD ui_notefull_
+      WORD note_handler
+
+ui_notefull_
+; Note + octave
+
+      BYTE w_struct
+      WORD ui_note
+      WORD ui_octave
+      WORD 0
+
+test_focus_hexa_digit
+;--------------------
+          ld a,&0F:ld (nrt_hexa_digit),a
+          ld a,&FF:ld (dummy_byte),a
+          TEST_RUN_FOCUS(ui_struct_hexa_digit,.seq)
+          ret
+.seq
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "F "
+          FOCUS(toggle_char)
+      BYTE nrtend
+
+
+test_focus_refresh
+;-----------------         
+          ld a,8:ld (tmp_vol),a
+          TEST_RUN_FOCUS(ui_struct_refresh_vol,.seq)
+          ret
+.seq
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "8 "
+          FOCUS(toggle_char)
+      BYTE nrtend
+
+
+test_focus_optional_readwrite
+;----------------------------
+          ld a,10:ld (tmp_vol),a ; no hard env -> deactivated
+          TEST_RUN_FOCUS(ui_struct_vol_env,.seq)
+          ret
+.seq
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE "A "
+          FOCUS("-")
+      BYTE nrtend
+
+test_focus_optional_deactivated
+;------------------------------
+; When last field is deactivated, we must stay on first field
+          ld a,9:ld (nrt_hexa_digit),a
+          xor a:ld (nrt_enabled),a
+          TEST_RUN_FOCUS(ui_struct_optional'',.seq)
+;must still point on field 1
+          ld hl,(state_stack + struct_col)
+          ld a,l:or h:call nz,fail
+;corresponding widget is setup.
+          ld hl,(state_stack + state_ + on_enter)
+          ld de,get_hexa_digit_custom
+          or a:sbc hl,de:call nz,fail
+          ret
+
+.seq
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+          FOCUS("9")
+      BYTE " ---"
+      BYTE nrtend
+
+test_focus_optional_deactivated'
+;------------------------------
+; Same with another couple of widget
+          xor a:ld (dummy_byte),a
+          TEST_RUN_FOCUS(ui_struct_optional0,.seq)
+;must still point on field 1
+          ld hl,(state_stack + struct_col)
+          ld a,l:or h:call nz,fail
+          ret
+
+.seq
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+          FOCUS(toggle_char_off)
+      BYTE " ---"
+      BYTE nrtend
+
+
+test_focus_past_optional_readwrite
+;---------------------------------
+          ld a,&17:ld (tmp_vol),a ; deactivate volume
+          TEST_RUN_FOCUS(ui_struct_optional_readwrite,.seq)
+          ret
+
+.seq
+      BYTE k_rgt
+          END_OF_NRT_SEQUENCE()
+          FOCUS("-")
+      BYTE " "          ; separator (to be removed)
+      BYTE 0            ; check no overrun
+      BYTE nrtend
+
+test_autofocus_hexa_digit
+;------------------------             
+; Focus must be set back after single key  "auto-validate"
+          ld a,&01:ld (nrt_hexa_digit),a
+          TEST_RUN_FOCUS(ui_hexa_digit,.seq)
+          ret
+
+.seq
+      BYTE "A"
+          END_OF_NRT_SEQUENCE()
+          FOCUS("A")
+      BYTE 0            ; check no overrun
+      BYTE nrtend
+
+test_focus_auto_validate
+;-----------------------
+; Same than test_autofocus_hexa_digit, but for signed_deci
+; todo? consolidate naming?
+          ld a,&02:ld (nrt_deci_byte),a
+          TEST_RUN_FOCUS(ui_deci_99,.seq)
+          ret
+
+.seq
+      BYTE "-11"
+          END_OF_NRT_SEQUENCE()
+          FOCUS("-"):FOCUS("1"):FOCUS("1")
+      BYTE 0            ; check no overrun
+      BYTE nrtend
+
+
+test_focus_multiline_refresh
+;---------------------------
+          ld a,63:ld (nrt_lines#),a
+          ld hl,&0201:ld (nrt_hexa_digit_lines),hl
+          TEST_RUN_FOCUS(ui_multiline_refresh,.seq)
+          ret
+
+.seq  BYTE k_dwn,"C"
+          END_OF_NRT_SEQUENCE()
+      BYTE "1",nrt_nl
+          FOCUS("C")
+      BYTE nrtend
+
+test_focus_multiline_optional_readwrite
+;--------------------------------------
+; prerequisite for next test
+VOL_HARD = &10
+          ld a,VOL_HARD:ld (tmp_vol),a ; Deactivat vol
+          TEST_RUN_FOCUS(ui_multiline_optional_readwrite,.seq)
+          ret
+
+.seq  BYTE k_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE "-",nrt_nl
+          FOCUS("-")
+      BYTE nrtend
+
+test_focus_multiline_optional_readwrite_dynamic
+;----------------------------------------------
+; Same but:- activated first line
+          ;- deactivated second
+; We mustn't stay at embedded level
+          ld a,&0C:ld (tmp_vol),a
+          ld a,&FF:ld (nrt_enabled),a
+          ld a,&00:ld (nrt_enabled+1),a
+          TEST_RUN_FOCUS(ui_multiline_optional_readwrite_dynamic,.seq)
+          ret
+
+.seq  BYTE k_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE "C",nrt_nl
+          FOCUS("-")
+      BYTE nrtend
+
+
+test_focus_multiline_struct_optional_readwrite
+;---------------------------------------------
+; At some point accessing deactivated field with k_down wrongly reset it
+          ld a,VOL_HARD:ld (tmp_vol),a ; Deactivat vol
+          TEST_RUN_FOCUS(ui_multiline_struct_optional_readwrite,.seq)
+          ret
+
+.seq  BYTE k_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE "-",nrt_nl
+          FOCUS("-")
+      BYTE nrtend
+
+test_focus_multiline_struct_refresh
+; Test hack refresh whole multiline, while keeping state
+          ld hl,&0201:ld (nrt_hexa_digit_lines),hl
+          ld hl,&0605:ld (nrt_deci99_lines),hl
+          TEST_RUN_FOCUS(ui_multiline_refresh_deci,.seq)
+
+; mimic line insertion with distinct values
+          ld hl,&020F:ld (nrt_hexa_digit_lines+1),hl
+          ld hl,&060E:ld (nrt_deci99_lines+1),hl
+
+; Sanity: cursor pos before refresh
+          call .check_cursor
+
+          ld hl,state_stack
+          call force_refresh_custom
+;For cursor (use refresh_focus instead?)
+          call enter
+
+          call .check_cursor
+
+          ld de,.ref'
+          call compare_display_focus
+          ret
+
+.seq  BYTE k_rgt
+      BYTE k_esc
+          END_OF_NRT_SEQUENCE()
+      BYTE "1 ":FOCUS(" "):FOCUS("+"):FOCUS("5"):END_OF_STRUCT()
+      BYTE nrt_nl
+      BYTE "2  +6":END_OF_STRUCT()
+      BYTE nrtend
+.ref'
+      BYTE "1 ":FOCUS(" "):FOCUS("+"):FOCUS("5"):END_OF_STRUCT()
+      BYTE nrt_nl
+      BYTE "F +14"
+      BYTE nrtend
+
+.check_cursor
+          ld hl,(iotest_cursor)
+          ld de,&0601   ; <- end of widget
+          call .check_cursor_
+; current widget under focus must match
+          GET_STATE(widget_pos)
+          ld de,&0301   ; <- start of widget
+.check_cursor_
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+      IF key_under_multiline
+test_focus_multiline_keyhandler_struct_refresh0
+;----------------------------------------------
+; At some point was corrupted and cursor not at the right place
+          ld a,&0D:ld (nrt_hexa_digit),a
+          TEST_RUN_FOCUS(ui_multiline_key_struct_refresh,.seq)
+          ld hl,(state_sp)
+          ld bc,widget_pos_y
+          add hl,bc
+          ld a,(hl)
+          cp 2:call nz,fail
+          ret
+
+.seq  BYTE k_dwn,"A"
+      BYTE k_esc        ; Force validate (sanity, normaly auto-validate)
+          END_OF_NRT_SEQUENCE()
+          FOCUS("D"):BYTE nrt_nl ; Same byte, but wasn't refreshed
+          FOCUS("A")
+      BYTE nrtend
+
+
+test_focus_multiline_keyhandler_struct_refresh
+;---------------------------------------------
+; At some point was corrupted.
+          ld a,&0C:ld (nrt_hexa_digit),a
+          TEST_RUN_FOCUS(ui_multiline_key_struct_refresh,.seq)
+          ret
+
+.seq  BYTE k_dwn,k_up,"B"
+          END_OF_NRT_SEQUENCE()
+          FOCUS("B"):BYTE nrt_nl
+      BYTE "C"          ; Same byte, but wasn't refreshed
+      BYTE nrtend
+      END
+
+      IF 0
+test_refresh_all
+; Multiline: refresh all when inserting line
+; (adhoc: refresh called by handler)
+; !!! covereded by test_focus_multiline_struct_refresh
+          ret
+
+insert_handler
+      BYTE 13:WORD _insert_row
+      BYTE 0:WORD 0
+
+_insert_row
+          ld a,(selected_line)
+          push af
+          call insert_empty_row
+
+;Refresh from root
+          ld hl,state_stack
+          call force_refresh_custom
+          call enter
+          pop af
+      BRK
+;todo
+          ret
+      END
+
+; ==============================
+nrt_cls
+          push hl
+          ld hl,iotest_screen
+          ld de,iotest_screen+1
+          ld bc,&07FF
+          ld (hl),mockspace
+          ldir
+          pop hl
+          ret
+      END
+
+
+nrt_paint_sprite
+; In: HL:source
+    ; d=width e=height
+          ld b,d:ld c,e
+          push bc
+          ex de,hl
+          ld hl,(iotest_cursor)
+gps_y
+          push bc
+          push hl
+          call iotest_get_sprite_pnt
+gps_x
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+          djnz gps_x
+          pop hl
+          inc l
+          pop bc
+          dec c
+          jr nz,gps_y
+
+;only advance x              
+          ld hl,iotest_cursor+1
+          pop af        ; was bc
+          add a         ; word
+          add (hl):ld (hl),a
+          ret
+
+
+_reset_nrt_mock
+          push hl
+          ld hl,&0101:ld (iotest_cursor),hl
+          pop hl
+          ret
+
+_test_disp
+          call _test_disp_setup
+          call compare_display
+          ret
+
+_test_disp_focus
+; like _test_disp, but enter widget to check focus.
+          call _test_disp_setup
+          RESET_NRT_MOCK() ; Must reset cursor
+          push de
+          call gedeihen_enter
+          pop de
+          call compare_display
+          ret
+
+_test_disp_setup
+          push de:push hl
+          call nrt_cls
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+          call gedeihen_disp
+          pop hl:pop de
+          ret
+
+compare_display_focus
+          ld ixl,&FF
+          jr _compare
+compare_display
+          ld ixl,&7F    ; to remove focus flag
+_compare
+; Check our fake screen is filled with expected strings.
+; (Focus isn't checked)
+; In: DE = ref
+          ld hl,iotest_screen
+; Compare zone at HL and DE until nrt_end met in expected
+; Ie don't check the rest
+.comp
+          ld a,(de)
+          cp nrtend:ret z
+          cp nrt_nl:jr nz,.no_nl
+;go to next line in mock screen
+          ld a,l
+      IF nrt_width AND [nrt_width-1]
+  !! must be power of 2
+      END
+          and &FF XOR [nrt_width-1] ; go to start of line
+          add nrt_width ; next_line
+          ld l,a
+          jr nc,$+3:inc h
+          inc de
+          jr .comp
+
+.no_nl
+          xor (hl)
+          and ixl       ; no-op or remove focus flag
+          call nz,fail
+          inc de:inc hl
+          jr .comp
+
+
+_test_disp_sprite
+          push de
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+          call gedeihen_disp
+
+; Check our fake screen is filled with expected sprites.
+          ld hl,iotest_screen'
+          pop de
+          call compare
+          ret
+
+_test_run
+          ld (nrt_sequence_pnt),de
+;We keep track of set_cursor display calls,
+;Because last esc in simulation must remove it -which we check as well.
+          ld de,iotest_cursor_seq
+          ld (iotest_drawncursor_p),de
+
+          push hl
+; 
+          call nrt_cls  ; TODO? Also clean sprite/cursor?
+          pop hl
+
+; Takes hl=desc     
+          push hl
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+          call gedeihen_disp
+          pop hl
+
+; TODO: see if calling init again is necessary and desirable.
+; -> It is if we didn't exit from top state.
+
+          call gedeihen_init
+; We must 'reset' to put focus on the right widget
+; (e.g. first cell of table)
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+          call nrt_enter
+
+      IF 0
+ ;tmp dbg
+          ld hl,(state_stack + 2*state_ + on_enter)
+          ld de,get_hexa_digit_custom
+          or a:sbc hl,de:add hl,de:call nz,fail
+;must be topleft
+          ld hl,(state_stack + 2*state_ + widget_pos)
+          ld de,&0101
+          or a:sbc hl,de:add hl,de:call nz,fail
+      END
+
+          call nrt_gedeihen_loop
+
+; Check our fake screen is filled with expected first line.
+          ld de,(nrt_sequence_pnt) ; expected display
+          call compare_display
+
+      IF do_test_cursor
+!!! replaced by _test_run_focus
+; (simple set as hook?)
+          ld hl,iotest_cursor_seq
+          inc de        ; expected cursor sequence
+          call compare
+      END
+          ret
+
+_test_run_focus
+; Like /_test_run/ but check focus
+          ld (nrt_sequence_pnt),de
+;We keep track of set_cursor display calls,
+;Because last esc in simulation must remove it -which we check as well.
+          ld de,iotest_cursor_seq
+          ld (iotest_drawncursor_p),de
+
+          push hl
+; 
+          call nrt_cls  ; TODO? Also clean sprite/cursor?
+          pop hl
+
+; Takes hl=desc     
+          push hl
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+          call gedeihen_disp
+          pop hl
+
+; TODO: see if calling init again is necessary and desirable.
+; -> It is if we didn't exit from top state.
+
+          call gedeihen_init
+; We must 'reset' to put focus on the right widget
+; (e.g. first cell of table)
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+          call nrt_enter
+
+      IF 0
+ ;tmp dbg
+          ld hl,(state_stack + 2*state_ + on_enter)
+          ld de,get_hexa_digit_custom
+          or a:sbc hl,de:add hl,de:call nz,fail
+;must be topleft
+          ld hl,(state_stack + 2*state_ + widget_pos)
+          ld de,&0101
+          or a:sbc hl,de:add hl,de:call nz,fail
+      END
+
+          call nrt_gedeihen_loop
+
+; Check our fake screen is filled with expected first line.
+          ld de,(nrt_sequence_pnt) ; expected display
+          call compare_display_focus
+
+      IF do_test_cursor
+!!! todo. not handled, ged.txt_place_cursor not called
+; (simple set as hook?)
+          ld hl,iotest_cursor_seq
+          inc de        ; expected cursor sequence
+          call compare
+      END
+          ret
+
+
+nrt_gedeihen_loop
+          call nrt_read_key ;Always return a key.
+          cp sentinelle:ret z
+
+          call gedeihen_process
+          jr nrt_gedeihen_loop
+
+nrt_enter
+; It's responsibility of caller to 
+; In: hl = top widget.   ?? used ??
+          push hl
+          ld hl,&0101:ld (iotest_cursor),hl
+          pop hl
+          call gedeihen_enter
+          ret
+
+compare
+; Compare zone at HL and DE until &ff (in expected. Ie don't check rest)
+          ld a,(de):inc a:ret z:dec a
+          cp (hl):call nz,&BE00
+          inc de:inc hl
+          jr compare
+
+iotest_cursor WORD &0101 ; Cursor as given to txt_set_cursor
+iotest_drawncursor_p WORD 0
+
+; -------------------------
+; Exemples (bidon) de routines
+; On ne lit pas la memoire, mais on renvoie line+colonne a des 
+; fins de test et d'illustration. L'affichage doit donc donner:
+;
+; Ovl!  00 01 02 03 04 05 06 07 08 09 0a
+; Ovl!  10 11 12 13 14 15 16 17 18 19 1a
+; -------------------------
+      IF nrt
+
+set_dummy_row
+; Cf set_row   
+          ex de,hl
+          ld hl,nrt_max_row:or a:sbc hl,de
+          ex de,hl
+          ccf:ret nc
+          ld (dummy_row),hl
+          ret
+
+set_dummy_col
+; Cf set_col 
+          ex de,hl
+          ld hl,nrt_max_col:or a:sbc hl,de
+          ex de,hl
+          ccf:ret nc
+          ld (dummy_col),hl
+          ret
+
+get_dummy_cell
+;out A: made up byte:   dummy_row*&10 + dummy_col
+
+          ld a,(dummy_row)
+          4 ** add a
+          ld c,a
+          ld a,(dummy_col)
+          add c
+          ld c,a
+          ret
+
+get_mdumpdummy_cell
+          call get_mdumpdummy_pnt
+          ld a,(bc)
+          ret
+
+set_mdumpdummy_cell
+          push af
+          call get_mdumpdummy_pnt
+          pop af
+          ld (bc),a
+          ret
+
+get_mdumpdummy_pnt
+          ld a,(dummy_row)
+          2 ** add a
+          ld c,a
+          ld a,(dummy_col)
+          add c
+          add nrt_mdumpmem AND &FF:ld c,a
+          ld b,nrt_mdumpmem/&0100:ret nc:inc b
+          ret
+
+get_dummy_byte ld a,(dummy_byte):ret
+set_dummy_byte ld (dummy_byte),a:scf:ret
+get_hexa_byte ld a,(nrt_hexa_byte):ret
+set_hexa_byte ld (nrt_hexa_byte),a:scf:ret
+get_hexa_digit ld a,(nrt_hexa_digit):ret
+set_hexa_digit ld (nrt_hexa_digit),a:scf:ret
+get_hexa_digit_line call get_line_pnt:ld a,(hl):ret
+set_hexa_digit_line call get_line_pnt:ld (hl),a:scf:ret
+get_deci99_line call get_deci99_line_pnt:ld a,(hl):ret
+set_deci99_line call get_deci99_line_pnt:ld (hl),a:scf:ret
+
+get_line_pnt
+          ld hl,nrt_hexa_digit_lines
+          ld bc,(selected_line)
+          ld b,0
+          add hl,bc
+          ret
+
+get_deci99_line_pnt
+          ld hl,nrt_deci99_lines
+          ld bc,(selected_line)
+          ld b,0
+          add hl,bc
+          ret
+
+is_activated_dynamic
+          ld a,(selected_line)
+          ld c,a:ld b,0
+          ld hl,nrt_enabled
+          add hl,bc
+          ld a,(hl)
+          ret
+
+get_enabled ld a,(nrt_enabled):ret
+get_word  ld hl,(nrt_word):ret
+set_word
+      IF todo
+ ; clip like /nrt_deci_setter/ if used in fuzz test
+      END
+          ld (nrt_word),hl:scf:ret
+
+_set_vol  ld (tmp_vol),a:scf:ret
+_get_vol  ld a,(tmp_vol):ret
+is_volume
+          ld a,(tmp_vol):cpl:and &10:ret
+is_env_hard
+          ld a,(tmp_vol):and &10:ret
+_deactivate_env
+          ld hl,tmp_vol:res 4,(hl)
+          xor a         ; we expect Z, but it's not used (just checked)
+          scf:ret
+_toggle_env
+          ld a,(tmp_vol):xor &10:ld (tmp_vol),a
+          xor a         ; we expect Z, but it's not used (just checked)
+          scf:ret
+_set_env_type
+          ld hl,tmp_vol:set 4,(hl)
+          ld (tmp_env_type),a:scf:ret
+_get_env_type ld a,(tmp_env_type):ret
+
+
+dummy_byte BYTE 
+nrt_hexa_byte BYTE 
+nrt_hexa_digit BYTE 
+nrt_hexa_digit_lines SKIP 8 ; room for 8 "lines"
+nrt_deci99_lines SKIP 8
+nrt_word WORD 
+tmp_vol BYTE 
+tmp_env_type BYTE 
+;--- must be before hooks_ for internal checks.
+
+ntr_get_sprite
+          call get_dummy_cell
+          inc a:ld l,a:ld h,2 ; Sprite source (avoid 0 as byte)
+          ld de,&0302   ;w*h
+          ret
+
+nrt_text_getter
+          ld hl,nrt_text_dynamyte
+          ret
+
+nrt_deci_3
+; Dummy getter
+          ld a,3
+          ret
+
+nrt_deci_getter
+          ld a,(nrt_deci_byte)
+          ret
+
+nrt_deci_setter
+; clip to 99. Otherwise fuzz test like /test_random_keys/
+; could enter "111", displayed at +111 -> larger than width -> assert
+          call clip_99
+          ld (nrt_deci_byte),a
+          scf
+          ret
+
+clip_99
+          bit 7,a
+          jr nz,.neg
+          ld c,99
+          cp c
+          ret c
+          ld a,c
+          ret
+.neg
+          ld c,-99
+          cp c
+          ret nc
+          ld a,c
+          ret
+
+nrt_deci_byte BYTE 
+
+
+note_handler
+; nrt version: just change code as is (no code->note mapping !)
+          ld (nrt_deci_byte),a
+
+      IF 0
+; We trigger refresh explictly: special event wouldn't quite fit,
+; since it would be passed to parent widget.
+          call refresh_nofocus
+      END
+
+          xor a:scf     ; key handled
+          ret
+
+note_getter
+; nrt version: just read nrt byte, simplified note/octave separation
+          ld a,(nrt_deci_byte)
+          and &0F
+          add a
+          add note_getterdummy AND &FF
+          ld l,a
+          ld h,note_getterdummy/&0100
+          ret nc
+          inc h
+          ret
+
+note_getterdummy
+      12 ** [BYTE "A"+#,0]
+
+octave_setter
+; nrt version: not invoked.
+      BRK
+
+octave_getter
+; nrt version: just read nrt byte, simplified note/octave separation
+          ld a,(nrt_deci_byte)
+          and &F0
+          ret
+
+      END
+
+hooks_
+
+; -------------------------
+; 1/ Version pour tests automatises
+; .................................
+
+nrt_read_key
+          ld hl,(nrt_sequence_pnt)
+          ld a,(hl):inc hl
+          ld (nrt_sequence_pnt),hl
+          scf
+          ret
+
+scr_hw_roll
+      BRK
+;TODO (for now scrolling is not triggered in tests)
+
+
+nrt_set_cursor
+; Cursor is 1-indexed      
+          ld a,h:or a:call z,fail
+          cp 80:call nc,fail
+          ld a,l:or a:call z,fail
+          cp 4:call nc,fail ; For now tests only use 3 lines max
+          ld (iotest_cursor),hl
+          ld hl,&CACA   ; mimic firmware trashing hl
+          scf
+          ret
+
+nrt_get_cursor
+          ld hl,(iotest_cursor)
+          ret
+
+iotest_get_char_pnt
+;Mimic a screen nrt_width x nrt_height
+;in:  hl:as in txt_set_cursor
+;out: hl:pointer in mimiced screen buffer. 
+          push de
+          dec h:dec l   ; From 1-based to 0 based
+          ld e,h:ld d,0 ;col
+      IF nrt_width - 16
+         !! fixme
+      END
+          ld h,d:4 ** add hl,hl ; row * 16
+          add hl,de
+          ld de,iotest_screen:add hl,de
+          call iotest_check_cursor_pos
+          pop de
+          ret
+
+iotest_get_sprite_pnt
+;Mimic a screen of words 
+;in:  hl:as in txt_set_cursor
+;out: hl:pointer in mimiced sprite buffer. 
+          push de
+          dec h:dec l   ; From 1-based to 0 based
+          ld e,h:ld d,0 ;col
+      IF nrt_width - 16
+         !! fixme
+      END
+          ld h,d:5 ** add hl,hl ; row * 32
+          add hl,de
+          ld de,iotest_screen':add hl,de
+          call iotest_check_cursor_pos'
+          pop de
+          ret
+
+iotest_check_cursor_pos
+; Sanity checks.
+; hl >= iotest_screen
+          push de
+          ld de,iotest_screen
+          or a:sbc hl,de:add hl,de:call c,&BE00
+; hl < iotest_screen+&800
+          ld de,iotest_screen + nrt_screen_
+          or a:sbc hl,de:add hl,de:call nc,&BE00
+          pop de
+          ret
+
+iotest_check_cursor_pos'
+; Sanity checks.
+; hl >= iotest_screen'
+          push de
+          ld de,iotest_screen'
+          or a:sbc hl,de:add hl,de:call c,&BE00
+; hl < iotest_screen'+&1000
+          ld de,iotest_screen' + 2*nrt_screen_
+          or a:sbc hl,de:add hl,de:call nc,&BE00
+          pop de
+          ret
+
+nrt_place_cursor
+          push hl
+          ld hl,(iotest_cursor)
+          call iotest_get_char_pnt
+;      BRK
+      IF 1
+; Dev: see if doublon on focus
+          bit 7,(hl):call nz,&BE00
+      END
+; Switch to mimic firmware
+          ld a,(hl):xor &80:ld (hl),a
+          pop hl
+          ret
+
+nrt_write_char
+; API: cf write_char
+          push hl
+          ld hl,(iotest_cursor)
+          push hl
+          call iotest_get_char_pnt
+      IF 0
+;for debug
+          push af
+          ld a,l
+          cp 2:call nc,&BE00
+          pop af
+      END
+          ld (hl),a
+
+          pop hl
+          inc h:call z,&BE00 ; TODO: new line
+          ld (iotest_cursor),hl
+          pop hl
+          scf
+          ret
+
+      IF 0
+; use nrt_place_cursor instead
+txt_place_cursor
+; In: H: width
+;   ; L: height
+; Save curent cursor position and parameter for nrt.
+          push bc:push de:push hl
+
+          ld c,l:ld b,h
+          ld hl,(iotest_drawncursor_p)
+          ld de,(iotest_cursor)
+          ld (hl),e:inc l:ld (hl),d:inc l
+          ld (hl),c:inc l:ld (hl),b:inc l
+          ld (iotest_drawncursor_p),hl
+
+; Now mark cursor, so we can check at the end it has been removed!
+          ex de,hl
+tpcy      push bc:push hl
+tpcx      push bc:push hl
+          call iotest_get_char_pnt:set 7,(hl)
+          pop hl:pop bc:inc h:djnz tpcx
+          pop hl:pop bc:inc l:dec c:jr nz,tpcy
+
+          pop hl:pop de:pop bc
+          scf
+          ret
+      END
+
+test_random_keys
+;---------------
+
+; First prepare keys
+          ld b,0
+          ld hl,0
+          ld de,keys_buffer
+.prep
+          push bc
+          push de
+          push hl
+;pseudo-random
+          rlca:add l:xor (hl)
+          push af
+
+          and 7:add .keys AND &FF:ld l,a
+          ld h,keys/&0100:jr nc,$+3:inc h
+          ldi
+
+          pop af
+          pop hl
+          pop de
+          pop bc
+          inc hl
+          inc de
+          djnz .prep
+
+          ld a,sentinelle:ld (de),a:inc de
+; don't check screen output
+          ld a,nrtend:ld (de),a
+
+; Just check it doesn't assert
+          TEST_RUN(ui_toggle_hexa_deci,keys_buffer)
+          ret
+
+.keys
+; We'll test a random sequence of those 8 keys
+      BYTE " 01x-"      ; No number > 2 to avoid overflow 333
+      BYTE k_lft,k_rgt,13
+
+; --------------------------
+gedeihen_set_hooks_nrt
+; out: hl preserved
+          push hl
+          ld hl,nrt_set_cursor
+          ld ix,nrt_get_cursor
+          ld iy,nrt_place_cursor
+          ld de,nrt_write_char
+          ld bc,nrt_paint_sprite
+          call gedeihen_set_hooks
+          pop hl
+          ret
+
+nrt_enabled SKIP 2      ; for multiline
+selected_line BYTE 
+nrt_sequence_pnt WORD 
+
+      SKIP iotest_cursor_seq - $
+

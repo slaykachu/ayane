@@ -1,0 +1,68 @@
+; <<<< Manual test of piano.o >>>>
+
+      ORG &0100
+      ENT start
+
+      IMPORT "const.i"
+      IMPORT "chung.o"
+      IMPORT "piano.o"
+      IMPORT "ply.o"    ; For Init_periods
+      IMPORT "timer.o"  ; For fx_end
+
+; 2024
+; ------- AyAne 0.0v -------
+  ; Set 30  Fix instr setting (must use fx addresses)
+
+      MACRO VOL n
+; Encode as expected -> xxxx0
+      BYTE n*2
+      ENDM
+
+start
+; --- Firmware setup ---
+          ld a,2:call &BC0E
+
+; --- For dev test ---
+          call Init_chung
+          call Init_periods
+          ld a,1        ; id (0 is reserved)
+          ld c,0        ; nb params
+       ;   ld b,type_instr_default   ; in "instr.o" ?
+       ;   call New_instr
+          call New_instr_ayane
+; ------ Dummy instr
+          xor a:call insert_empty_row
+          xor a:call select_row
+          ld de,row0
+          call set_row
+          ld a,1:call insert_empty_row
+          ld a,1:call select_row
+          ld de,row1
+          call set_row
+          ld b,1
+          call instr_set_loop
+
+; ------ Main loop
+.loop
+          call &BB06
+          cp &FC
+          ret z         ; EXIT with break
+          call check_note
+          jr .loop
+
+row0      instr_flags ** BYTE 0
+      BYTE &38          ; open channels 
+          instr_vol - instr_flags - 1 ** BYTE 0
+          VOL(15)
+          fx0_type - instr_vol - 1 ** BYTE 0
+      WORD fx_end
+          instr_row_size_max - fx0_type - 2 ** BYTE 0
+
+row1      instr_flags ** BYTE 0
+      BYTE &38          ; open channels 
+          instr_vol - instr_flags - 1 ** BYTE 0
+          VOL(13)
+          fx0_type - instr_vol - 1 ** BYTE 0
+      WORD fx_end
+          instr_row_size_max - fx0_type - 2 ** BYTE 0
+

@@ -191,6 +191,7 @@ check_bk_base
           call nz,mess
           pop bc:pop af
           ret
+      END
 
 ; In ayane, we try to leave as much as working variable as possible
 ; outside of bank.

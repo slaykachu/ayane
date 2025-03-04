@@ -1,0 +1,3450 @@
+; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  OvL!
+dev_checks = 1
+dev_checks_display = 0  ; 0: let display fails, easier to see problem
+export = 0              ; 0: to be imported. 1: make lib (wip)
+need_room = 1
+todo  = 1
+hack  = 1
+
+; ==== Shortcuts ========================
+ ; - invariant
+ ; - hist
+ ; - TODO
+ ; - memmap
+ ; - widgets: define built-in widgets
+   ; - main_state: variables current focus 
+              ; including params of current widget (from ui def)
+   ; - widget_state: flags/vtable of current widget (from widgets)
+ ; setup_widget
+ ; gedeihen_disp
+ ; gedeihen_enter    ; give focus to first element
+ ; gedeihen_process 
+
+; ==== Nomenclatura. ====================
+; w_*   Widget type (text, table, ...)
+; wc_*  Corresponding constructor.
+; wc_*  Work var.
+; key_* Key handlers              
+; ---------------------------------------
+
+      IMPORT "field.o"
+      IMPORT "conv.o"
+
+hist
+; --- 2025 ----    
+ ; --- Ayane 0ab ----
+; Mar
+   ;  3 force_refresh_custom: save state_sp 
+                            ; (rather than clients doing it)
+; Feb
+   ; 26 Fix force_refresh_custom for multiline refresh
+; --- 2024 ----    
+ ; --- Ayane 0aa ----
+; Dec
+   ;28 export/import
+   ;21 field_editing: call /auto_validate/ when buffer is full.
+ ; --- Ayane 0z ----
+   ;12 force_refresh: Fix test_set_multiline_refresh and co
+; Nov                                       
+   ;11 force_refresh: re-enter  
+   ; 7 gedeihen_enter: widget stack must be already setup, 
+           ; to be able to re-enter same state 
+   ; 3 Use state_stack_disp for display, so we don't overwrite state
+   ; 1: Fix gednrt.test_focus_multiline_struct_refresh      
+      ; force_refresh: save cursor location 
+; Oct       
+ ; --- Ayane 0y ----
+   ;21: Add checks
+   ;20: [cancelled] Add /set_root_state/
+      ; Add /force_refresh_custom/
+   ;17: key_hexa_digit: reset field editor to accept new char
+   ;14: Remove double inverse video in disp_optional.
+   ;12: Fix optional when going from enabled to disable via w_multiline
+ ; --- Ayane 0v ----
+; Sep
+   ;25: Fix toggle API: any non-zero value should be considered as set
+ ; --- Ayane 0p ----
+   ; 7: multiline: erase lines past "last line"
+; Aug         
+   ; 24: Fix all for instrui, but break test_disp_table_of_sprite
+   ; Well, w_optional_readwrite cannot follow /invariant/ 1
+   ; 19: w_hexa_digit_custom: auto-validate
+ ; --- Ayane 0o ----
+   ; Rewrite w_optional to respect /invariant/ 1
+ ; --- Ayane 0n ----
+   ; Fix w_key_handler (mustn't setup widget in init: /invariant/ 3)
+   ; Add w_optional_readwrite
+; Jul
+   ; 26 /is_readwrite/ Handle dynamic (for w_optional)
+   ; 16 **While editing** Left-justify to solve cursor issue!
+      ; -> no more cursor past field
+              ; (would need erasing, not handy if special separators) 
+ ; --- Ayane 0m ----
+; Jul            
+   ; 11: Remove deci_width: we don't handle dynamic width field for now
+   ; 10: set_deci_custom and co: don't clean buffer
+                               ; (see rationale in routine)
+       ; /enter/ does it instead.
+       ; [cosmetic] handler returns event in A instead of E
+       ; disp_toggle_custom: display inverse video
+            ; (note: each 'on_display' routine must call it, since
+                   ; we want to remain able to customize)
+
+    ; 8: Inverse video when focus.
+       ; Disable cursor for now (yagni, also might conflict with 
+       ; seperator). Actually it wasn't handled, just put instead of
+       ; inverse video.
+
+    ; 5: Introduce disp_deci_padded 
+    ; 1: Add w_deci_99_signed
+       ; Design change: add on_enter 
+; Jun          
+    ; 30: h_kstruct: handle k_rgt
+    ; 28: Reprise!
+        ; Remove inRom/export version
+        ; Disable /test_all_fields_refreshed/ for now
+enable = 0
+
+; --- 2023? ---
+     ;25  F: Add and fix /test_all_fields_refreshed/
+              ; -> Well, not really fixed after all? Disabled!
+        ; E: Export/import
+        ; D: NRT: Simplification: only pass 1 address for all nrt data.
+        ; C: Relaxed constraints in CHECK_EXPORT if export.
+        ; B: Clearly separate this 3 phases:
+               ; - gedeihen_init
+               ; - gedeihen_set_hooks 
+               ; - setup_widget
+           ; Don't set_cursor in init: more control for client.
+           ; NRT macros: also use routine, so code can be reused
+           ; rather than copy/pasted, and variables kept private.
+   ; 23   A: GET_* & co macros: use routine rather than inlining,
+                              ; to ease step by step debugging.
+   ; 22   9: gedeihen_iter doesn't call init itself.
+           ; That allows more flexibility.
+       ; v2: Introduce w_key_handler. TODO? Rename event_handler.
+
+; --------------------------
+TODO
+; Todo next:list (1 column table). Or should we do heterogenous table
+           ; instead -> To align header with columns.
+           ; decimal in Z with min/max and two floating part.
+
+; Todo harmonize dyn / custom (or maybe not, to discriminate RO/RW).
+; Todo renam: cur_row -> table_row.  cur -> cursor
+; Todo frame: replace previous input/output when popping out of frame
+            ; Not done for now by laziness, since main use case is
+            ; to setup global io externally.
+            ; Or maybe that's done automaticaly by stack mecanism?
+
+; --------------------------
+; Was: TABATA AO (Renamed since that's the whole UI motor,
+             ; not just table/data editor).
+
+; --------------------------
+
+; TODO? Must reset wv_edit_buffer at each level?
+; TODO? Reuse param for wv_text_pnt / wv_byte_pnt?
+      ; Or add them in state? 
+; TODO? Screen init (e.g. setup cursor at 101) should be done by client?
+      ; Then should state be saved between disp and run?
+
+      IF need_room
+ ; remove non-custom widgets:
+      ; - getters / setters versions are more generic and capable
+      ; - simpler and more consistent
+      END
+
+invariant
+; Invariants for internal consistancy. Users don't have to care!
+
+;1. /state_sp/ always point to "concrete" widget, not container such
+  ; as table or struct (but cell or field respectively)
+     ; -> e.g. struct_lft / rgt expect field entered
+  ; This also simplifies handling of intermediate state 
+  ; (e.g. '-' also in signed field). If we had pass through wrapping
+  ; widget, this we could neither validate nor refresh edit buffer,
+  ; conflicting with some current implementation choices.
+
+; !!! Exception: w_optional_readwrite: we cannot enter child if off,
+                ; as it would not display "-" (disabled_char)
+; !!! Exception 2: actually w_optional mustn't enter child either,
+          ; otherwise enable flag wouldn't be re-evaluated when 
+          ; changing line.
+
+;2. Numerical widgets: 
+     ; a. Fill /wv_edit_buffer/ on 'on_enter' stage
+     ; b. Key handler modify the buffer without validating
+            ; (E.g. can have a dangling "-" while editing)
+     ; c. Validation done on 'on_exit'
+
+      IF need_room
+; Could use invariant 2 to just use a common 'display_buffer' routine 
+; for numerical widgets' 'on_display'
+  ; For now we unnecessarily use wv_tmp_buffer for display and 
+  ; wv_edit_buffer for 'on_enter'
+      END
+
+memmap
+; humm
+
+      IF export
+      BYTE "Ovl!"
+      WORD codesize
+
+      IF $ - &2800
+  !! uipat expects jump table @ 2800
+      END
+jps
+
+          jp gedeihen_init
+ ;          jp gedeihen_set_hooks_nrt
+          3 ** BRK
+          jp gedeihen_set_hooks
+          jp setup_widget
+          jp gedeihen_disp
+          jp gedeihen_process
+          jp gedeihen_enter
+          jp _test_disp
+          jp _test_disp_sprite
+          jp _test_run
+
+      END
+
+fail  = &BE00
+
+; TODO: review that!
+; widget_iter:   C = no key or key handled by 
+            ;  NC, Z =  exit widget (cancel)
+            ;  NC, NZ = exit widget (validate) A=code or 0.
+
+; Rational: As soon as the widget lose focus, we want to validate
+          ; entered data (except if ESC. Really?).
+          ; Uniform behavior (convention rather than customisation).
+
+ev_child_exit = &80     ; Warning might conflict with shortcuts
+ev_refresh = &81
+k_esc = &FC
+k_up  = &F0
+k_dwn = &F1
+k_lft = &F2
+k_rgt = &F3
+k_del = &7F
+k_clr = &10
+
+break = &BE00
+
+      MACRO ASSERT_NOT p
+      IF p
+ !! Error !!
+      END
+      ENDM
+
+; ==========================
+
+main_state
+; -----------------------
+; State variables. 
+; They live in state_stack.
+; Accessed via GET_STATE(var), SET_STATE(var), CALL_STATE(var)
+; -----------------------
+
+_save_pc ORG 0,$$
+
+; ======== global params ========
+; Note: put in local state in case we want to switch them
+      ; in a nested structure
+
+; --- io ---
+
+io_hooks
+set_cursor WORD 
+get_cursor WORD 
+place_cursor WORD 
+write_char WORD 
+; Write char at current cursor position
+; In: A= char.
+paint_sprite WORD 
+; Draw sprite at current cursor position
+; In: HL:source
+    ; d=width e=height  
+io_hooks_ = $ - io_hooks
+
+; --- book-keeping ---
+
+parent WORD 
+
+; ---------------------------------------------------------------------
+; ======== widget params (copied from ui descr at widget init) ========
+
+      IF need_room
+; Move after /widget_state/ ?
+   ; -> so init can be simplified (DE already pointing the right place)
+      ; we could copy by default max params
+      ; (note: wc_struct would still have to put the pointer)
+      END
+
+param WORD              ; Pointer in description or param itself
+param2 WORD             ; second param in description
+param3 WORD 
+param4 WORD 
+
+text_getter = param
+
+; TODO: check if we can actually reuse param in any case.
+; Rule: All widgets using push_state should use non-overlapping params?
+byte_setter = param
+word_setter = param     ; same slot, since either one of other
+byte_getter = param2
+word_getter = param2
+
+embedded_ui = param     ; struct, multiline
+
+get_enabled = param2
+
+; for multiline         
+get_line# = param2
+select_line = param3
+view_height = param4
+scroll_offset = param4+1
+
+          ASSERT_NOT(param - byte_setter) ; if <>, change wc_hexa_custom
+
+sprite = param
+sprite_size = param2    ; l=height, h=width
+
+          ASSERT_NOT(param - sprite) ; if <>, change wc_sprite
+
+sprite_getter = param
+
+          ASSERT_NOT(param - sprite_getter) ; if <>, wc_sprite_custom
+
+custom_handler = param2
+
+; !! Cannot reuse param for table,
+; !! because we use hydrid state to avoid push-pop. Cf disp_table.
+table_param = param3
+
+
+; ==================================================================
+widget_state
+; ======== widgets flags/vtable (copied from widgets_table) ======== 
+
+flags WORD 
+; bit 0: 0=R/O 1=R/W  (allow to skip focus) 
+       ; hum, does it make sense to be a flag? (e.g. for compound)
+fmask_readwrite = 3
+flag_readwrite = 1
+      IF todo
+; Maybe nesting widget (struct, table) could use dynamic? 
+; Or another flag?
+; For now we just need it for w_optional
+      END
+flag_readwrite_dynamic = 2 ; -> use get_enabled
+
+display WORD 
+; Rationale: - widget knows how to draw itself
+;   in: a <> 0 for focus
+; Rationale for passing focus (cursor on/off); 
+           ; - widget knows which cursor to use..
+           ;   - graphic tile could use something else than inverse .
+           ;   - all field inversed means erase it (whole selection)
+           ; - removing some cursors (ored '_') boils down to refresh.
+           ; - simpler.          
+
+get_width WORD 
+; out: hl=width
+; Rational: 
+  ; Needed for table (both cell and to skip separators) and sprite.
+  ;        and incoming features: screen cursor, struct.
+  ; Rational for getter rather than field computed on init or display:
+  ;   * Allow dynamism: for tile editors with different sizes
+                      ; if focused row must be higher
+  ;   * The pro of precomputed field (a/ more compact  b/ faster)
+      ; aren't compelling enough.
+      ; a/ could be obtained by default getters changed on init.
+      ; b/ could be obtained by caching (0 if must recompute)
+
+get_height WORD 
+; out: hl=height
+
+on_enter WORD 
+ ; Typically: get value from 'model' (e.g. deci_to_text)
+            ; Done just one so that editing is more generic and simpler
+               ; - We don't change until validation
+               ; - Text editing is more lenient (e.g. clear all)
+                    ; -> We don't want to get/set value in editing loop
+ ; That's also the place where nested widget (table/struct) can init
+ ; cell/field index.
+; Rationale: - introduced for table case which must move focus to cell
+          ;   (by pushing cell widget).
+          ; - cannot be done in setup: drawing wouldn't work.
+; Out: Like handler:
+     ; Carry: Do nothing
+     ; NC, A=event to trigger.
+
+on_exit WORD 
+ ; Push changed value into 'model', via /validate/. ?NOT?? called if ESC
+ ;   in: hl= nt string
+ ;   rational: - simplest common interface
+
+handler_table WORD 
+; Pointer to table: (key, handler) (0, fallback handler)
+; Interface of handler
+ ; In: a = key/event (needed for fallback handler)
+ ; OUt: - Carry: keep focus
+               ; Typically, 
+      ; - NC, NZ: don't keep focus, lift event
+                ; e.g 'k_dwn' in field or implicit exit when field full
+          ; -> A = event (original or ev_child_exit)
+      ; - NC, Z: don't keep focus, don't lift event
+               ; e.g. for piano: it processes key, yet don't take focus
+                            ; -> must give back focus to original
+; !!!!! DISTINCTION Z/NZ not done for now
+      ; DE saved.
+; Possibly exit was done by handler.
+; Rationale: for table, exit must be done before changing row/col.
+; Handler may return an event. Cf use case 1 for rationale.
+
+      MACRO HANDLED
+; Distinction not done (cf note above), 
+; but Z checked anyway at /ti_lift_lp/
+          xor a
+          scf
+      ENDM
+
+      MACRO ENTER_COMMON
+          call clean_edit_buffer
+          call setup_field_editor
+          CALL_STATE(on_enter)
+          call nc,fail  ; Case not handled.
+      ENDM
+
+widget_virt_size = $-widget_state
+
+; ======== Widget state set on widget init ========
+line_at_top
+struct_col WORD         ; (reuse address)
+cur_y                   ; (only byte used for multiline). Y in view
+cur_row WORD 
+cur_col WORD 
+focus WORD              ; word instead of byte to reuse GET/SET_STATE
+      IF todo
+; now we can use SET_STATE_BYTE for focus
+      END
+widget_pos              ; Top-left pos of current widget
+widget_pos_y BYTE 
+widget_pos_x BYTE 
+
+state_ = $
+
+      ORG _save_pc
+
+; ----------------------------------
+; Macros + helpers
+
+; NB: STATE: read in STATE+idx         (dynamic state)
+;     PARAM: read in (STATE+PARAM)+idx (in-description param)
+; !!: In most cases, static params (1 or 2 first words) 
+    ; are copied in state, in order to optimize access.
+; TODO: prefix variable (s_ vs p_)?
+; ----------------------------------
+
+      MACRO CHECK_ADDRESS
+; Assert hooks <= bc < hooks_
+; !! Do not use for external hooks, obviously !! 
+          call _check_address
+      ENDM
+
+_check_address
+          push af
+          push hl
+      IF export
+;For now: adhoc for uipat.
+          ld hl,&1000:scf:sbc hl,bc:call nc,&BE00
+      ELSE
+          ld hl,hooks:scf:sbc hl,bc:call nc,&BE00
+      END
+; hooks can be defined externaly (e.g instrui.o or gednrt.o),
+; so we don't know what's the end address
+          ld hl,&4000:or a:sbc hl,bc:call c,&BE00
+          pop hl
+          pop af
+          ret
+
+      MACRO CHECK_KEY_TABLE
+; Assert keytables <= hl < keytables_
+; Triggered when e.g. hl = &be00
+      IF dev_checks
+          call _check_key_table
+      END
+      ENDM
+
+      IF dev_checks
+_check_key_table
+          push hl:push de
+          ex de,hl
+          ld hl,keytables:scf:sbc hl,de:call nc,fail
+    ; Too strict for external tables
+    ;      ld hl,keytables_:or a:sbc hl,de:call c,fail
+          ld hl,&4000:or a:sbc hl,de:call c,fail
+          pop de:pop hl
+          ret
+      END
+
+      MACRO HL_STATE_PNT field
+      IF field/&0100
+!! error
+      END
+          call _hl_state_pnt:BYTE field
+      ENDM
+
+_hl_state_pnt
+          pop hl:inc hl:push hl ; ret address
+          push bc
+          dec hl:ld c,(hl):ld b,0
+          ld hl,(state_sp)
+          add hl,bc
+          pop bc
+          ret
+
+      MACRO DE_STATE_PNT field
+      IF field/&0100
+!! error
+      END
+          call _de_state_pnt:BYTE field
+      ENDM
+
+_de_state_pnt
+          pop de:inc de:push de ; ret address
+          push hl
+          ex de,hl
+          dec hl:ld e,(hl):ld d,0
+          ld hl,(state_sp)
+          add hl,de
+          ex de,hl
+          pop hl
+          ret
+
+
+      MACRO SET_STATE field
+; All registers preserved but F
+; TODO late  IF inline:call _set_state:byte field
+          push bc
+          ld c,field
+          call _set_state
+          pop bc
+      ENDM
+
+      MACRO SET_STATE_BYTE field
+; All registers preserved but F
+; TODO late  IF inline:call _set_state:byte field
+          call _set_state_byte:BYTE field
+      ENDM
+
+
+      MACRO GET_STATE field
+; All registers preserved but F
+          push bc
+          ld c,field
+          call _get_state
+          pop bc
+      ENDM
+
+
+      MACRO GET_STATE_BYTE field
+; All registers preserved but F
+          call _get_state_byte:BYTE field
+      ENDM
+
+      MACRO GET_STATE_CUSTOM field
+; Use hl instead (state_sp)
+; All registers preserved but F
+          push bc
+          ld c,field
+          call _get_state_
+          pop bc
+      ENDM
+
+
+_set_state
+          push hl
+          ld b,0
+          ld hl,(state_sp)
+          add hl,bc
+          pop bc
+          ld (hl),c:inc hl
+          ld (hl),b
+          ld l,c
+          ld h,b
+          ret
+
+_set_state_byte
+          ex (sp),hl
+          push hl
+          push bc
+          ld c,(hl)
+          ld b,0
+          ld hl,(state_sp)
+          add hl,bc
+          pop bc
+          ld (hl),a
+          pop hl
+          inc hl        ; ret adr
+          ex (sp),hl
+          ret
+
+_get_state
+          ld hl,(state_sp)
+_get_state_
+          ld b,0
+          add hl,bc
+          ld c,(hl):inc hl
+          ld h,(hl)
+          ld l,c
+          ret
+
+
+_get_state_byte
+          ex (sp),hl
+          push hl
+          push bc
+          ld c,(hl)
+          ld b,0
+          ld hl,(state_sp)
+          add hl,bc
+          ld a,(hl)
+          pop bc
+          pop hl
+          inc hl
+          ex (sp),hl
+          ret
+
+      MACRO CHECK_IN_FOCUS
+      IF dev_checks
+          call _check_in_focus
+      END
+      ENDM
+
+      IF dev_checks
+_check_in_focus
+          push hl:push de:push af
+          ld hl,(state_sp)
+          ld de,(state_sp_handler)
+          or a:sbc hl,de:add hl,de:call nz,fail
+          pop af:pop de:pop hl
+          ret
+      END
+
+      MACRO LD_BC_STATE field
+          push hl
+          HL_STATE_PNT(field)
+          ld c,(hl):inc hl
+          ld b,(hl)
+          pop hl
+      ENDM
+
+      MACRO CALL_STATE field
+          LD_BC_STATE(field)
+          call jp_bc
+      ENDM
+
+      MACRO CALL_STATE_EXT field
+; External hook: don't check address
+          LD_BC_STATE(field)
+          call jp_bc_ext
+      ENDM
+
+      MACRO JP_STATE field
+          LD_BC_STATE(field)
+          jp jp_bc
+      ENDM
+
+      IF 0
+      MACRO CALL_PARAM idx
+          ld c,idx
+          call call_param_com
+      ENDM
+
+      MACRO JP_PARAM idx
+          ld c,idx
+          jp call_param_com
+      ENDM
+      END
+
+      MACRO CALL_TABLE_PARAM idx
+          ld c,idx
+          call call_table_param_com
+      ENDM
+
+      MACRO JP_TABLE_PARAM idx
+          ld c,idx
+          jp call_table_param_com
+      ENDM
+
+      MACRO READ_PARAM idx
+          ld c,idx
+          call read_param_com
+      ENDM
+
+      MACRO READ_TABLE_PARAM idx
+          ld c,idx
+          call read_table_param_com
+      ENDM
+
+call_table_param_com
+          push hl
+          GET_STATE(table_param)
+          jr _cpc
+
+call_param_com
+          push hl
+          GET_STATE(param)
+_cpc
+          call read_param_com_
+          ld c,l:ld b,h ; just for check address
+          CHECK_ADDRESS()
+          ex (sp),hl
+          ret
+
+read_param_com
+          GET_STATE(param)
+read_param_com_
+          ld b,0
+          add hl,bc
+          ld c,(hl):inc hl
+          ld h,(hl):ld l,c
+          ret
+
+
+read_table_param_com
+          GET_STATE(table_param)
+          ld b,0
+          add hl,bc
+          ld c,(hl):inc hl
+          ld h,(hl):ld l,c
+          ret
+
+; ---------------------------
+; Gedeihen entry points
+; ---------------------------
+gedeihen_disp
+; Display widget..
+; In: gedeihen_init and setup_widget must have been called.
+
+; Temporarily use secondary stack, so that current state isn't touched
+; (state will be updated by e.g. iterating on multiline, which setup 
+  ;new struct hense reseting field position and co)
+      IF todo
+; struct refresh should use this as well?
+; to allow nested struct
+      END
+
+;setup left sp at leaf, we want to display from root
+          ld hl,state_stack
+          call clone_and_set_state_disp
+          call refresh_nofocus ; recursively display
+          jp set_root_state
+
+refresh_nofocus
+; Redisplay without focus
+          call reset_cursor_from_widget_location
+          xor a
+;TODO: make sure AF is preserved
+          JP_STATE(display)
+
+; ------------------
+refresh
+;See /call_display/ for version without cursor reset
+;TODO? harmonize
+          GET_STATE(focus)
+          inc l:dec l
+          jr z,refresh_nofocus
+refresh_focus
+;Redisplay with focus
+          call reset_cursor_from_widget_location
+          xor a:dec a
+      IF todo
+; make sure AF is preserved?
+      END
+          JP_STATE(display)
+
+
+gedeihen_set_hooks
+;-----------------
+;Change default hooks. 
+; Must be called after gedeihen_init, since:
+;    - gedeihen_init reset default ones (firmware)
+;    - we must have a state initialized.
+
+;in: hl:set_cursor
+   ; ix:get_cursor 
+   ; iy:place_cursor 
+   ; de:write_char
+   ; bc:paint_sprite 
+          SET_STATE(set_cursor)
+          push ix:pop hl
+          SET_STATE(get_cursor)
+          push iy:pop hl
+          SET_STATE(place_cursor)
+          ex de,hl
+          SET_STATE(write_char)
+          push bc:pop hl
+          SET_STATE(paint_sprite)
+          ret
+
+; --------------------------
+gedeihen_init
+; Init state
+   ; Set hooks with firmware calls
+   ; (can be modified with gedeihen_set_hooks)
+; In: nothing
+; Out: hl preserved
+
+          push hl
+          ld a,sign_init:ld (flag_init),a
+          xor a:ld (wv_edit_buffer),a ; Mark as none edited
+; Init vars
+          call set_root_state ;!! must be done first
+
+      IF need_room
+; use /gedeihen_set_hooks/
+      END
+          ld hl,txt_set_cursor
+          SET_STATE(set_cursor)
+          ld hl,txt_get_cursor
+          SET_STATE(get_cursor)
+          ld hl,txt_place_cursor
+          SET_STATE(place_cursor)
+          ld hl,txt_wr_char
+          SET_STATE(write_char)
+          ld hl,break   ; todo
+          SET_STATE(paint_sprite)
+
+          ld hl,0:SET_STATE(parent) ;or: zero whole zone?
+          pop hl
+          ret
+
+setup_widget
+;- Save current pos as topleft of widget
+;- [Reset common fields (just focus for now)]
+;- Install on_display on_enter etc hooks
+;- Call widget's init: 
+       ; copying custom fields
+       ; recursively setting child widget for containers (w_struct...)
+
+; Note: setup all branch until leaf. This is assumed by gedeihen_enter
+      ; to be able to re-enter with state conserved.
+
+; TODO? since disp/enter must dynamically setup embeded widgets,
+      ; it would make more sense for client not to have to call this.
+ ; !!! No !!! it's useful to be able to call gedeihen_disp after:
+           ; - setup  (fresh)
+           ; - modif param (e.g. page down for multiline)
+  ; If disp calls setup itself, we cannot handle the second use-case.
+
+; In: HL = widget description
+      IF dev_checks
+          ld de,&4000:or a:sbc hl,de:add hl,de:call nc,fail
+          ld de,end_of_ged:or a:sbc hl,de:add hl,de:call c,fail
+      END
+
+          call reset_widget_location_from_cursor
+_setup_widget
+; After clone_state, we don't need or want to reset widget location.
+; Prevent following bug (covered by test_flow_optional_readwrite):
+   ; - cursor is at 2 after display "-" (deactivated)
+   ; - inverse_video use delegate_width
+   ; - delegate_width setup widget -> musn't be at pos 2
+
+; needed?            
+;          xor a:SET_STATE_BYTE(focus)
+
+          ld a,(hl)
+      IF dev_checks
+          cp w_brk:call c,fail ; w_null / w_frame not used
+          cp widgets_nb:call nc,fail
+      END
+          inc hl
+          push hl
+      IF widget_virt_size+2 - 16
+; The +2 is for init (not copied in virt table)
+ !! must correct here
+      END
+          ld c,a:ld b,0
+          ld hl,widgets/&10
+          add hl,bc
+          4 ** add hl,hl ; *16                    
+          DE_STATE_PNT(widget_state)
+          ld bc,widget_virt_size
+          ldir
+;hack? reset focus
+
+          ld c,(hl):inc hl ; Widget's init
+          ld b,(hl)
+          pop hl
+jp_bc
+          ld (dbg_call),bc
+          CHECK_ADDRESS()
+jp_bc_ext               ; Don't check address for external hook.
+          ld (dbg_call'),bc
+          push bc
+          ret
+
+dbg_call WORD 
+dbg_call' WORD 
+
+gedeihen_enter
+; Give the focus to leaf widget 
+   ; - Setup field_editor with widget's model (via on_enter method)
+   ; - Display with focus (inverse video)
+; Handle special cases (e.g. struct_on_enter must change field if 
+; selected field is R/O after inserted row)
+
+; In: HL = table description
+         ; Why? Why not use setup already done (like gedeihen_disp?)
+         ; !!!! actually unused?
+      IF todo
+ ; reset state_sp !?!?!
+      END
+; Out: NC,  A = unhandled key (ESC typically)
+         ; No other exit case right now.
+
+; Check init was done. We don't call init ourselves:
+  ; - allow custom init (e.g. gedeihen_init_ext_nrt)
+  ; - more efficient
+          ld a,(flag_init):cp &BB:call nz,&BE00
+          push hl
+          call set_root_state
+          ld hl,noop:ld (validate_hook+1),hl
+          pop hl
+      IF todo
+;remove that
+      END
+      IF dev_checks
+; caller must reset cursor
+; for now, it's always 1,1  (for test)
+; we check that 
+          CALL_STATE_EXT(get_cursor)
+          ld bc,&0101:or a:sbc hl,bc:add hl,bc:call nz,fail
+      END
+          jp enter
+
+
+;---------------
+gedeihen_process
+;---------------
+; IN: A = key code or event.
+
+;This code is used as event. Filter it to avoid spurious trigger.
+ ;TODO: event/key discrimination with new API.
+          cp ev_child_exit:scf:ret z ; discard
+
+      IF dev_checks
+; 0 is used as sentinelle, mustn't be sent as code
+          or a:call z,fail
+      END
+
+          ld e,a
+          ld hl,(state_sp)
+
+.ti_lift_lp
+;here: hl=state for handler
+     ; e= code
+          call process_key
+          jr nc,.ti_unhandled
+; Cf /handler_table/ for flags API
+      IF todo
+; According to new api, we should RET unconditionaly
+      END
+          ret z
+      BRK
+          cp ev_child_exit:call nz,&BE00
+
+; Pass event to parent, avoid infinite loop in case of misconfiguration.
+; Also, self-event can be handled directly.
+          ld e,a
+          jr .ti_parent
+
+.ti_unhandled
+; Exit. Needed to e.g. validate cell before going down next line.
+; !!! NOTE: we don't pop state, just go to parent's handler.
+; !!! It allows to keep current widgets' state (in case key is not 
+; !!! handled at all, or handled by "piano").
+;          cp 13:call z,&BE00
+          push af       ; save a = key/event
+; Only validate widget in focus.
+; See rationale in /validate/ routine itself.
+          ld hl,(state_sp)
+          ld de,(state_sp_handler)
+          or a:sbc hl,de:add hl,de
+          call z,validate ; on_exit + refresh without focus
+          pop af
+; Try parent                    
+.ti_parent
+          ld e,a        ; save event (push/pop af would affect Z)
+          ld hl,(state_sp_handler)
+          GET_STATE_CUSTOM(parent)
+          ld a,l:or h
+          ld a,e
+          jr nz,.ti_lift_lp
+
+          push de
+; Needed for:
+   ; - /setup_field_editor/ Otherwise the cursor might be >0
+         ; while the wv_edit_buffer has be cleared -> assert.
+   ; - display refresh
+          call enter
+          pop de
+
+          xor a:inc a
+          ld a,e
+          ret           ; NC, NZ = unhandled key
+
+
+process_key
+;in: hl=state for handler
+     ; e= code
+;Out: see /handler_table/
+          ld (state_sp_handler),hl
+process_key_
+          GET_STATE_CUSTOM(handler_table)
+process_key_custom
+.ti_handle_lp
+      IF need_room
+;reuse scan_key (different api though)
+      END
+          CHECK_KEY_TABLE()
+      IF dev_checks
+          inc e:dec e:call z,fail
+      END
+          ld a,(hl):inc hl
+          ld c,(hl):inc hl ; matching or fallback routine
+          ld b,(hl):inc hl
+          cp e:jp z,.handle_key_or_fallback ; handle found
+          or a:jr nz,.ti_handle_lp
+; end
+          ld a,c:or b
+          ld a,e
+          ret z
+;enchaine: fallback routine
+.handle_key_or_fallback
+          push de
+          ld a,e
+          call jp_bc
+          pop de
+; At some point I considered the possibility for an handler to return
+; a different event code. Right now I don't use this, and it was
+; error-prone: I kept forgetting to save event in each handler
+; So, restore it.
+      IF need_room
+ ; now handlers don't have to save it themselves
+      END
+          ld a,e
+          ret
+
+validate
+; Must only be called for widget in focus:
+  ; - I don't see any use case where we should validate wrapper
+      ; widgets up the stack
+  ; - It would complicate design: each routine called recursively via
+      ; 'on_exit' would have to be based on dynamic parameter 
+      ; (or state_sp_handler) rather than state_sp
+
+; Well because of key_optional_readwrite, we can have:
+   ; state_sp -> embedded 
+   ; state_sp_handler -> wrapper
+ ; (as key is passed to embedded, which may 'auto validate') 
+ ; So the check is too strict.
+ ; We could temporarily set state_sp_handler to state_sp,
+ ; but that adds unnecessary code.
+ ;       CHECK_IN_FOCUS()
+          CALL_STATE(on_exit)
+;We reset the buffer to display from model, not from existing field
+;Otherwise when entering out-of-range value (e.g. 5000 for pitch),
+;it would still display 5000 instead of the clipped value (4095)
+          call clean_edit_buffer
+          call refresh_nofocus ;Todo here?
+; hack for refresh
+validate_hook jp noop
+
+display_child
+; In: hl = child description pnt
+          push hl
+          ld hl,(state_sp)
+          ex (sp),hl
+          call clone_state
+; setup child widget
+; -> actually setup all branch, hence we need to remember current sp 
+          ld de,(state_sp)
+          push de
+          call setup_widget
+          pop hl
+          call set_state_sp_disp
+          call refresh  ; Display with/without cursor.
+          pop hl
+          jp set_state_sp_disp
+
+pop_state
+;!!! Cannot be used in most cases, as wrappers silently push 2 states
+; pop current state
+; Out: Z and NC if already top of stack.
+; TODO? Rename? It just update pointer,
+      ; the 'poped' widget is still in stack (needed for /key_refresh/)
+          push hl
+          GET_STATE(parent)
+          ld a,l:or h
+          call nz,set_state_sp
+          pop hl
+          ret
+
+set_root_state
+; In: Nothing
+;Out: previous state
+          ld hl,(state_sp)
+          push hl
+          ld hl,state_stack
+          call set_state_sp
+          pop hl
+          ret
+
+clone_and_set_state_disp
+; Clone stack and put sp in this new stack 
+; The goal is to preserve original state
+; In: hl= state sp in original stack
+; Copy all state stack and shift point
+          push bc:push de
+          push hl
+;clone whole stack even if HL not at root: simpler code
+          ld hl,state_stack
+          ld de,state_stack_disp
+          ld bc,state_stack_size
+          ldir
+          pop hl
+          ld bc,state_stack_disp - state_stack
+          add hl,bc
+          pop de:pop bc
+          jp set_state_sp_disp
+
+set_state_sp
+      IF dev_checks
+          call _check_state_sp
+      END
+_set_state_sp
+          ld (state_sp),hl
+          ret
+
+      IF dev_checks
+set_state_sp_disp
+;In: hl= sp state in disp stack
+          call _check_state_sp_disp
+          jr _set_state_sp
+
+set_state_sp_gen
+; Since setup_widget can be called directly
+; or via disp (e.g display_child), check must be more leniant.
+; Same thing for disp_*: called via gedeihen_disp or gedeihen_enter
+;In: hl= sp state in regular or disp stack
+          call _check_state_sp_gen
+          jr _set_state_sp
+
+      ELSE
+
+set_state_sp_disp = set_state_sp
+set_state_sp_gen = set_state_sp
+
+      END
+
+
+      IF dev_checks
+_check_state_sp
+          push de
+          ld de,state_stack:or a:sbc hl,de:add hl,de:call c,fail
+          ld de,state_stack_end:or a:sbc hl,de:add hl,de:call nc,fail
+          pop de
+          ret
+
+_check_state_sp_gen
+          push de
+          ld de,state_stack:or a:sbc hl,de:add hl,de:jr c,_try_disp
+          ld de,state_stack_end:or a:sbc hl,de:add hl,de:jr nc,_try_disp
+          pop de
+          ret           ; ok
+
+_check_state_sp_disp
+          push de
+_try_disp
+          ld de,state_stack_disp:or a:sbc hl,de:add hl,de:call c,fail
+          ld de,state_stack_disp_end:or a:sbc hl,de:add hl,de
+          call nc,fail
+          pop de
+          ret
+      END
+
+rewind_state
+; Set state to widget currently handling event
+          push hl
+          ld hl,(state_sp_handler)
+      IF dev_checks
+          ld a,l:or h:call z,fail
+      END
+          call set_state_sp
+          pop hl
+          ret
+
+push_state
+; Push current state and point to child (!!! already setup)
+; !!! Actually just shift state_sp. To be renammed???
+; Out : AF, HL preserved    
+
+; Note: no worth it to factorize with /clone_state/
+          push af
+          push hl
+      IF dev_checks
+;check was setup
+          ld hl,(state_sp)
+          push hl
+          inc hl:ld a,(hl):dec hl:or a:call z,fail ; 'set_cursor' field
+      END
+          ld bc,state_
+          add hl,bc
+      IF dev_checks
+;check stack overflow
+          push bc
+          ld bc,state_stack_end:or a:sbc hl,bc:add hl,bc:call z,fail
+          ld bc,state_stack_disp_end:or a:sbc hl,bc:add hl,bc
+          call z,fail
+          pop bc
+      END
+          ld (state_sp),hl
+      IF dev_checks
+; check child was setup
+          inc hl:ld a,(hl):or a:call z,fail ; 'set_cursor' field
+;another check proper setup
+          GET_STATE(parent)
+          pop de
+          or a:sbc hl,de:jr z,.okparent
+; when stack is copied to state_stack_disp, 
+ ; parent still points to state_stack
+          ld de,state_stack - state_stack_disp
+          or a:sbc hl,de:jr z,.okparent
+          call fail
+.okparent
+      END
+          pop hl
+          pop af
+          ret
+
+clone_state
+;----------
+; push current state and **copy-paste to current**
+; Needed for
+    ; - table hack (hybrid) /hack1/  !!! To be reviewed anyway
+    ; - setup io field like set_cursor / get_cursor
+ ; (that's the only part that really needs to be cloned,
+   ;the other fields are setup by new widget)
+; Out : AF, HL preserved
+
+; Note: Not worth it to reuse push_state_
+
+          push af
+          push hl
+          ld hl,(state_sp)
+          push hl
+          ld e,l:ld d,h
+          ld bc,state_
+          add hl,bc
+      IF dev_checks
+          push bc
+          ld bc,state_stack_end:or a:sbc hl,bc:add hl,bc:call z,fail
+          ld bc,state_stack_disp_end:or a:sbc hl,bc:add hl,bc
+          call z,fail
+          pop bc
+      END
+          ex de,hl
+          ldir
+          ld (state_sp),hl
+          pop hl
+          SET_STATE(parent)
+          pop hl
+          pop af
+          ret
+
+call_display
+; Call 'on_display' widget's method, passing focus
+;TODO? Harmonize with /refresh/?
+          GET_STATE_BYTE(focus)
+      IF dev_checks
+          or a:jr z,.ok
+          cp &FF:call nz,fail
+.ok
+      END
+          JP_STATE(display)
+
+      FILL -$ AND &0F,0 ; must be aligned
+
+widgets
+      IF $ AND &0F
+ !! error align
+      END
+; ------------------
+;  Builtin widgets 
+; ------------------
+; See API/doc at /widget_state/
+
+; HOWTO Add a new widget
+   ; go to widgets_nb         (append only for now, i'll sort later)
+   ; Don't forget to set proper init. Common ones:
+          ; wc_init_word
+          ; wc_init_double_word
+
+w_null = 0
+virt_start
+      WORD 0
+      WORD disp_null
+      WORD get_0
+      WORD get_0
+      WORD noevent
+      WORD set_null
+      WORD h_null
+      WORD noop
+      IF $-virt_start-2 - widget_virt_size
+!! error must correct widget_virt_size
+      END
+
+w_frame = 1
+      WORD 0
+; Nb: No method is defined, since this widget is replaced
+    ; by sub widget passed as parameter.
+      WORD break
+      WORD break
+      WORD break
+      WORD break
+      WORD break
+      WORD h_null
+      WORD wc_frame
+
+w_brk = 2
+      WORD 0
+      WORD break
+      WORD break
+      WORD break
+      WORD break
+      WORD break
+      WORD h_null
+      WORD break
+
+
+w_text = 3
+      WORD 0
+      WORD disp_text
+      WORD text_width
+      WORD return_1
+      WORD noevent
+      WORD set_null
+      WORD h_null
+      WORD wc_text
+
+w_text_dyn = 4
+; getter return 
+      WORD 0
+      WORD disp_text_custom
+      WORD text_width_custom
+      WORD return_1
+      WORD break        ; todo
+      WORD set_null
+      WORD h_null
+      WORD wc_text_custom
+
+w_deci_99_custom = 5
+; 2-digits decimal value (e.g. for noise)
+      WORD flag_readwrite
+      WORD disp_deci_padded
+      WORD return_2
+      WORD return_1
+      WORD get_deci_custom
+      WORD set_deci_custom
+      WORD h_deci_field
+      WORD wc_init_double_word
+
+w_deci_99_signed = 6
+; Like w_deci_99_custom, but signed (e.g. for arp)
+; Fixed witdh 3, for -99 to 99.
+      WORD flag_readwrite
+      WORD disp_deci_signed_padded
+      WORD return_3     ; room for "-99"
+      WORD return_1
+      WORD get_deci_custom_signed
+      WORD set_deci_custom ; no difference for signed
+      WORD h_deci_field_signed
+      WORD wc_init_double_word
+
+w_deci_9999_signed = 7
+; Like w_deci_99_custom, but on 4 digits
+; Fixed witdh 4, for -9999 to 9999.
+      WORD flag_readwrite
+      WORD disp_deci_word_signed_padded
+      WORD return_5     ; room for "-9999"
+      WORD return_1
+      WORD get_deci_word_custom_signed
+      WORD set_deci_word_custom ; no difference for signed
+      WORD h_deci_field_signed
+      WORD wc_init_double_word
+
+w_hexa_digit_custom = 8
+; 1 quartet (for volume or hard env type)
+      WORD flag_readwrite
+      WORD disp_hexa_digit_custom
+      WORD return_1
+      WORD return_1
+      WORD get_hexa_digit_custom
+      WORD set_hexa_custom ; no need for dedicated routine
+      WORD h_hexa_digit
+      WORD wc_init_double_word
+
+w_hexa_byte = 9
+      WORD flag_readwrite
+      WORD disp_hexa_byte
+      WORD return_2
+      WORD return_1
+      WORD get_hexa_byte
+      WORD set_hexa_byte
+      WORD h_hexa
+      WORD wc_hexa_byte
+
+w_hexa_custom = 10      ; (setter byte, getter byte)
+; Rational: 1/ We want to reuse hexa input/output routines, 
+          ;    but client should not have to know them.
+          ; 2/ This widget allows to be notified at validation.
+          ;    Important for e.g. mem editor where an intermediate
+          ;    buffer is used.
+      WORD flag_readwrite
+      WORD disp_hexa_custom
+      WORD return_2
+      WORD return_1
+      WORD get_hexa_custom
+      WORD set_hexa_custom
+      WORD h_hexa
+      WORD wc_hexa_custom
+
+w_struct = 11
+      WORD flag_readwrite ; in case one of field is rw
+      WORD disp_struct
+      WORD struct_width
+      WORD break
+      WORD struct_on_enter
+      WORD set_null
+      WORD h_kstruct
+      WORD wc_struct
+
+w_multiline = 12
+; Multi_line view
+      WORD flag_readwrite ; in case wrapped is rw
+      WORD disp_multiline
+      WORD multiline_width
+      WORD break
+      WORD multiline_on_enter
+      WORD set_null
+      WORD h_kmultiline
+      WORD wc_multiline
+
+; --- parameters 
+;n ** ui refs.
+w_table = 13
+      WORD flag_readwrite ; in case one of cells is rw
+      WORD disp_table
+      WORD break
+      WORD break
+      WORD table_on_enter
+      WORD set_null
+      WORD h_ktable
+      WORD wc_table
+
+w_optional = 14
+; param1: embedded ui
+; param2: enabler getter (0: disable, non zero: enable)
+      WORD flag_readwrite_dynamic
+      WORD disp_optional
+      WORD delegate_width ; called via setup_field_editor
+      WORD break
+      WORD optional_on_enter
+      WORD delegate_set
+      WORD h_koptional
+      WORD wc_optional
+
+w_optional_readwrite = 15
+; Like w_optional, but we can still modify it even when deactivated
+; E.G. Hard Env Type deactivated when volume <= 15, but we use
+     ; this very field to activated it.
+;!!! Embedded ui must be a concrete widget (rather than another wrapper)
+;!!! as /key_optional_readwrite/ will pass key to immediate child. 
+      WORD flag_readwrite
+      WORD disp_optional
+      WORD delegate_width ; called via setup_field_editor
+      WORD break
+      WORD optional_readwrite_on_enter
+      WORD delegate_set
+      WORD h_koptional_readwrite
+      WORD wc_optional  ; same: only change how 
+
+w_refresh = 16
+; We'll refresh parent when child got validated.
+; Typical nesting: 
+   ; w_struct   <- also contains "dependent" widget
+   ; w_refresh  <- flag child as trigger
+   ; child      <- triggering refresh on validate
+
+; param1: child (embedded) ui
+      WORD flag_readwrite
+      WORD disp_delegate
+      WORD delegate_width ; called via setup_field_editor
+      WORD break
+      WORD refresh_on_enter
+      WORD set_null
+      WORD h_krefresh
+      WORD wc_refresh
+
+w_sprite = 17           ; !!! NOT TESTED (TODO) !!!
+      WORD 0
+      WORD disp_sprite
+      WORD break
+      WORD break
+      WORD noevent
+      WORD set_null
+      WORD h_null
+      WORD wc_sprite
+
+w_sprite_custom = 18
+      WORD 0
+      WORD disp_sprite_custom
+      WORD break
+      WORD break
+      WORD noevent
+      WORD set_null
+      WORD h_null
+      WORD wc_sprite_custom
+
+w_toggle_byte = 19
+; NOT DONE. TO BE REMOVED?
+      WORD flag_readwrite
+      WORD break        ; todo  
+      WORD return_1
+      WORD return_1
+      WORD noevent
+      WORD break        ; todo 
+      WORD break        ; todo
+      WORD break        ; todo
+
+w_toggle_custom = 20    ;
+; Getter: Any non-zero returned in A means "set"
+; Setter: Pass A=0 or &ff
+      WORD flag_readwrite
+      WORD disp_toggle_custom
+      WORD return_1
+      WORD return_1
+      WORD noevent
+      WORD set_toggle_custom
+      WORD h_toggle
+      WORD wc_toggle_custom
+
+w_key_handler = 21
+; Pseudo (non-visible) widget to catch keys. Bugged?
+; Params: subwidget, handler
+   ; Note: subwidget always placed first for consistency among wrappers
+; param1: embedded ui
+; param2: handler table
+;!!! If put directy under w_multiline, Y pos won't be propagated to
+;!!! actual concrete widget. 
+;!!! Will fail at e.g.: validate -> force_refresh -> disp_struct 
+      WORD flag_readwrite
+      WORD disp_delegate
+      WORD delegate_width ; called via setup_field_editor
+      WORD break
+      WORD key_handler_on_enter
+      WORD set_null
+      WORD h_key_handler ; Delegate to passed param
+      WORD wc_key_handler
+
+widgets_nb = 22
+
+; -------------------
+set_row = 0
+ ; in: hl = row
+ ; rationnal : 65536 should be enough for everyone.
+set_col = 2
+ ; in: hl = row
+row_header = 4          ; description
+col_header = 6          ; dito
+cell  = 8
+;max_row = 10            ; unused now
+;max_col = 12
+;--
+
+
+; ------------------
+; Widgets code
+; ------------------
+
+hooks                   ; TODO: rename. Reachable routines
+
+wc_frame
+          DE_STATE_PNT(io_hooks)
+;TODO? Instead of fixed size, check for sentinel (at 00)
+     ; Would be more extensible.
+          ld bc,io_hooks_
+          ldir
+      IF todo
+; instead "embedded_ui" and  use setup child instead
+      END
+      BRK
+; This is a dummy wrapper widget to setup hooks,
+; so we construct passed subwidget instead.
+          ld c,(hl):inc hl
+          ld h,(hl):ld l,c
+          jp setup_widget
+
+wc_text
+          ld (wv_text_pnt),hl
+skip_nt
+          ld a,(hl):inc hl:or a:jr nz,skip_nt
+wc_null   ret
+
+
+wc_hexa_byte
+          ld e,(hl):inc hl
+          ld d,(hl):inc hl
+          ld (wv_byte_pnt),de
+          ret
+
+wc_init_word
+; Only 1 word parameter. Simply copy it.
+          DE_STATE_PNT(param)
+          2 ** ldi
+          ret
+
+setup_child
+; Only 1 word parameter. Simply copy it.
+      IF embedded_ui-param
+  !!! review that
+      END
+          GET_STATE(embedded_ui)
+          call clone_state
+          jp setup_widget
+
+wc_optional
+          call wc_init_double_word
+      IF dev_checks
+; Check child "branch" is only one level deep.
+; See comment in /w_optional_readwrite/ for rationale.
+          ld hl,(state_sp)
+          push hl
+          call setup_child
+          ld hl,(state_sp)
+          ld de,-state_:add hl,de
+          pop de
+          or a:sbc hl,de:add hl,de:call nz,fail
+          scf
+          ret
+      ELSE
+          jp setup_child
+      END
+
+wc_refresh
+          call wc_init_word
+          jp setup_child
+
+wc_key_handler
+          call wc_init_double_word
+          jp setup_child
+
+wc_init_double_word
+; Only 2 word parameters. Simply copy them.
+          DE_STATE_PNT(param)
+          ld bc,4:ldir
+          ret
+
+wc_hexa_custom = wc_init_double_word
+wc_toggle_custom = wc_init_double_word
+wc_sprite = wc_init_double_word
+wc_sprite_custom = wc_init_word
+wc_text_custom = wc_init_word
+
+wc_table
+          SET_STATE(table_param)
+          ld hl,0
+          SET_STATE(cur_row)
+          SET_STATE(cur_col)
+          jp setup_child
+
+wc_multiline
+          DE_STATE_PNT(param)
+          ld bc,8:ldir
+          xor a
+          SET_STATE_BYTE(line_at_top)
+          SET_STATE_BYTE(cur_y)
+          jp setup_child
+
+; -------------------------------------
+; routine dynamically sets     
+; -------------------------------------
+
+get_0
+          call &BE00
+
+table_get_width
+table_get_height
+      BRK:ld hl,&CAFA   ; TODO
+
+
+struct_on_enter
+; (re)enter current field (concrete widget that must catch events)
+enter_child
+; Go to child (already setup)
+          call push_state
+          jr _recurse
+
+multiline_on_enter
+; Enter wrapped widget   
+          GET_STATE_BYTE(cur_y)
+          call select_line_in_view
+          call nc,fail  ; what to do if no line here?
+      IF dev_checks
+          GET_STATE(embedded_ui)
+;see /w_key_handler/
+          ld a,(hl):cp w_key_handler:call z,fail
+      END
+          jp enter_child
+
+table_on_enter
+; Enter cell (for handling keys and stuff)
+
+; Set row and col (have been modified for display).
+          GET_STATE(cur_row):CALL_TABLE_PARAM(set_row)
+          GET_STATE(cur_col):CALL_TABLE_PARAM(set_col)
+
+      BRK
+;What the heck pushing state before reading param?!?
+; oh right, the state is cloned, so that works. Fishy tough.
+          call clone_state
+          READ_TABLE_PARAM(cell)
+_recurse
+; For some reason, setup_widget wasn't done recursively
+      IF dev_checks
+          ld a,h:cp &40:call nc,fail
+      END
+          call enter
+          scf           ;no event
+          ret
+
+table_up
+          GET_STATE(cur_row)
+          ld a,l:or h:ret z ;NC: key not handled
+          dec hl
+          SET_STATE(cur_row):JP_TABLE_PARAM(set_row)
+
+table_dwn
+          GET_STATE(cur_row)
+          inc hl
+          ld a,l:or h:ret z ;NC: key not handled
+          SET_STATE(cur_row):JP_TABLE_PARAM(set_row)
+
+table_lft
+          GET_STATE(cur_col)
+          ld a,l:or h:ret z ;NC: key not handled
+          dec hl
+      BRK
+;TODO: cf table_rgt
+          SET_STATE(cur_col):JP_TABLE_PARAM(set_col)
+
+table_rgt
+;Validate in any case
+          call validate
+
+          GET_STATE(cur_col)
+          inc hl
+      IF todo
+; proper end detection like in struct_rgt
+      END
+          ld a,l:or h:ret z ;NC: key not handled
+          SET_STATE(cur_col):CALL_TABLE_PARAM(set_col)
+          ret nc
+
+;CursorX += width
+;TODO: factorize with struct_rgt  
+          call get_width_common
+          CALL_STATE_EXT(get_cursor)
+          add h
+      IF dev_checks
+          call c,fail
+      END
+          ld h,a
+          CALL_STATE_EXT(set_cursor)
+
+;Focus on next cell
+          call enter
+          xor a:scf
+          ret           ; C Z: handled, nothing to do. 
+
+refresh_on_enter
+; See /w_refresh/ for explanation.
+; !!! Hackish
+; Todo at setup time instead?
+          GET_STATE(parent)
+      IF dev_checks
+          ld a,l:or h:call z,fail ; only make senses 
+      END
+          ld (refresh_sp+1),hl
+          ld hl,force_refresh
+          ld (validate_hook+1),hl
+          GET_STATE(embedded_ui)
+      IF dev_checks
+          ld a,h:cp &40:call nc,fail
+      END
+          jp enter_child
+
+force_refresh
+          ld hl,(state_sp)
+          push hl
+refresh_sp ld hl,0
+      IF dev_checks
+          ld a,l:or h:call z,fail
+      END
+      IF hack
+; Otherwise, last edited/selected buffer displayed
+; Sub-problem: does that for deci_signed but not hexa_digit???
+; covered by gednrt.test_focus_multiline_struct_refresh
+          call clean_edit_buffer
+      END
+          call refresh_nofocus_safe
+          pop hl
+          call set_state_sp
+          ret
+
+
+refresh_nofocus_safe
+;Refresh without changing original state ("safe")
+;in: hl=state to display
+; (e.g. don't redisplay all when only 1 line is to be refreshed
+          ld de,(state_sp)
+          push de
+          call clone_and_set_state_disp
+          call refresh_nofocus
+          pop hl
+          jp set_state_sp
+
+force_refresh_custom
+;-------------------
+; Used for refresh all lines (multilines) 
+; In: hl=state pnt to refresh (will be needed when only part refreshed)
+      IF hack OR todo
+;; factorize with force_refresh
+      END
+      IF dev_checks
+          ld a,l:or h:call z,fail
+      END
+      IF hack
+; Otherwise, last edited/selected buffer displayed
+; Sub-problem: does that for deci_signed but not hexa_digit???
+; covered by gednrt.test_focus_multiline_struct_refresh
+          call clean_edit_buffer
+      END
+
+          ld de,(state_sp)
+          push de
+
+          push hl
+          call set_state_sp
+      IF todo
+; Other state info to store??
+      END
+;          CALL_STATE_EXT(get_cursor)
+;          push hl
+; Refresh from scratch
+          call gedeihen_disp
+; Must re-enter widget (state_stack was overwritten by refresh)
+; typically, the field pointed by w_struct
+ ;         call reset_cursor_from_widget_location
+
+;          pop hl
+;          CALL_STATE_EXT(set_cursor)
+          pop hl
+          pop de
+          ld (state_sp),de
+          ret
+
+key_handler_on_enter
+          jp enter_child
+
+optional_on_enter
+;Same. Difference is how we handle key
+optional_readwrite_on_enter
+; !!! We must stay at this level, otherwise bug when going from
+; !!! activated to deactivated in multiline widget: when child is
+; !!! selected, we wouldn't re-check flag when changing row.
+; Alternative: multiline can no re-enter its child
+          scf
+          ret
+
+struct_lft
+;Here: focus is still on child (field).
+
+; Must set cursor in case /struct_stay/ is called.
+          call reset_cursor_from_widget_location
+          GET_STATE(widget_pos)
+          ex de,hl
+; Must save current col (in case all fields on the lft are readonly)
+          call rewind_state
+          GET_STATE(struct_col)
+          push hl
+
+.slft_next
+; de = pos
+; hl = col (field#)    
+          ld a,l:or h
+          jr z,struct_stay ; already first field
+
+          dec hl
+          call setup_field
+      IF dev_checks
+          call nc,fail
+      END
+          push af
+          call struct_sub_width
+          call rewind_state
+          pop af
+          jr z,.slft_next
+
+          jp struct_enter_field
+
+struct_stay
+;here (sp) = initial col
+; /invariant/ 1. Must reselect field
+          pop hl
+          call setup_field
+      IF dev_checks
+          call nc,fail
+      END
+;'enter' Needed to e.g. setup field editor and regive focus
+;removed when exiting.
+          call enter
+; !!!!! DISTINCTION Z/NZ not done for now (see /handler_table/)
+          or a
+          ret
+
+wc_struct
+          SET_STATE(embedded_ui) ; pnt to list of fields
+          xor a
+;Enchaine
+setup_rw_field
+; Setup field A (well, the leaf widget at col A)
+; with the following caveat:
+   ; if field A is R/O, pick the last before that wasn't
+      ; if not such field, pick the first R/W
+         ; if not such field -> BRK
+; In: A = target field 
+          ld c,a:inc c  ; target+1
+          GET_STATE(widget_pos)
+          ex de,hl
+          ld hl,(state_sp) ; for rewinding
+          xor a
+          ld b,a        ; Flag R/W met
+.lpskip
+; a = field #
+; b = flag R/W met
+; c = target field
+; de = cursor pos
+          SET_STATE_BYTE(struct_col)
+          call setup_field_a
+          call nc,fail
+          jr z,.ro
+          ld b,1        ; Mark flag R/W found
+          ld (.field_pos+1),de
+.ro
+          inc a
+          cp c
+          jr c,.nxt
+; target reached, but must continue if no R/W found
+          inc b:dec b:jr nz,.done
+.nxt
+          push af
+          call get_width_common
+          add d
+          inc a         ; separator
+          ld d,a
+          pop af
+
+          call set_state_sp ; rewind
+          jr .lpskip
+
+.done
+.field_pos ld hl,0
+          SET_STATE(widget_pos)
+          ret
+
+
+setup_field_a
+; Like select_field, but:
+; In:  a= col #  
+; Out: a, hl preserved
+          push hl
+          ld l,a:ld h,0
+          call setup_field
+          ld a,l
+          pop hl
+          ret
+
+setup_field
+; Setup field
+; In: hl= col #
+;Out: If such field: Carry, NZ if read/write 
+                          ;  Z if read only
+    ; If past last field :NC  
+    ; HL preserved
+          push hl
+          call get_field
+          jr nc,.exit
+
+          push bc:push de
+          call clone_state
+;setup goes all the way through leaf.
+;we want to retain just next level instead
+      IF todo
+; factorize with display / setup_child
+      END
+          ld de,(state_sp)
+          push de
+          call setup_widget
+          pop hl
+          call set_state_sp_gen
+          call is_readwrite
+          pop de:pop bc
+          scf
+.exit
+          pop hl
+          ret
+
+get_field
+; In: hl= col #
+;Out: If such field: Carry, HL = field value
+    ; NC if past last field
+          push bc
+          add hl,hl     ; entry in params
+          ld c,l:ld b,h
+          call read_param_com
+          pop bc
+          ld a,l:or h
+          ret z
+          scf
+          ret
+
+
+struct_rgt
+;Here: focus is still on child (field).
+      IF dev_checks
+;!!! actually not necessarily immediate child, in case of wrapper
+;!!! so we just check focus is not on struct itself
+          ld hl,(state_sp)
+          ld de,(state_sp_handler)
+          or a:sbc hl,de:call z,fail
+      END
+
+; Must set cursor in case /struct_stay/ is called.
+          call reset_cursor_from_widget_location
+; init d = pos.x+width
+     ; e = pos.y  
+          GET_STATE(widget_pos)
+          ex de,hl
+          call struct_add_width
+; Must save current col (in case all fields on the right are readonly)
+          call rewind_state
+          GET_STATE(struct_col)
+          push hl
+
+.srgt_next
+; de = pos
+; hl = col (field#)
+          inc hl
+          call setup_field
+          jp nc,struct_stay ; past last field
+          jr nz,.done
+
+          call struct_add_width
+          call rewind_state
+          jr .srgt_next
+
+.done
+          call rewind_state
+struct_enter_field
+          SET_STATE(struct_col)
+          call setup_field
+      IF dev_checks
+          call nc,fail
+          call z,fail
+      END
+          ex de,hl
+          CALL_STATE_EXT(set_cursor)
+          call reset_widget_location_from_cursor
+          call enter
+          pop hl        ; discard initial col
+          xor a:scf
+          ret           ; C Z: handled, nothing to do. 
+
+struct_add_width
+; D += width + 1 (for separator)
+          call get_width_common
+          add d
+          inc a         ; skip separator
+          ld d,a
+          ret
+
+struct_sub_width
+; D += width + 1 (for separator)
+          call get_width_common
+          cpl           ; neg - 1 to skip separator
+          add d
+          ld d,a
+          ret
+
+
+multiline_up
+;-----------
+          ld hl,(state_sp)
+          push hl
+          call reset_cursor_from_widget_location
+          call rewind_state
+;Decrement model's line
+          call get_current_line_number
+          or a
+          jr z,multiline_stay
+;ok line      
+          dec a
+          CALL_STATE(select_line)
+;Now view itself    
+          GET_STATE_BYTE(cur_y)
+          ld c,a
+          GET_STATE_BYTE(line_at_top)
+          or a
+          jr z,.okview
+          GET_STATE_BYTE(scroll_offset)
+; Scroll if cur_y = offset  (musn't be lower)
+          cp c
+          jr z,.scroll_down
+      IF dev_checks
+          call c,fail   ; past scroll threshold
+      END
+.okview
+          ld a,c
+          or a
+          jr z,multiline_stay
+          dec a
+          SET_STATE_BYTE(cur_y)
+; Cursor
+          CALL_STATE_EXT(get_cursor)
+          dec l
+      IF dev_checks
+          call z,fail
+          call m,fail
+      END
+          push hl
+          CALL_STATE_EXT(set_cursor)
+; Reset embedded wiget's Y location 
+          call push_state
+          pop hl
+          ld a,l
+          SET_STATE_BYTE(widget_pos_y)
+; Re-enter nested widget
+; We don't call widget_setup like struct does, 
+; as we don't want to reset embedded's state (e.g. struct's col)
+; Todo: harmonize? 
+          pop hl
+          call set_state_sp
+      IF need_room
+; do "reset location" in enter?
+      END
+          call reset_widget_location_from_cursor
+          call enter
+          xor a:scf
+          ret           ; C Z: handled, nothing to do. 
+
+.scroll_down
+ ; todo
+      BRK
+
+multiline_stay
+; See /struct_stay/
+          pop hl
+          call set_state_sp
+          or a
+          ret
+
+multiline_dwn
+          ld hl,(state_sp)
+          push hl
+          call reset_cursor_from_widget_location
+          call rewind_state
+;Increment model's line
+          CALL_STATE(get_line#)
+          ld b,a
+          call get_current_line_number
+          inc a
+          cp b
+          jr nc,multiline_stay
+;ok line
+          CALL_STATE(select_line)
+;Now view itself
+          GET_STATE_BYTE(cur_y)
+          inc a
+          ld b,a
+          GET_STATE_BYTE(scroll_offset)
+          ld c,a
+          GET_STATE_BYTE(view_height)
+          sub c:ld c,a
+          ld a,b
+; Scroll if cur_y = height - offset  (musn't be greater)
+          cp c
+          jr z,.scroll_up
+      IF dev_checks
+          call nc,fail  ; past scroll threshold
+      END
+          SET_STATE_BYTE(cur_y)
+; Cursor
+          CALL_STATE_EXT(get_cursor)
+          inc l
+          push hl
+          CALL_STATE_EXT(set_cursor)
+; Reset embedded wiget's Y location 
+          call push_state
+          pop hl
+          ld a,l
+          SET_STATE_BYTE(widget_pos_y)
+; Re-enter nested widget
+; We don't call widget_setup like struct does, 
+; as we don't want to reset embedded's state (e.g. struct's col)
+; Todo: harmonize? 
+          pop hl
+          call set_state_sp
+      IF need_room
+; do "reset location" in enter?
+      END
+          call reset_widget_location_from_cursor
+          call enter
+          xor a:scf
+          ret           ; C Z: handled, nothing to do. 
+
+.scroll_up
+ ; todo
+      BRK
+
+
+; -------------------------------------------------------
+enter
+; Do widget's on_enter (defined in /widgets/), and give focus.
+          ENTER_COMMON()
+          jp refresh_focus
+
+delegate_width
+;out: hl = child's width
+          ld hl,(state_sp)
+          push hl
+          GET_STATE(embedded_ui)
+          call clone_state
+          call _setup_widget
+          CALL_STATE(get_width)
+          ex (sp),hl
+          call set_state_sp
+          pop hl
+          ret
+
+delegate_set
+;Needed for e.g. optional since focus on wrapper
+          push hl
+          ld hl,(state_sp)
+          push hl
+          GET_STATE(embedded_ui)
+          call clone_state
+          call _setup_widget
+          CALL_STATE(on_exit)
+          pop hl
+          call set_state_sp
+          pop hl
+          ret
+
+disp_text
+          xor a         ; No focus on R/O text
+          push af
+          ld hl,(wv_text_pnt)
+          jp txt_write_string
+
+disp_text_custom
+          xor a         ; No focus on R/O text
+          push af
+          CALL_STATE(text_getter)
+          jp txt_write_string
+
+
+disp_text_hl
+          push af
+          jp txt_write_string
+
+disp_text_hl_padded
+          push af
+          jp txt_write_string_padded
+
+text_width
+          ld hl,(wv_text_pnt)
+text_width_common
+          ld e,l:ld d,h
+          call skip_nt
+          scf           ; compensate for hl past 0
+          sbc hl,de
+          ret
+
+text_width_custom
+          CALL_STATE(text_getter)
+          jr text_width_common
+
+disp_deci_custom
+; If modified: use buffer. Otherwise, use getter.
+          push af
+          call set_deci_buffer_custom
+          jp txt_write_string
+
+disp_deci_padded
+; Same than disp_deci_custom, but with padding
+          push af
+          call set_deci_buffer_custom
+          jp txt_write_string_padded
+
+disp_deci_signed_padded
+          push af
+          call set_deci_signed_buffer_custom
+          jp txt_write_string_padded
+
+disp_deci_word_signed_padded
+          push af
+          call set_deci_word_signed_buffer_custom
+          jp txt_write_string_padded
+
+
+disp_hexa_byte
+; If modified: use buffer. Otherwise, use getter.
+          push af
+          call set_hexa_buffer
+          jp txt_write_string
+
+disp_hexa_digit_custom
+; 1 digit (quarter)
+; If modified: use buffer. Otherwise, use getter.
+          push af
+          call set_hexa_digit_custom
+          jp txt_write_string
+
+disp_hexa_custom
+; 2 digits
+; If modified: use buffer. Otherwise, use getter.
+          push af
+          call set_hexa_buffer_custom
+          jp txt_write_string
+
+
+set_deci_buffer_custom
+      IF need_room OR todo
+; simplify?  always reset buffer with value? 
+; Right now we check wv_edit_buffer, but then use wv_tmp_buffer
+; for conversion. conflict with /invariant/ 2?
+      END
+          call _setup_buffer
+          ret nz
+          CALL_STATE(byte_getter)
+          jp _deci_byte_to_buffer
+
+
+set_deci_signed_buffer_custom
+          call _setup_buffer
+          ret nz
+          CALL_STATE(byte_getter)
+          jp _deci_byte_signed_to_buffer
+
+set_deci_word_signed_buffer_custom
+          call _setup_buffer
+          ret nz
+          CALL_STATE(word_getter)
+          jp _deci_word_signed_to_buffer
+
+set_hexa_buffer
+          call _setup_buffer
+          ret nz
+          call get_byte
+          jp _hexa_byte_to_buffer
+
+set_hexa_buffer_custom
+          call _setup_buffer
+          ret nz
+          CALL_STATE(byte_getter)
+          jp _hexa_byte_to_buffer
+
+set_hexa_digit_custom
+          call _setup_buffer
+          ret nz
+          CALL_STATE(byte_getter)
+          jp _hexa_digit_to_buffer
+
+_setup_buffer
+; In: N/A
+; Out: hl=adr buffer.
+     ; NZ if already edited, z otherwise
+          ld hl,wv_edit_buffer
+          ld a,(hl)
+          or a
+          ret
+
+disp_toggle_custom
+          push af
+          CALL_STATE(byte_getter)
+toggle_char_off = "."
+toggle_char = "x"
+          or a:ld a,toggle_char_off
+          jr z,$+4:ld a,toggle_char
+          CALL_STATE_EXT(write_char)
+          pop af
+          ret z
+          jp inverse_video
+
+disp_struct
+; Struct display.
+    ; Hardcoded seperators: space.
+      IF dev_checks
+          or a:jr z,.ok
+          cp &FF:call nz,fail
+.ok
+      END
+          SET_STATE_BYTE(focus)
+
+          ld c,0
+st_xloop
+          push bc
+          call read_param_com
+          pop bc
+          ld a,l:or h:jr z,st_end
+          push bc
+          call display_child
+
+;--- separator --- 
+      IF todo
+;TODO: don't write last one 
+      END
+          xor a         ; no focus on separator
+          ld hl,space:call disp_text_hl
+
+          pop bc
+          inc c:inc c
+          jr st_xloop
+st_end
+          ret
+
+space BYTE " ",0
+
+disp_multiline
+; Display all lines in view
+          ld l,a
+          SET_STATE(focus)
+
+; Save (needed to restore after refresh)
+          GET_STATE_BYTE(cur_y)
+          push af
+
+          GET_STATE_BYTE(view_height)
+          ld b,a
+          xor a
+.yloop
+          call disp_one_line
+          inc a
+          djnz .yloop
+
+          pop af
+          SET_STATE_BYTE(cur_y)
+          call select_line_in_view
+          ret
+
+disp_one_line
+;in A = Y   (line in viewport, starting at 0)
+          push af
+          push bc
+          push af
+;-- set cursor
+          ld c,a
+          GET_STATE(widget_pos)
+          ld a,l:add c:ld l,a
+          CALL_STATE_EXT(set_cursor)
+;-- select line in model    
+          pop af
+          call select_line_in_view
+          jr nc,.noline
+;-- display embedded widget
+          GET_STATE(embedded_ui)
+          call display_child
+          pop bc
+          pop af
+          ret
+
+.noline
+          ld a,"-"      ; for better visuallisation
+; hack: erase all line, assuming standard width
+          ld b,80
+          call fill
+      IF todo
+; use widget's width instead
+; requires w_struct to compute sum of stuff
+      END
+          pop bc
+          pop af
+          ret
+
+struct_width
+; todo (if wanting to use nested-struct): add width of all fields
+          ld hl,0
+          ret
+
+
+multiline_width
+; todo (if wanting to use nested-struct): width of wrapped
+          ld hl,0
+          ret
+
+disp_table
+; Optimized table display:
+    ; - Don't push/pop for each cell.
+    ;   -> Cheat instead. We setup cell widget, which doesn't touch
+         ; table parameters such as cur_col, set_col.
+         ; So we have hydrid state.
+    ; - Don't redisplay seperators. 
+    ;   (for now they are not displayed at all. TODO)
+
+          ld l,a
+          SET_STATE(focus)
+
+          READ_TABLE_PARAM(row_header):call display_child
+          GET_STATE(widget_pos):ex de,hl
+          ld hl,0
+dt_yloop
+          ex de,hl
+          CALL_STATE_EXT(set_cursor)
+          ex de,hl
+          push hl:push de
+          CALL_TABLE_PARAM(set_row)
+          jp nc,dt_yend
+
+          READ_TABLE_PARAM(col_header)
+          call display_child
+
+hack1
+; Hack: Setup hybrid state:
+    ;  - display cell (child)
+    ;  - set_row is still table's (parent)
+          call clone_state
+          READ_TABLE_PARAM(cell)
+          call setup_widget
+
+          ld hl,0
+dt_xloop
+          push hl
+          CALL_TABLE_PARAM(set_col)
+          jr nc,dt_xend
+
+          CALL_STATE_EXT(get_cursor)
+          ld a,l:push af ; Save Y in case multi-line cell
+          call call_display
+          CALL_STATE_EXT(get_cursor)
+          pop af:ld l,a
+      IF 0
+; discard separator:
+;   - we don't need them yet for instr editor.
+;   - we can instead introduce a wrapper with padding.
+
+          inc h         ; Skip separator
+      END
+          CALL_STATE_EXT(set_cursor)
+
+          pop hl:inc hl ; next col
+          jr dt_xloop
+dt_xend
+; cannot use rewind_state here, /state_sp_handler/ not set
+; replace pop_state by actually saving state?
+; see /pop_state/ note.
+          call pop_state:call z,&BE00
+          pop hl        ; discard col
+          pop de:inc e  ; next y
+          pop hl:inc hl ; next row
+          jp dt_yloop
+dt_yend
+          pop de        ; discard curpos
+          pop hl        ; discard row
+          ret
+
+disp_optional
+; See API in /display/
+          push af
+          ld hl,(state_sp)
+          push hl
+          SET_STATE_BYTE(focus)
+          call is_enabled
+          push af
+; Need to setup embedded widget even if disabled,
+; to get its width.
+; (could use delegate instead? nevermind!)
+          GET_STATE(embedded_ui)
+          call clone_state
+; setup child widget
+          call setup_widget
+          pop af
+          jr z,.disabled
+;enabled: display child as is
+          call refresh
+          pop hl
+          call set_state_sp_gen
+          pop af
+;Note: inverse video already handled in refresh
+          ret
+
+.disabled
+          call get_width_common
+          ld b,a
+disabled_char = "-"
+          ld a,disabled_char
+          call fill
+          pop hl
+          call set_state_sp_gen
+          pop af
+          or a
+          ret z
+          jp inverse_video
+
+disp_delegate
+;Assume setup already done
+          ld hl,(state_sp)
+          push hl
+          call push_state
+          CALL_STATE(display)
+          pop hl
+          jp set_state_sp_gen
+
+disp_sprite
+          GET_STATE(sprite_size)
+          ex de,hl
+          GET_STATE(sprite)
+          jr _disp_sprite_com
+
+disp_sprite_custom
+          CALL_STATE(sprite_getter)
+_disp_sprite_com
+          CALL_STATE_EXT(paint_sprite)
+          ret
+
+
+set_null  or a
+disp_null
+noop      ret
+noevent   scf:ret
+
+get_zero
+          ld hl,0
+          ret
+
+_deci_byte_to_buffer
+;note: a bit unnecessary. see not after /invariant/ 2.
+          ld de,wv_tmp_buffer
+          push de
+          call put_deci_a
+_put_0_pop
+          ex de,hl
+          ld (hl),0
+          pop hl
+          ret
+
+_deci_byte_signed_to_buffer
+          ld de,wv_tmp_buffer
+          push de
+          call put_deci_a_signed
+          jr _put_0_pop
+
+_deci_word_signed_to_buffer
+          ld de,wv_tmp_buffer
+          push de
+          call put_deci_hl_signed
+          jr _put_0_pop
+
+_hexa_digit_to_buffer
+          ld de,wv_tmp_buffer
+          push de
+          call put_hexa_ql
+          jr _put_0_pop
+
+_hexa_byte_to_buffer
+          ld de,wv_tmp_buffer
+          push de
+          call put_hexa_a
+          jr _put_0_pop
+
+get_hexa_byte
+          call get_byte
+          ld de,wv_edit_buffer
+          call put_hexa_a
+          jr _get_com
+
+
+get_hexa_custom
+          CALL_STATE(byte_getter)
+          ld de,wv_edit_buffer
+          call put_hexa_a
+          jr _get_com
+
+get_hexa_digit_custom
+          CALL_STATE(byte_getter)
+          ld de,wv_edit_buffer
+          call put_hexa_ql
+          jr _get_com
+
+
+get_deci_custom_signed
+          CALL_STATE(byte_getter)
+          ld de,wv_edit_buffer
+          call put_deci_a_signed
+          jr _get_com
+
+get_deci_word_custom_signed
+          CALL_STATE(word_getter)
+          ld de,wv_edit_buffer
+          call put_deci_hl_signed
+          jr _get_com
+
+get_deci_custom
+; At on_enter time: convert value to text and setup field editor
+; See /on_enter/ for rationale
+          CALL_STATE(byte_getter)
+          ld de,wv_edit_buffer
+          call put_deci_a
+_get_com
+  ; Not done by e.g. put_hexa_ql
+          xor a:ld (de),a ; end of text! 
+          scf
+          ret
+
+set_deci_custom
+; Convert text (2 digit max here) to number and call custom setter
+; todo: _buffer_to_deci_byte must handle "-"
+          call _buffer_to_deci_byte
+          ret nc
+ ; !! No mustn't clean buffer, for case "-X1" 
+  ;    -> the X is unhandled, so we exit field. 
+  ; Yet we want to get our buffer back (with entered "-")
+  ; Plus, cursor is still pointing position 1. A cleared buffer
+        ; would cause an asset in field_editor
+    ; (well, tbh, the solution to that would be to reset cursor as well)
+       ;   call clean_edit_buffer
+          JP_STATE(byte_setter)
+
+set_deci_word_custom
+; Convert text to word number and call custom setter
+; todo: _buffer_to_deci_byte must handle "-"
+          call _buffer_to_deci_word
+          ret nc
+          JP_STATE(word_setter)
+
+
+set_hexa_byte
+          call _buffer_to_hexa_byte
+          ret nc
+          ld hl,(wv_byte_pnt)
+          ld (hl),c
+          ret
+
+set_hexa_custom
+          call _buffer_to_hexa_byte
+          ret nc
+          ld a,c
+          JP_STATE(byte_setter)
+
+set_toggle_custom
+; Nothing to do on exit, as it is done on /key_toggle/
+          ret
+
+clean_edit_buffer
+; Needed to force reading from model for alpha-numerical widgets
+          push hl
+          ld hl,wv_edit_buffer
+          ld (hl),0
+          pop hl
+          ret
+
+setup_field_editor
+          ld a,&80:ld (fe_selected),a ; value selected
+          call get_width_common
+          ld b,a
+          inc b         ; for final /00
+          ld c,-1       ; right of field
+          ld (fe_pos),bc
+          scf
+          ret
+
+_buffer_to_deci_byte
+;For now: only 2 digit max.
+;Out: If value in -128..127, Carry, A = value
+    ; If empty string, NC
+          ld hl,wv_edit_buffer
+          ld a,(hl):or a
+          ret z         ; nc: no digit at all
+      IF dev_checks
+;Padding mustn't be done in buffer (prevents to insert digits)
+;but at display time.
+          cp " ":call z,fail
+      END
+          jp deci_to_byte ; brk if > 255
+
+_buffer_to_deci_word
+;Out: If value in 0..255, Carry, C = value
+    ; If empty string, NC
+          ld hl,wv_edit_buffer
+          ld a,(hl):or a
+          ret z         ; nc: no digit at all
+      IF dev_checks
+;Padding mustn't be done in buffer (prevents to insert digits)
+;but at display time.
+          cp " ":call z,fail
+      END
+          call deci_to_int
+          ex de,hl
+          scf
+          ret
+
+
+_buffer_to_hexa_byte
+          ld hl,wv_edit_buffer
+          ld a,(hl):inc hl:or a
+          ret z
+          call gethexa
+          ld c,a
+          ld a,(hl):or a:scf:ret z
+          call gethexa
+          4 ** rlc c
+          or c
+          ld c,a
+          scf:ret
+
+
+gethexa
+;IN : ascii
+      IF todo
+; use version in conv.o
+      END
+          sub "0"
+          cp 10:ret c
+          add "0"
+          or &20        ; lowercase
+          sub "a"-10
+          ret
+
+; ============================
+key_handlers
+; ============================
+; See API @ handler_table 
+
+key_deci_field_signed
+;Allow "-"
+          cp "-":jr z,_accept
+;encahine
+key_deci_field
+;Allow special keys <&20 (e.g. &10 CLR)   >= &7f del
+          cp &20:jr c,_accept
+          cp &7F:jr nc,_accept
+;Forbid all others but digits.
+          cp "0":ccf:ret nc ; NC NZ: not handled
+          cp "9"+1:inc a:dec a:ret nc
+_accept
+          jp field_editing
+
+key_hexa_digit
+          call key_hexa
+          ret nc
+auto_validate
+;TODO? Exit+enter instead instead of all that?
+          call validate ; prerequisite for refresh
+          call refresh_focus
+;reset field editor. 
+;Otherwise cursor would be +1 -> no more char accepted.
+          call setup_field_editor
+          HANDLED()
+          ret
+
+key_hexa
+; Validate only when 2 digits entered  (?! not done anymore?)
+          cp "0":ccf:ret nc ; NC NZ: not handled
+          cp "9"+1:jr c,.ok
+          cp "A":ccf:ret nc
+          cp "f"+1:jr nc,ncnz
+          set 5,a
+          cp "a":ccf:ret nc
+.ok
+          jp field_editing
+ncnz
+; Assume A<>0 !
+          or a:ret
+
+return_1  ld hl,1:ret
+return_2  ld hl,2:ret
+return_3  ld hl,3:ret
+return_4  ld hl,4:ret
+return_5  ld hl,5:ret
+
+
+key_toggle
+          CALL_STATE(byte_getter)
+;Turn non-zero to zero
+    ; zero to &ff
+          add &FF
+          sbc a
+          cpl
+          CALL_STATE(byte_setter)
+;---hackish
+          call validate ; needed to trigger refresh if flagged 
+          call refresh_focus ; needed to put back cursor
+;---      
+          HANDLED()
+          ret
+
+
+key_handler_custom
+;Try key on custom table, against embedded ui 
+;(already pointed via state_sp)
+
+      IF dev_checks
+; Check child is actually pointed by state_sp
+; It won't be so if key handler if not above leave of ui tree.
+; In which case the wrong methods might be called?
+ ; -> In principle, no such risk: external handler wouldn't use
+    ; CALL_STATE() macro
+      IF 0
+ !!! test too strict:
+; handler can have a wrapper as child, so state_sp isn't pointing
+; immediate child, but leaf.
+          ld hl,(state_sp_handler)
+          GET_STATE_CUSTOM(embedded_ui)
+          ex de,hl
+          ld hl,(state_sp)
+          or a:sbc hl,de:add hl,de:call nz,fail
+      END
+      END
+
+          ld hl,(state_sp_handler)
+          GET_STATE_CUSTOM(custom_handler)
+          ld e,a
+          call process_key_custom
+          ret
+
+key_optional
+;-----------   
+          call is_enabled
+          ret z
+key_optional_readwrite
+;---------------------
+;As we cannot enter child (see /invariant/ 1 exception), we must
+;pass the key to embedded (already setup in optional_readwrite_on_enter)
+;Note: when enabled, this is superflous (as key was already tried)
+     ; nevermind: no-op code is better than adding tests.
+          ld hl,(state_sp)
+          push hl
+          ld hl,(state_sp_handler)
+          ld bc,state_
+          add hl,bc
+; Pnt must be set for e.g. key_hexa_digit which use state via validate
+; Otherwise, we would use w_optional_readwrite.on_exit, doing nothing.
+          ld (state_sp),hl
+          ld e,a
+      IF dev_checks
+; Check it is setup
+          inc hl:ld a,(hl):dec hl:or a:call z,fail
+      END
+          call process_key_
+          pop hl
+          ld (state_sp),hl
+          ret
+
+; ---------------------
+
+get_byte
+          ld hl,(wv_byte_pnt)
+          ld a,(hl)
+          ret
+
+set_byte
+          ld hl,(wv_byte_pnt)
+          ld (hl),a
+          ret
+
+null  BYTE 0
+
+
+; ------------------
+; Data
+; ------------------
+
+ui_null
+      BYTE w_null
+
+ui_brk
+      BYTE w_brk
+
+; -------------------------
+; Interfaces                                   
+; -------------------------
+
+; set_row
+; IN:  hl=row  (0 based)
+; Out: Carry if OK. NC otherwise (out of bounds)
+
+; set_col
+; IN:  hl=col  (0 based)
+; Out: Carry if OK. NC otherwise (out of bounds)
+
+; get_cell
+; IN: hl=buffer
+; OUT: If Ok, buffer filled with cell content (ascii)
+;    ;        B = length filled
+     ;        Carry set.
+     ; NC otherwise.
+
+; set_cell
+; IN: hl=buffer with new cell content (ascii)
+    ;  b=size of this ascii representation.
+; OUT: If ok, current cell has been updated. Carry set.
+     ; NC otherwise.
+
+keytables
+; Why h_ prefix (handler) if it's only keys handled?
+; Ah i remember! There might be other events.
+
+h_null
+; No key handled
+      BYTE 0:WORD 0
+
+h_deci_field
+      BYTE 0:WORD key_deci_field
+
+h_deci_field_signed
+ ; BYTE "-":WORD key_negate    !! Handled in key_deci_field_signed
+      BYTE 0:WORD key_deci_field_signed
+
+h_hexa
+      BYTE 0:WORD key_hexa
+
+h_hexa_digit
+      BYTE 0:WORD key_hexa_digit
+
+h_toggle
+      BYTE " ":WORD key_toggle
+      BYTE 0:WORD 0
+
+h_ktable
+      BYTE k_up:WORD table_up
+      BYTE k_dwn:WORD table_dwn
+      BYTE k_lft:WORD table_lft
+      BYTE k_rgt:WORD table_rgt
+      BYTE ev_child_exit:WORD table_rgt
+      BYTE 0:WORD 0
+
+h_koptional
+      BYTE 0:WORD key_optional
+
+h_koptional_readwrite
+      BYTE 0:WORD key_optional_readwrite
+
+h_krefresh
+      BYTE 0:WORD 0
+ ;      BYTE 0:WORD key_refresh
+
+h_kstruct
+      BYTE ev_child_exit:WORD struct_rgt ; esc: like k_rgt
+      BYTE k_lft:WORD struct_lft
+      BYTE k_rgt:WORD struct_rgt
+      BYTE 0:WORD 0
+
+h_kmultiline
+      BYTE k_up:WORD multiline_up
+      BYTE k_dwn:WORD multiline_dwn
+      BYTE 0:WORD 0
+
+h_key_handler
+      BYTE 0:WORD key_handler_custom
+
+keytables_
+
+; ----------------------- 
+; Generic editing
+; -----------------------
+field_editing
+; We mimick editing loop (e.g. remembering cursor position)
+; by saving state between calls.
+; We cannot use actual loop, would conflict with event mecanism
+; (which also take care of key filterings).
+; Out: C/Z like in /handler_table/
+     ; A preserved only when not handled.
+
+fe_selected = $+1
+          ld e,0        ;selected
+          bit 7,e:jr z,.go
+; Special case: if selected (whole field in inverse video),
+  ; we don't want k_lft to go left inside field (like orgams), 
+  ; but instead go to previous field
+          cp k_lft
+          jr nz,.go
+          or a          ; nc, nz
+          ret
+.go
+fe_width = $+2
+fe_pos = $+1
+          ld bc,&04FF   ; b = max size including 0, c=pos (-1 for last)
+          ld hl,wv_edit_buffer
+          call field_editor
+          ld (fe_pos),bc ; just for C. B was preserved, so ok
+          ld b,a
+        ;  push af
+        ;  cp k_rgt:call z,&BE00
+        ;  pop af
+          ld a,e:ld (fe_selected),a
+          jr c,.modified
+; -- Not handled, lift event
+          ld a,b
+          or a          ; NC, NZ      
+      IF dev_checks
+          call z,fail   ; 0 unexpected 
+      END
+          ret
+
+.modified
+          push bc
+; -- display edited text. Don't use refresh* / widget's display:
+   ; - it would read back model's value (since current not validated)
+          call reset_cursor_from_widget_location
+          xor a         ; no focus
+      IF dev_checks
+; HL must still point to edit buffer
+          ld bc,wv_edit_buffer
+          or a:sbc hl,bc:add hl,bc:call nz,fail
+      END
+
+          call disp_text_hl
+
+      IF dev_checks
+; HL must still point to edit buffer
+          ld bc,wv_edit_buffer
+          or a:sbc hl,bc:add hl,bc:call nz,fail
+      END
+; -- delete rest of the field
+          call pad
+
+; -- display cursor
+; Only if inside field: 
+    ; Otherwise, cumbersome to erase when leaving field
+    ; Also, would interfere with graphical separators
+; Oh! While we are at it -> auto_validate
+          call get_width_common
+          pop bc
+          cp c
+          jp z,auto_validate
+
+          GET_STATE(widget_pos)
+          ld a,c:add h:ld h,a
+      IF dev_checks
+          call z,fail
+      END
+          call display_cursor_at
+          HANDLED()
+          ret
+
+; -----------------------
+; Routines utilitaires
+; -----------------------
+reset_cursor_from_widget_location
+          push hl
+          GET_STATE(widget_pos)
+          CALL_STATE_EXT(set_cursor)
+          pop hl
+          ret
+
+reset_widget_location_from_cursor
+          push hl
+          CALL_STATE_EXT(get_cursor)
+ ;          ld a,h:cp 5:call z,&BE00
+          SET_STATE(widget_pos)
+          pop hl
+          ret
+
+pad
+          call get_padding
+          ret c         ; if bigger: that's an issue, but don't assert
+          ret z
+          ld b,a
+          ld a," "
+;enchaine
+fill
+          push hl
+.lp
+          push af
+          push bc
+          CALL_STATE_EXT(write_char)
+          pop bc
+          pop af
+          djnz .lp
+          pop hl
+          ret
+
+get_padding
+; In: HL = field buffer
+; Out: A = padding
+     ; Z if 0
+     ; Carry if negative! (e.g. value bigger than reserved width)
+          call get_len
+          ld b,a
+          call get_width_common
+          sub b
+      IF dev_checks_display
+          call c,fail
+      END
+          ret
+
+get_width_common
+          push bc:push de:push hl
+          CALL_STATE(get_width) ; NB: focus is on cell
+          ld a,h:or a:call nz,&BE00 ; not handled
+          ld a,l
+          pop hl:pop de:pop bc
+          ret
+
+select_line_in_view
+; Current concrete ligne number and select it
+; In: A=line# in view port 
+;Out: Carry if line exists
+    ; Note: we use get_line# to determinate "out of range",
+          ; instead of asking each client to do it for 'select_line'
+
+          call _add_line_at_top
+          push af
+          CALL_STATE(get_line#)
+          ld b,a
+          pop af
+          cp b
+          ret nc
+          CALL_STATE(select_line)
+          scf
+          ret
+
+get_current_line_number
+          GET_STATE_BYTE(cur_y)
+_add_line_at_top
+          push bc
+          ld c,a
+          GET_STATE_BYTE(line_at_top)
+          add c
+          pop bc
+          ret
+
+is_readwrite
+;Return NZ if read-write
+      ;  Z if read-only (so we skip field)
+          GET_STATE_BYTE(flags)
+          and fmask_readwrite
+          ret z         ; 0 -> read-only
+          cp flag_readwrite_dynamic
+          ret nz        ; 1 -> read-write (static)
+;enchaine 
+is_enabled
+;Return NZ if enabled
+      ;  Z if disabled 
+      ; NC in both cases
+      ; A, DE preserved
+          push de:ld e,a
+          CALL_STATE(get_enabled)
+          or a
+          ld a,e:pop de
+          ret
+
+      IF 0
+; What's that?
+f_decimal_next_
+;in: (ix)=new digit
+   ; (ix-1)=nb bytes
+
+          push de
+          push hl
+          ld b,(ix-1)
+;de:=lsb
+          scf
+          ld a,ixl:sbc b:ld e,a
+          ld a,ixh:sbc 0:ld d,a
+
+          ld c,(ix+0)
+fdn_lp
+          ld a,(de)
+;*10
+          ld l,a
+          ld h,0
+          add hl,hl
+          add hl,hl
+          add l
+          jr nc,$+3
+          inc h
+          ld l,a
+          add hl,hl
+          ld a,c
+          add l
+          jr nc,$+3
+          inc h
+          ld c,h        ;carry for next iteration
+          ld (de),a
+          inc de
+          djnz fdn_lp
+
+          ld a,c
+          or a
+          jr z,fde_nc
+fde_c
+          ld b,(ix-1)
+          ld (de),a     ;it's same address !
+          inc b
+          ld (ix+0),b
+          inc ix
+fde_nc
+          pop hl
+          pop de
+          scf
+          ret
+      END
+
+; ------------------------
+
+
+txt_write_string_padded
+; Mustn't be CALLed!   only JP
+; In: (sp)=af for focus
+;In: hl = nrt string      
+          call pad
+; enchaine
+txt_write_string
+; Mustn't be CALLed!   only JP
+; In: (sp)=af for focus
+    ;  hl = nt sting
+          push bc       ; Necessary?
+          push hl
+          call tws_lp
+          pop hl
+          pop bc
+          pop af
+          or a
+          ret z         ; -- no focus 
+
+inverse_video
+; -- Display focus --
+
+;TODO? move that? Doesn't belong to IO Pack?  
+; Belong to on_display (so focus can be customised)
+; Inverse video: for now just use firmware's version (no indirection)
+; on every char of the field
+          GET_STATE(widget_pos)
+          call get_width_common
+          ld b,a
+.invlp
+          push bc
+          push hl
+          call display_cursor_at
+          pop hl
+          inc h
+          pop bc
+          djnz .invlp
+; Put cursor post field.
+;   - As disp_toggle_custom inconditionally call inverse_video,
+      ; that ensure proper location for next widget in struct
+  ;I.E. we assume cursor past field. Possible better solution:
+      ; use left location + width.
+          CALL_STATE_EXT(set_cursor)
+          ret
+
+tws_lp
+          ld a,(hl):inc hl:or a:ret z
+          push hl
+          CALL_STATE_EXT(write_char)
+          pop hl
+          jr tws_lp
+
+display_cursor_at
+;----------------
+; IN: HL = cursor position (1-based)
+          CALL_STATE_EXT(set_cursor)
+; For now: only handle text field
+;          CALL_STATE(get_height)
+          CALL_STATE_EXT(place_cursor)
+          ret
+
+get_len
+;------
+;In: hl = nt string
+;Out: A = length (0 if empty string)
+          push hl
+.skip     ld a,(hl):inc hl:or a:jr nz,.skip
+          dec hl
+          ld a,l
+          pop hl
+          sub l
+          ret
+
+esc_code = &FC
+
+      IF [1-export]
+
+; 1/ Firmware version
+; ...................
+
+km_read_key = &BB1B
+scr_hw_roll = &BC4D
+txt_set_cursor = &BB75
+txt_get_cursor = &BB78
+txt_wr_char = &BB5D
+txt_place_cursor = &BB8A
+
+      END
+; ---------------------------             
+
+;-------------
+; Variables
+;-------------   
+      SKIP -$ AND &1F   ; easier debugging
+
+flag_init BYTE 0        ; For sanity check
+sign_init = &BB         ; arbitrary marker
+
+; TODO: init with def?  
+state_sp WORD state_stack
+state_sp_handler WORD 0
+
+wv_tmp_buffer SKIP 8
+
+; stack ------
+
+state_max = 8
+state_stack_size = state_ * state_max
+
+state_stack FILL state_stack_size,0 ; reset for easier dbg
+state_stack_end
+
+state_stack_disp FILL state_stack_size,0 ; reset for easier dbg
+state_stack_disp_end
+
+; --------------
+dummy_row WORD          ; Exported for external nrt
+dummy_col WORD 
+
+wv_text_pnt WORD 
+wv_byte_pnt WORD 
+wv_edit_buffer SKIP 8
+
+end_of_ged
+
+

@@ -1,0 +1,259 @@
+; ---- Tests for phrase.o ---
+
+; Jun 12: Test 
+
+      ORG &0100
+      ENT tests
+
+      IMPORT "phrase.o"
+      IMPORT "init.o"
+      IMPORT "memmap.i" ; for phrases_
+
+fail  = &BE00
+
+tests
+          call test_phrase_get_row_at
+          call test_phrase_get_row_at'
+          call test_phrase_set_blank_row_at
+          call test_phrase_select_row_at
+          call test_phrase_select_row_at_insert
+          call test_get_duration_empty
+          call test_get_duration_single
+          call test_get_duration_16bits
+          call test_intermediate_row
+          call test_row_set
+          ret
+
+test_phrase_get_row_at
+;---------------------
+; Check API
+          call full_init
+          xor a:call song_select_new_phrase
+
+;No row
+          ld de,0:call phrase_get_row_at
+          call c,fail
+
+          xor a:call phrase_select_new_row
+;Blank row
+          ld de,0:call phrase_get_row_at
+          call nc,fail
+          call check_blank_row
+          ret
+
+test_phrase_get_row_at'
+;----------------------
+; Same thing when first row duration <> 0 
+; Also test phrase_get_rows#
+          call full_init
+          xor a:call song_select_new_phrase
+
+          call phrase_get_rows#
+          or a:call nz,fail
+
+dur1  = 11
+          ld a,dur1:call phrase_select_new_row
+
+          call phrase_get_rows#
+          cp 1:call nz,fail
+
+          ld de,0:call phrase_get_row_at:call nc,fail
+          ld a,(hl):cp dur1:call nz,fail
+          ret
+
+
+test_phrase_set_blank_row_at
+;---------------------------         
+; Check API (and that no new phrase is created)
+; Prerequiste: test_phrase_get_row_at
+          call full_init
+          xor a:call song_select_new_phrase
+          ld de,0:call phrase_set_blank_row_at
+          push hl
+          call check_blank_row
+          ld de,0:call phrase_set_blank_row_at
+; Check same pointer is returned
+          pop de
+          or a:sbc hl,de:add hl,de
+          call check_blank_row
+          ret
+
+test_phrase_select_row_at
+;------------------------
+; Just check no assertion triggered, and right row selected
+          call full_init
+          xor a:call song_select_new_phrase
+
+          ld a,0:call phrase_select_new_row:call nc,fail
+          ld a,note1:call row_set_note
+
+;sanity check
+          call row_get_note
+          cp note1:call nz,fail
+
+          ld de,0:call phrase_select_row_at
+          call row_get_note
+          cp note1:call nz,fail
+          ret
+
+test_phrase_select_row_at_insert
+;-------------------------------
+; Test insertion
+          call full_init
+          xor a:call song_select_new_phrase
+
+          ld a,0:call phrase_select_new_row:call nc,fail
+          ld a,note1:call row_set_note
+
+          ld de,&10:call phrase_select_row_at
+          ld a,note2:call row_set_note
+          call row_get_note
+          cp note2:call nz,fail
+
+; Read back note 1 at 0
+          ld de,0:call phrase_select_row_at
+          call row_get_note
+          cp note1:call nz,fail
+
+; Insert note3 in between
+          ld de,&08:call phrase_select_row_at
+          ld a,note3:call row_set_note
+
+; Read back note 1 at 0
+          ld de,0:call phrase_select_row_at
+          call row_get_note
+          cp note1:call nz,fail
+
+; Read back note 3 at 8
+          ld de,8:call phrase_select_row_at
+          call row_get_note
+          cp note3:call nz,fail
+
+; Read back note 2 at &10
+          ld de,&10:call phrase_select_row_at
+          call row_get_note
+          cp note2:call nz,fail
+          ret
+
+
+check_blank_row
+; Check row is valid and blank
+; In: HL: row pnt.
+          push hl
+; -- check pnt is in proper phrase area
+          ld a,h:cp &40:call c,fail
+          cp phrases_/&0100:call nc,fail
+; -- duration must be 0
+          ld a,(hl):or a:call nz,fail
+; -- flags must be 0
+          inc hl
+          ld a,(hl):or a:call nz,fail
+          pop hl
+          ret
+
+test_get_duration_empty
+;----------------------
+; Just created phrase: must return zero
+
+          call full_init
+          xor a:call song_select_new_phrase
+          call phrase_get_duration
+          ld a,c:or e:or d:call nz,fail
+          ret
+
+test_get_duration_single
+;-----------------------
+; Just one row: must return duration of this row
+
+          call full_init
+          xor a:call song_select_new_phrase
+          ld a,13:call phrase_select_new_row:call nc,fail
+          call phrase_get_duration
+          ld a,c:or d:call nz,fail
+          ld a,e:cp 13:call nz,fail
+          ret
+
+test_get_duration_16bits
+;-----------------------
+; When ovf 8 bits, an intermediate row is created.
+          call full_init
+          xor a:call song_select_new_phrase
+          ld a,127:call phrase_select_new_row:call nc,fail
+          ld a,255:call row_add_duration
+          call phrase_get_duration
+          ld a,c:or a:call nz,fail
+          ld a,d:cp 1:call nz,fail
+          ld a,e:cp 126:call nz,fail
+          ret
+
+test_intermediate_row
+;--------------------
+; The intermediate row for duration >= &100 must be inserted AFTER.
+; Prerequisite: test_get_duration_16bits, test_phrase_select_row_at
+          call full_init
+          xor a:call song_select_new_phrase
+          ld a,&80:call phrase_select_new_row:call nc,fail
+note1 = &14
+note2 = &16
+note3 = &18
+          ld a,note1:call row_set_note
+;sanity check
+          call row_get_note
+          cp note1:call nz,fail
+
+          ld a,&80:call row_add_duration
+
+;Real check: selected row still carries the note
+          call row_get_note
+          cp note1:call nz,fail
+
+;Sanity: first row was the one selected
+          ld de,0:call phrase_select_row_at
+          call row_get_note
+          cp note1:call nz,fail
+          ret
+
+test_row_set
+;-----------
+; Test setting note, vol, instr
+;1/with non-zero duration
+          ld a,&80:call check_row_set
+;2/with zero initial duration
+          xor a:call check_row_set
+          ret
+
+check_row_set
+          push af
+          call full_init
+          xor a:call song_select_new_phrase
+          pop af
+          call phrase_select_new_row:call nc,fail
+; --- sanity: only 1 row
+          call phrase_get_rows#:cp 1:call nz,fail
+; -- Additional duration
+          ld a,42
+          call row_add_duration
+          call phrase_get_rows#:cp 1:call nz,fail
+; --- With fx
+ ;  TODO
+; --- With note
+          ld a,43
+          call row_set_note
+          call row_get_note:cp 43:call nz,fail
+          call phrase_get_rows#:cp 1:call nz,fail
+; --- With vol            
+          ld a,&0E
+          call row_set_vol
+          call row_get_vol:cp &0E:call nz,fail
+          call phrase_get_rows#:cp 1:call nz,fail
+; --- With instr
+; (instr isn't defined: that shouldn't matter)
+          ld a,1
+          call row_set_instr
+          call row_get_instr:cp 1:call nz,fail
+          call phrase_get_rows#:cp 1:call nz,fail
+; -- Other fields still ok?
+          call row_get_vol:cp &0E:call nz,fail
+          call row_get_note:cp 43:call nz,fail
+          ret
+

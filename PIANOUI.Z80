@@ -1,0 +1,186 @@
+; <<<<< Display piano (shading and stuff) >>>>>
+
+hei   = 15
+wid   = 95
+wid_2_octaves = 2*7*6 / 4 ; 7 keys, 6 pixels per key
+r1    = 48
+r2    = 50
+
+piano_dest = &4000 + r1*4
+
+      ORG &0100
+      ENT test
+
+      IMPORT "memmap.i"
+; Import memcpc here so that bandaya doesn't import it in its reserved
+; area.
+      IMPORT "memcpc.o"
+save_pc = $
+      ORG bandaya
+      IMPORT "bandaya.o"
+      ORG save_pc
+
+; -----------------------------------
+
+test
+          ld a,1:call &BC0E
+          ld a,0:ld bc,&00:call &BC32
+          ld a,1:ld bc,&0B0B:call &BC32
+          ld a,2:ld bc,&0606:call &BC32
+          ld a,3:ld bc,&1A1A:call &BC32
+
+          call firm2status
+
+.tstlp
+          ld a,(octave)
+          call disp_piano
+
+          call &BB06
+          cp &FC
+          ret z         ; exit
+
+          call menu
+          jr .tstlp
+
+menu
+          cp &F3        ; REPLACE with f4
+          jr z,octave_rgt
+          cp &F2
+          jr z,octave_lft
+          ret
+
+octave_rgt
+          ld hl,octave
+          ld a,(hl):cp 7
+          ret nc
+          inc a
+          jr octave_com
+          ld (hl),a
+          jr disp_piano
+
+octave_lft
+          ld hl,octave
+          ld a,(hl):or a
+          ret z
+          dec a
+octave_com
+          ld (hl),a
+;enchaine
+disp_piano
+; Display piano (shaded expect octave A and A+1)
+; In: A = octave
+          push af
+          ld hl,sprite
+          ld de,piano_dest
+          ld bc,hei*&0100 + wid
+          call disp_shaded
+          pop af
+          srl a
+          jr c,.odd
+          ld b,a
+          ld a,0
+          jr z,.evenok
+.mul      add wid_2_octaves:djnz .mul
+.evenok
+          ld c,a:ld b,0
+          ld hl,piano_dest:add hl,bc
+          ex de,hl
+          ld hl,sprite:add hl,bc
+          ld bc,hei*&0100 + wid_2_octaves
+          ld ix,wid
+          call disp_sprite
+          ret
+
+.odd
+          ld b,a
+          ld a,wid_2_octaves/2
+          jr z,.oddok
+.mul'     add wid_2_octaves:djnz .mul'
+.oddok
+          ld c,a:ld b,0
+          ld hl,piano_dest:add hl,bc
+          ex de,hl
+          ld hl,sprite:add hl,bc
+          ld bc,hei*&0100 + wid_2_octaves-1
+          ld ix,wid
+;adhoc with masking lft right
+.ylp
+          push bc
+          push de
+          push hl
+          ld a,(de):and &CC:ld b,a ; save 2 pix lft
+          ld a,(hl):and &33:or b:inc hl
+          ld (de),a:inc de
+          ld b,0
+          ldir
+          ld a,(de):and &33:ld b,a ; save 2 pix rgt
+          ld a,(hl):and &CC:or b
+          ld (de),a:inc de
+          pop hl
+          ld a,ixl:add l:ld l,a
+          ld a,ixh:adc h:ld h,a
+          pop de
+          call bc26_de
+          pop bc
+          djnz .ylp
+          ret
+
+disp_sprite
+;in: hl:source
+   ; de:dest
+   ;  b:hei
+   ;  c:wid display
+   ; ix:wid in memory
+.ylp
+          push bc
+          push de
+          push hl
+          ld b,0
+          ldir
+          pop hl
+          ld a,ixl:add l:ld l,a
+          ld a,ixh:adc h:ld h,a
+          pop de
+          call bc26_de
+          pop bc
+          djnz .ylp
+          ret
+
+disp_shaded
+;Apply mask so pen 3 -> pen 1
+;in: hl:source
+   ; de:dest
+   ;  b:hei
+   ;  c:wid
+          ld b,hei
+.ylp
+          push bc
+          push de
+          ld b,0
+mask3to1 = &F0
+.xlp
+          ld a,(hl):inc hl
+          and mask3to1
+          ld (de),a:inc de
+          dec c
+          jr nz,.xlp
+          pop de
+          call bc26_de
+          pop bc
+          djnz .ylp
+          ret
+
+bc26_de
+; Page agnostic
+          ld a,d:and &38:cp &38:jr z,.nxtline
+          ld a,d:add 8:ld d,a
+          ret
+.nxtline
+          ld a,e:add r1*2:ld e,a
+          ld a,d:adc &C8:ld d,a
+          ret
+
+octave BYTE 0
+
+sprite
+      LOAD "touches.win"

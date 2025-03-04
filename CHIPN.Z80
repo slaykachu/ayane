@@ -1,4 +1,6 @@
-hack_minimala = 1
+hack_minimala = 1       ; also used for 4k08
+hack_4k08 = 1
+is_minimala = 1
  ; Convertion for chip'n'sfx
 
 ; TOC:  
@@ -7,6 +9,26 @@ hack_minimala = 1
   ; - instruments
 
 ; 2024                                              
+; ----- v0y ------
+  ; Oct       
+    ; 30 Introduce /import_row_size/ (< instr_row_size_max)
+       ; Handle "C-B" (encoding for C-9) -> Period 0 
+    ; 24 Remove "chip instr" specific code:
+          ; - routines removed from chung anyway (rotten calls)
+          ; - simpler/shorter code 
+  ; Jun
+; ----- v0l ------
+    ; 17 New_instr_ayane and co: take ID
+    ; 11 Fix regression minimala (un push de trop dans le refactoring)
+; ----- v0k ------
+    ;  6 Use both vib and vib_noise to avoid conflict
+    ; Ok but conflict noise with 2 instr vib_noise at the same time.
+    ;  3 Reprise.
+       ; Fix: instr skip_line when already pointing on nl
+            ; (needed when instrument don't have name)
+       ; Fix global_transpose (wasn't applied)
+       ; Fix Fx "10Y". Was doing vib with 256 steps 
+                     ; instead of portamento
 ; ----- v0j ------    
   ; May
    ; 16 Revert v0i. See "journal.o" for rationale.
@@ -21,7 +43,6 @@ hack_minimala = 1
         ; - less code (and more similaire to chipdownvib)
         ; - more compact data (no huge sequence due to slow volume fade)
         ; - all minimala instrs fit in &100
-enable_instr_default = 0
 
    ; 23 Fix .arpeggio for Y >= &e
    ; 22 Fix .chipdownvib: XY params weren't read
@@ -40,7 +61,9 @@ enable_instr_default = 0
       IMPORT "phrase.o"
       IMPORT "chung.o"
       IMPORT "track.o"  ; Song_add_map
+      IMPORT "plyconf.i" ; tmp hack: some stuff deactivated
 
+import_row_size = instr_hard_type ; no hard env, no special fx
 
 connect_bk_chip = connect_bk_io
 module = st_module      ; &4000 (same address than for st module)
@@ -97,7 +120,10 @@ song_map
           jr .lpchan
 
 .endchan
-          call skip_nl
+      IF todo
+;detect "*" for loop 
+      END
+          call skip_line
           inc c
           jr .lpmap
 
@@ -165,10 +191,21 @@ patterns
           ld a,(de):ld c,a
           ld a,(hl):inc hl
           cp "#":jr nz,$+3:inc c
+; handle "C-B": encoding for "C-9" 
+      IF todo
+; (period 0 or cut?)
+; For now choose octave 9: should point to period 0 as well.
+; !! todo, check that as well 
+      END
+          ld a,(hl):inc hl
+          cp "B":ld a,9:jr z,.okoctave
+          dec hl
           call decX2val
+.okoctave
           inc a         ; +1 octave to match midi numbering
-          2 ** add a:ld b,a:add a:add b ; octave
+          2 ** add a:ld b,a:add a:add b ; octave: a*12
           add c
+          ld c,a:ld a,(global_transpose):add c
           call row_set_note
           call connect_bk_chip
           ld a,":":call consume_char
@@ -203,27 +240,22 @@ patterns
 instruments
 ; --------------
 
-          ld c,1
 .instrlp
           call connect_bk_chip
           ld a,(hl):cp "="
           jp z,.instrend
 
-          push bc
-
           ld a,":":call consume_char
 ;instr_id
           call hexXX2val
- ; expect instr in order
- ; since we use New_instr_chp_down_vib which just append.
-          cp c:call nz,unexpectedinput
+          ld (cur_instr),a
           call consume_space
 
 ;Clear workzone (512 bytes)
 ;No longer instrument will be generated: if vol decrease too slowly,
 ; we switch to chipnsfx like instr. 
 ;Well, some corner cases not handled (noise decreasing too slowly)
-max_rows = 512 / instr_row_size_max
+max_rows = 512 / import_row_size
           push hl
           ld hl,workzone
       IF workzone AND &FF
@@ -252,15 +284,16 @@ max_rows = 512 / instr_row_size_max
           ld (XY),bc
           pop af
           push hl
+
           or a:jr z,.arpeggio
-          dec a:jr z,.vibrato
+          dec a:jp z,.FX1
           call to_be_implemented
 
 .arpeggio
 ; Prepare full arpegio sequence.
           xor a:ld (arp_loop),a ; default 
           ld hl,workzone + instr_arp
-          ld de,instr_row_size_max
+          ld de,import_row_size
 
           call get_arp_X
           ld a,c:or a:jr z,.arp2
@@ -276,7 +309,7 @@ max_rows = 512 / instr_row_size_max
           call one_arp3
           djnz .lparp3
           ld a,3
-          jr .chipdownarpnoise
+          jr .okarp
 
 .arp_stale
 ; 0 X Y Y Y Y Y...
@@ -287,7 +320,7 @@ max_rows = 512 / instr_row_size_max
           djnz .lparp
           ld a,2:ld (arp_loop),a
           ld a,3
-          jr .chipdownarpnoise
+          jr .okarp
 
 .one_arp3
           ld (hl),0:add hl,de
@@ -297,7 +330,7 @@ max_rows = 512 / instr_row_size_max
 
 .arp2
           ld a,b
-          or a:jr z,.noeff
+          or a:jr z,.okarp
 ; -- Arp 0X 
           ld b,max_rows/2
           add a
@@ -306,56 +339,15 @@ max_rows = 512 / instr_row_size_max
           ld (hl),a:add hl,de
           djnz .lparp2
           ld a,2
-          jr .chipdownarpnoise
+;enchaine      
+.okarp
+; here a = nb rows (arpegio length) 
+; !!!Not used: assume volume is decreasing, it will dictate nb rows 
+; (was used for chip instrument where arp and volume where independent)
 
-.vibrato
-          ld bc,(noise)
-          ld a,c:or b:jp z,.chipdownvib
-          jr .instr_default
-
-.noeff
-          ld bc,(noise)
-          ld a,c:or b:jr z,.instr_chip'
-          ld a,1        ; need at least one row
-;enchaine
-.chipdownarpnoise
-; here a = nb rows (arpegio length)
-; -register instr    
-          push af
-          ld bc,(noise)
-; For now we assume constant noise
-          ld a,c:or a:call nz,to_be_implemented
-          ld a,b
-          3 ** rrca:and &1F ; remove decimale part 
-          ld d,a
-          ld bc,(volume)
-; In instr code, we use 'sub' for saturation
-; So we must convert +Y -> -Y
-          ld a,c:neg:ld c,a
-          call New_instr_chp_down_arp_noise
-
-; Get arps onlys
-      IF instr_arp
-!! review that
-      END
-          ld a,(workzone + instr_row_size_max)
-          ld (workzone + 1),a
-          ld a,(workzone + instr_row_size_max*2)
-          ld (workzone + 2),a
-          pop bc
-          ld hl,workzone
-          call instr_chip_append_rows_byte
-          ld a,(arp_loop)
-          ld b,a
-          call instr_set_loop
-          jr .instrname
-
-
-.instr_default
-      IF enable_instr_default
-;When noise, use ayane default instr
-; --- Regular ayane instrument, prepare table
-          ld de,instr_row_size_max
+.poke_volume
+; Continue preparing table
+          ld de,import_row_size
 ; -- Volume         
 ; For now, we don't handle "slow" instr 
 ; -> too much rows?
@@ -365,7 +357,7 @@ max_rows = 512 / instr_row_size_max
           ld a,c:cp &FD:call nc,to_be_implemented
 
           ld a,b
-          ld b,0        ; nb rows 
+          ld b,0        ; count nb rows 
           ld hl,workzone+instr_vol
 .lpvol
           push af
@@ -396,19 +388,8 @@ max_rows = 512 / instr_row_size_max
           add c
           djnz .lpnoise
 
-; fx  (arpeggio already handled)
-          ld a,(fx)
-          dec a:jr nz,.novibrato
-; vibrato X*0 X*Y X*0 X*-Y
-          ld bc,(XY)
-          xor a:call fillwa_row
-          ld a,c:call fillwa_row
-          xor a:call fillwa_row
-          ld a,c:neg:call fillwa_row
-
-.novibrato
-
 ; --- Register instr
+          ld a,(cur_instr)
           call New_instr_ayane
 
 ; infer r7 for noise (3f or 07 if noise set)
@@ -427,61 +408,17 @@ max_rows = 512 / instr_row_size_max
           pop bc        ; nb rows
       END
           push bc
-          call instr_ayane_append_rows
+          ld a,import_row_size
+          call instr_append_rows
           pop bc
           dec b
-; Set loop to last row (end of instrument)
+; Hack: Set loop to last row (end of instrument)
           call instr_set_loop
-          jr .instrname
-      ELSE
-          call mess
- ; Must enable_instr_default
+
+; --- Instrument name 
+      IF todo
+; Set it 
       END
-
-.instr_chip'
-; No fx: reuse vibrato anyway (not to multiply instruments)
-          ld hl,0:ld (workzone),hl
-          ld a,1
-          jr .chipdownvib_com
-
-.chipdownvib
-; Ad-hoc instrument to partly reproduce chip instrument
-; - for vibrato, usual table
-; - for volume, state like chip
-
-;--create table b**0 b**+A b**0 b**-A 
-          ld a,(XY+1):ld b,a
-          ld a,(XY)
-; Hack for minimala.chp, as we don't do proportional vibrato
-          ld c,&21:cp &0C:jr z,.okhack
-          inc a:srl a:ld c,a
-.okhack
-          ld a,c
-          ld hl,workzone
-          call fillw0
-          call fillwa
-          call fillw0
-          neg
-          call fillwa
-          ld a,b:add a:add a ; total length
-.chipdownvib_com
-; here a = nb rows
-; -register instr    
-          push af
-          ld bc,(volume)
-; In instr code, we use 'sub' for saturation
-; So we must convert +Y -> -Y
-          ld a,c:neg:ld c,a
-          call New_instr_chp_down_vib
-          ld hl,workzone
-          pop bc
-          call instr_chip_append_rows_word
-; Set loop to first row 
-          ld b,0
-          call instr_set_loop
-
-;enchaine
-.instrname
           call connect_bk_chip
           pop hl
       IF dev_checks
@@ -494,12 +431,106 @@ max_rows = 512 / instr_row_size_max
 ; copy name
       END
           call skip_line
-          pop bc
-          inc c
           jp .instrlp
 
 .instrend
           ret
+
+
+.FX1
+; Fx 1XY vibrato/portamento, usual table
+; Here: B=X 
+      ; C=Y            
+          ld a,c
+          or a:call z,to_be_implemented ; slow porta
+          cp 8:call z,to_be_implemented ; idem going down
+
+          ld a,b:or a:jr nz,.vibrato
+;--- Portamento
+          ld a,c
+          ld bc,-1      ; up
+          cp 9:jr c,.okdirection
+          sub 8
+      IF dev_checks
+          call z,fail   ; unexpected here
+      END
+; mitigation for adaptive portamento
+          ld bc,1
+.okdirection
+      IF dev_checks
+          or a:call z,fail ; unexpected here
+      END
+.shiftlp
+;bc*=pow(2,a-1)
+          dec a:jr z,.shiftend
+          sla c:rl b
+          jr .shiftlp
+.shiftend
+      IF hack_4k08
+  ; mitigation for octave
+;04:Batterie1 applied on octave 3 (more or less)
+;05:Batterie2 applied on octave 4
+          ld a,(cur_instr)
+          cp 4:jr nz,.okhackporta
+          sla c:rl b    ; bc +16 instead of +8
+.okhackporta
+      END
+          ld hl,workzone
+          ld de,0
+      IF hack_minimala
+; actually for 4k08
+; Needed length depends on how long the note is played
+; For now, hardcoded!
+          ld a,8
+      ELSE
+ !!! todo: compute length wrt volume fading
+      END
+      BRK
+;todo: fix: must poke in column
+.portalp
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+          ex de,hl
+          add hl,bc
+          ex de,hl
+          dec a
+          jr nz,.portalp
+          jp poke_volume
+
+
+.vibrato
+;--poke in workzone b**0 b**+Y b**0 b**-Y
+      IF dev_checks
+          inc b:dec b:call z,fail
+      END
+          ld a,c
+      IF is_minimala
+; Hack for minimala.chp, as we don't do proportional vibrato
+          cp 12:ld c,&21:jr z,.okhack
+          inc a:srl a:ld c,a
+      ELSE
+; hack for 4k08.
+; i don't understand when it goes up or down
+          cp 1:ld c,-2:jr z,.okhack
+          cp 2:ld c,-4:jr z,.okhack
+; 11: leave as is
+          ld c,a
+      END
+.okhack
+          ld a,c
+          ld hl,workzone + instr_pitch
+          ld c,0        ; counter row
+.fillvib
+          call fillw0_row:jr nc,.full
+          call fillwa_row:jr nc,.full
+          call fillw0_row:jr nc,.full
+          neg
+          call fillwa_row
+          cpl:inc a     ; neg without touching carry
+          jr c,.fillvib
+.full
+          jp poke_volume
+
 
 ; ---------------
 ; helpers
@@ -595,8 +626,8 @@ skip_separator
 
 skip_line
 ; Return hl past next nl.
-          ld a,(hl):inc hl
           call is_nl
+          inc hl        ; next char no matter was
           jr nz,skip_line
 ; Enchaine
 skip_nl
@@ -628,6 +659,20 @@ fillw0
           pop af
           ret
 
+fillw0_row
+; Poke B * word 0 column-wise until max_row is reached
+; In: C = current row
+    ;HL = column in table
+    ;DE = row_size
+; Out: C = row+B
+     ; NC when end reached
+     ; A, B, preserved
+          push ix:ld ixl,a
+          xor a
+          call fillwa_row
+          ld a,ixl:pop ix
+          ret
+
 fillwa
 ; Poke B * word A  (signed)
           push bc
@@ -638,21 +683,36 @@ fillwa
           pop bc
           ret
 
-
 fillwa_row
-;HL= table                 
-; A= value (signed)
-; B= rep
-          push bc
+; Poke B * word A, column-wise until max_row is reached
+; In: A = value (sined)
+    ; B = rep
+    ; C = current row
+    ;HL = pos field in table
+; Out: C = row+B
+     ; NC when end reached
+          push ix:ld ixl,b
 .lp
           push bc
           ld b,1:call fillwa
-          ld bc,instr_row_size_max-2
+          ld bc,import_row_size -2 ;-2 since word poked
           add hl,bc
           pop bc
+          inc c
+          push af
+          ld a,c:cp max_rows:jr z,.full
+          pop af
           djnz .lp
-          pop bc
+          scf
+          jr .exit
+
+.full
+          pop af
+          or a
+.exit
+          ld b,ixl:pop ix
           ret
+
 
 notes
 ; "ABCDEFG" in half tones
@@ -701,3 +761,4 @@ noise WORD
 fx    BYTE 
 XY    WORD 
 arp_loop BYTE 
+cur_instr BYTE 

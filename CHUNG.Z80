@@ -3,19 +3,44 @@ dev_checks = 1
 todo  = 1
 makeroom = 1
 st    = 0               ; disabled for now
-      ; hist
 
 ; Poc (to be completed)
 
-    ; Init_chung
+    ; Init_chung 
+    ; New_instr
     ; New_instr_ayane
-    ; New_instr_chp_down_vib
     ; Song_select_instr
+    ; Song_get_instr
     ; Setup_row_r7
     ; instr_ayane_append_rows
-    ; instr_chip_append_rows
+    ; instr_get_rows#         
+    ; instr_set_rows#         
     ; instr_set_loop
-    ; instr_get_loop    
+    ; instr_get_loop 
+    ; set_flags    
+    ; --- Instr edition for instrui ----
+    ; insert_empty_row
+    ; del_row
+    ; select_row
+    ; get_row
+    ; set_row
+
+    ; --- Helper (salo / compile) ------
+    ; is_last_row
+
+row_link = 2
+
+; How each instr column (flags, arp, ...) is encoded
+; Will allow:
+   ; - indirection (table) like in 
+   ; - mix-in special handling (like chipnsfx's 
+; For now only used for future-proof serialisation.
+column_type_default = 0 ; only used for special fx as sentinelle
+column_type_const = 1   ; not used
+column_type_table = 2   ; not used
+column_type_table' = 3  ; table with special modulo
+column_type_custom = 4  ; only type used (for serialization)
+column_type_ramp = 5    ; not used (future: mimick chipnsfx)
 
       IMPORT "const.i"
       IMPORT "memmap.i"
@@ -23,8 +48,10 @@ st    = 0               ; disabled for now
       IMPORT "chunk.o"  ; new_chunk 
       IMPORT "heap.o"   ; new_heap_chunk
       IMPORT "ply.o"    ; For fx_set_phrase
-      IMPORT "instr.o"  ; Use LSB as type
-      IMPORT "plyconf.i" ; for nb_fx
+      IMPORT "instr.o"  ; Use LSB as type.
+      IMPORT "plyconf.i" ; for nb_fx and use_instr_chip_down_vib (tmp)
+      IMPORT "timer.o"  ; fx_end/sync_buzzer_register
+
 
 bk_connected = &3C      ; hack: avoid "ambiguous label"
 
@@ -53,7 +80,47 @@ bk_connected = &3C      ; hack: avoid "ambiguous label"
 hist
 ; TODO: see what's up with firmware, since we use EXX.
 
+; //// 2025 /////////////////
+; ------ v0ab --------
+; Feb
+  ; 26 insert_empty_row: select inserted row
+     ; Reactivat /instr_ayane_append_rows/ for chungnrt
+
 ; //// 2024 /////////////////
+; ------ v0x --------
+; Oct     
+  ; 4 Discriminate fx_null vs fx_end
+    ; For now, KISS: 2 fx (can be null), followed by fx_end
+; ------ For v0w -------
+; Oct
+  ; 4 Fix get_row (again!): must check source, not destination buffer
+  ; 1 Fix bug in _check_sfx when advancing pointer to next fx.
+; ------ For v0v -------
+; Sep
+  ;25 Add CHECK_SFX()  
+; ------ For v0t -------
+  ;18 Remove chipnsfx instr handling
+; ------ For v0o -------
+  ; 7 Add get_row, set_row, add_row, del_row
+; ------ For v0l -------
+; Jun    
+  ; 21 Add getters/setters for salo
+           ; instr_set_rows#
+           ; set_flags
+           ; get_flags
+           ; set_vols...
+  ; 20 Song_select_instr: return instr param numbers 
+  ; 17 Add New_instr
+     ; New_instr*: take ID
+     ; Remove get_instrs#: can be infered from index
+
+  ; 12 Add instr_get_rows# 
+; May
+; ------ For v0k -------
+    ; Add New_instr_chp_down_vib_noise for 4k08.chp
+    ; Add New_instr_chp_down_arp
+    ; Fix New_instr_chp_down_vib? Vol step must be placed first
+
 ; ------ For v0h -------
 ; Apr
     ; 29 Reset instr_idx (so compile can skip non-existing instr)
@@ -234,6 +301,12 @@ type_table_word = 2
 table_header_size = 3   ; type, size in bytes, loop len
 
 ;==============================================
+      MACRO EXPECT_EQUAL x,y
+      IF x-y
+   !! should be equal
+      END
+      ENDM
+
       MACRO INIT_LENGTH
       IF todo
 ; rename s/lenght/duration (or better term)
@@ -260,6 +333,31 @@ table_header_size = 3   ; type, size in bytes, loop len
           reserved_byte ** inc l
       ENDM
 
+      MACRO CHECK_INSTR_PNT
+      IF dev_checks
+          call _check_instr_pnt
+      END
+      ENDM
+
+      MACRO CHECK_SFX
+;Check sfx fields n**sync_buzzer, then sfx null
+;In: HL= start row instr
+      IF dev_checks
+          call _check_sfx
+      END
+      ENDM
+
+      MACRO CHECK_SFX_DE
+;Check sfx fields n**sync_buzzer, then sfx null
+;In: HL= start row instr
+      IF dev_checks
+          ex de,hl
+          call _check_sfx
+          ex de,hl
+      END
+      ENDM
+
+
 ;==============================================
 fatal = &BE00           ; TODO: replace by warning mecanism.
 memory_full = fatal
@@ -269,6 +367,43 @@ to_be_implemented
           call &BE00
 ;implement/handle me
           ret
+
+      IF dev_checks
+_check_instr_pnt
+          push de
+          ld de,tables:or a:sbc hl,de:add hl,de:call c,fail
+          ld de,tables_:or a:sbc hl,de:add hl,de:call nc,fail
+          pop de
+          ret
+
+_check_sfx
+; Check 2 fx (possibly fx_null) and then fx_end
+          push af:push bc:push hl
+          ld bc,fx0_type
+          add hl,bc
+          ld a,MAX_FX_BY_INSTR
+.lp
+          push hl
+          ld c,(hl):inc hl
+          ld b,(hl)
+          ld hl,fx_null:or a:sbc hl,bc:jr z,.ok
+          ld hl,sync_buzzer_register:or a:sbc hl,bc:jr z,.ok
+; for now just one type of fx possible. If not sync_buzzer, break
+          call fail
+.ok
+          pop hl
+          ld bc,instr_fx_size
+          add hl,bc
+          dec a
+          jr nz,.lp
+
+          ld c,(hl):inc hl
+          ld b,(hl)
+          ld hl,fx_end:or a:sbc hl,bc:call nz,fail
+
+          pop hl:pop bc:pop af
+          ret
+      END
 
   ; =====================================
   ; ------ song interface ---------------
@@ -324,105 +459,88 @@ fill      ld (hl),a:inc l:jr nz,fill
 fillb     ld (hl),a:inc hl:djnz fillb
           ret
 
-
+Song_get_instr
+;-------------
+          call _prelude
+          ld a,(va_current_instr)
+          jp _postlude
 
 Song_select_instr
 ;----------------
 ; In: A: inst number (from 1. 0 reserved)
-; Out: A unchanged
-     ; NZ if instr exist
+; Out: If instr exist, NZ, A = Id type instrument (for SALO) 
+                         ; H = Param size (cf instr.SIGN)
+                         ; L = Size row   (idem)
+                     ; Z otherwise, A, HL trashed    
+     ; In any case H trashed
      ; Instr selected (even in non existent)
 
           call _prelude
+_select_instr
+      IF dev_checks
           or a:call z,mess
+      END
           ld (va_current_instr),a
           call get_instr_pnt
-          ld c,a
-          ld a,(hl):or a ; Instr type <> 0 
-          ld a,c
-          jp _postlude
+          ld a,(hl):or a ; Instr type <> 0? 
+          ld l,a
+          ld h,instr_code/&0100
+          dec hl:ld a,(hl)
+          dec hl:ld d,(hl)
+          dec hl:ld e,(hl)
+          ex de,hl
+          scf
+          pop de        ; stack correction
+          jp _postlude_
 
+New_instr
+; Generic builder for loading and ui
+; in: A= ID
+    ; B= instr type 
+    ; C= params# 
+    ;HL= params
+;Out: A= row size
+          EXPECT_EQUAL(type_instr_null,0)
+          EXPECT_EQUAL(type_instr_mute,1)
+          EXPECT_EQUAL(type_instr_default,2)
+          inc b:dec b:call z,to_be_implemented
+          dec b:call z,to_be_implemented
+          dec b:jr z,.default
+          call unexpected
 
+.default
+; for now, expect 0 params 
+          inc c:dec c:call nz,unexpected
+;enchaine
 New_instr_ayane
-          ld a,instr_default AND &FF
+          ld e,instr_default AND &FF
 ;enchaine
 _select_new_instr
 ; create new empty instr, and select it.
-; In:  A = type 
+; In:  A = Id
+    ;  E = type 
 ; Out: Carry if ok, instr selected
-     ; NC otherwise (memory full)
+     ; NC otherwise (memory full) 
+     ; A/L like Song_select_instr
           call _prelude
-          push af
-          ld hl,va_instrs#
-          inc (hl)
-          ld a,(hl)     ; Start by 1: 0 is reserved
-          ld (va_current_instr),a
-          call get_instr_pnt
-          pop af
+      IF dev_checks
+          or a:call z,unexpected ; 0 reserved (for mute?)
+      END
+          ld l,a
+          call _get_instr_pnt
           instr_head_type ** inc hl
-          ld (hl),a
+          ld (hl),e
           instr_head_rows - instr_head_type ** inc hl
-          ld (hl),0:inc hl
-          ld (hl),0
-_postlude
-          scf
-_postlude_fail
-          pop hl
-_postlude_
-          pop ix:pop de:pop bc
-          ret
+; reset table and params (00 used as default)
+          ld b,instr_head_size - instr_head_rows
+.raz      ld (hl),0:inc hl:djnz .raz
+          jp _select_instr
 
-New_instr_chp_down_vib
-;---------------------
-; Create ad-hoc instr reproducing chipnsfx intsrument with
-    ; - Volume going down
-    ; - No noise
-    ; - Vibrato
-; In  b = initial volume (8 bits)
-   ;  c = step volume to be substracted (8 bits) 
-          ld a,instr_chip_down_vib AND &FF
-          call _select_new_instr
-          call get_instr_pnt
-          instr_head_ext ** inc hl
-          ld (hl),c:inc hl
-          ld (hl),b
-          ret
-
-New_instr_chp_down_arp_noise
-;---------------------------
-; Create ad-hoc instr reproducing chipnsfx intsrument with
-    ; - Volume going down
-    ; - Constant noise (can be off = 0)
-    ; - Arpegio
-; In  b = initial volume (8 bits)
-   ;  c = step volume to be substracted (8 bits) 
-   ;  d = noise (set first)
-          ld a,instr_chip_down_arp_noise AND &FF
-          call _select_new_instr
-          call get_instr_pnt
-          instr_head_ext ** inc hl
-          ld (hl),d:inc hl
-          ld (hl),c:inc hl
-          ld (hl),b
-          ret
 
 instr_ayane_append_rows
 ;----------------------
-; Ayanes version: full row
+; Ayane's version: full row. Only used by chungnrt as by 26/02/2025
           ld a,instr_row_size_max
-          jr instr_append_rows
-
-instr_chip_append_rows_byte
-;--------------------------
-; chip version: 1 byte per row (e.g. arpegio)
-          ld a,1
-          jr instr_append_rows
-
-instr_chip_append_rows_word
-;--------------------------
-; chip version: 1 word per row (e.g. vibrato)
-          ld a,2
-;enchaine
 instr_append_rows
 ;----------------
 ; Set all rows in bulk (typically when importing from other tracker)
@@ -431,19 +549,130 @@ instr_append_rows
     ;  b: nb rows
           call _prelude
 .rowlp
-          call instr_append_row
+          call instr_append_row_
           djnz .rowlp
-          jp _postlude
+_postlude
+          scf
+_postlude_fail
+          pop hl
+_postlude_
+          pop ix:pop de:pop bc
+          ret
 
+insert_empty_row
+;---------------
+; In: A= row# (can't use selected_row as we need to goto previous row)
+          push af
+          ld b,a
+          ld a,instr_row_size_max
+          call allocate_new_row
+          call instr_goto_row
+          ld c,(hl):ld (hl),e:inc hl
+          ld b,(hl):ld (hl),d
+          ex de,hl
+          ld (hl),c:inc hl
+          ld (hl),b:inc hl
+          ex de,hl
+          pop af
+;enchaine
+select_row
+;---------
+; In: A= row#
+    ; instr selected
+          ld b,a
+          inc b
+          call instr_goto_row
+          CHECK_INSTR_PNT()
+
+          row_link ** inc hl
+          ld (selected_row),hl
+          ret
+
+get_row
+;------                  
+; Copy row from ayane instrument
+; IN: DE: buffer for row data
+    ; select_row was called
+           ; - simpler for client
+           ; - avoid redoing same stuff
+          ld hl,(selected_row)
+          CHECK_INSTR_PNT()
+          CHECK_SFX()
+          jr _row_copy
+
+instr_set_row           ; tmp hack to resolve ambiguity
+set_row
+;------
+; Copy row to ayane instrument
+; IN: DE: row data
+    ; select_row was called (see /get_row/)
+          ld hl,(selected_row)
+          CHECK_INSTR_PNT()
+          ex de,hl
+          CHECK_SFX()
+_row_copy
+          ld bc,instr_row_size_max
+          ldir
+          ret
+
+
+del_row
+;------
+; In: A= row# (same as /insert_empty_row/)
+
+; When loop to suppressed row, link would be dangling.
+; We must detect this case
+          call instr_get_loop
+          push af
+          push bc
+          ld b,a
+          call instr_goto_row
+          push hl
+          ld e,(hl):inc hl
+          ld d,(hl)
+      IF todo
+; - release memory
+; - copy data in work buffer for CONTROL-P
+      END
+          ex de,hl
+          CHECK_INSTR_PNT()
+          ld c,(hl):inc hl
+          ld b,(hl)
+          pop hl
+          ld (hl),c:inc hl
+          ld (hl),b
+; Handle corner case when was pointing to suppressed row
+          pop bc
+          pop af
+          ret nc        ; no loop
+          cp b
+          ret nz        ; no
+; Re-set loop
+; Note: if loop was set to last row (now deleted),
+      ; loop will be set to new last row.
+; If we had 0 -> 1 > 1 + &8000 (loop to 1), deleting line 1 gives:
+          ; 0 -> 1 + &8000 (dangling pointer)
+; So, remove dangling pointer
+          ld a,b
+          call instr_goto_last_row
+          ld b,a
+          xor a
+          ld (hl),a:inc hl
+          ld (hl),a
+;enchaine
 instr_set_loop
 ;-------------
 ; Set loop link
 ; In: B: dest row
+; If B > last row, clip to last row
+; (useful for del_row corner case)
           call instr_goto_row
 ;Must point to existing row
           ld e,(hl):inc hl
-          ld d,(hl)
-          ld a,e:or d:call z,mess
+          ld d,(hl):dec hl
+          ld a,e:or d:jr nz,.ok
+          ex de,hl
+.ok
           call instr_goto_last_row
           ld (hl),e:inc hl
           set 7,d       ; marker loop 
@@ -455,7 +684,8 @@ instr_get_loop
 ; Get at which row the instr loops
 ; (for ui, salo, compile)
 ; IN:  Instrument selected
-;OUT:  b: dest row
+;OUT:  If loop, Carry  b: dest row 
+    ;  Otherwis, NC, b trashed
     ;  HL, DE preserved
 
           push de:push hl
@@ -464,28 +694,37 @@ instr_get_loop
           ld d,(hl)
           res 7,d       ; de = loop pnt
 
+; Iter all rows to convert pnt to loop pnt
           call get_instr_pnt
           instr_head_rows ** inc hl
           ld b,0
 .lp
           call ld_hl_link
-; For now all instruments are setup with a loop
-          call z,mess
+          jr z,.noloop
           or a:sbc hl,de:add hl,de
-          jr z,.loop_met
+          jr z,.loop_met ; will trigger Carry
           inc b
           jr .lp
+.noloop
+          scf           ; will be canceled by ccf
 .loop_met
+          ccf
           pop hl:pop de
           ret
 
+get_instr_rows
+;-------------
+; Get pnt to first row  (or Z if no such row)
+          call get_instr_pnt
+          instr_head_rows ** inc hl
+;enchaine
 ld_hl_link
 ; Read link and check it is in bank (if not null)
 ; IN:  Instrument selecet
     ;  HL points on link field
 ; Out: HL = (HL)
      ; Z iff de = 0
-     ; A trashed
+     ; A, BC, DE preserved
           push de
           call ld_de_link
           ex de,hl
@@ -497,36 +736,49 @@ ld_de_link
 ; IN:  HL points on link field
 ; Out: DE = (HL)
      ; Z iff de = 0
-     ; HL preserved
-     ; A trashed
+     ; A, BC, HL preserved
           ld e,(hl):inc hl
           ld d,(hl):dec hl
           res 7,d       ; remove loop flag
-          ld a,d:or e
+          inc d:dec d
       IF dev_checks
           ret z
+          push af
           ld a,d:cp &40:call c,mess
-          cp &7F:call nc,mess ; also set NZ 
+          cp &7F:call nc,mess
+          pop af
       END
           ret
 
 instr_append_row
 ;---------------
-; In: hl: row 
-    ;  a= row size (without link)
+; In: hl: row data
+    ;  a= input row size (without link)
 ; Out: hl: past row source (hl += a)
     ; de trashed
-    ; a, bc preversed          
-          or a:call z,unexpected
-          push af:push bc
-          call allocate_new_row
-          push de
-row_link = 2
+    ; a, bc preversed
+          CHECK_SFX()
+instr_append_row_       ; <- access when partial row input
+          call instr_append_empty_row
           row_link ** inc de
+          push bc
           ld c,a
           ld b,0
           ldir
-          pop de
+          pop bc
+          ret
+
+instr_append_empty_row
+;---------------------
+; In: N/A
+; Out: de: row pnt in bank
+    ; a, bc, hl, preversed
+          or a:call z,unexpected
+          push af:push bc
+;No dynamic size, since only 1 type of instrument,
+;and instr.o/instrui.o expect static fields for replay/editing (resp.)
+          ld a,instr_row_size_max
+          call allocate_new_row
           push hl
           call instr_goto_last_row
       IF dev_checks
@@ -541,9 +793,31 @@ row_link = 2
           pop bc:pop af
           ret
 
+instr_set_rows#
+;--------------
+; Create A* empty rows (used by salo)
+; In: B = nb rows
+          call _prelude
+      IF dev_checks
+; For now just used by salo: we assume there is no rows already there
+; Check this assumption
+          push bc
+          call instr_get_rows#
+          inc c:dec c:call nz,unexpected
+          pop bc
+      END
+.rowlp
+          call instr_append_empty_row
+          djnz .rowlp
+          jp _postlude
+
 instr_goto_last_row
-;------------------
-          ld b,255
+instr_get_rows#         ; same routine
+;------------------ 
+;In: Instr selected.                 
+;Out: C = number of rows#
+    ; HL= points to null link or last row.
+          ld bc,&FF00   ; c = row counter
 instr_goto_row
 ;------------- 
 ; Goto to link to desired row (stops at loop or null link)
@@ -552,16 +826,18 @@ instr_goto_row
 ;Out: hl= points either: 
             ; to link to next row  
             ; to null link         
-    ; AF trashed
+    ; A preserved
 ; E.g., for b=0  hl=  instr_head_rows  (e.g link field of header)
           ; b=1  hl= (instr_head_rows) (e.g link field of row 0)
 
+          push af
           call get_instr_pnt
           instr_head_rows ** inc hl
           push de
           inc b
           call .entry
           pop de
+          pop af
           ret
 
 .lp
@@ -571,6 +847,7 @@ instr_goto_row
           ld a,e:or d:ret z
 ; Don't follow loop. Loop means we are at last row anyway.
           bit 7,d:ret nz
+          inc c         ; row_counter
       IF dev_checks
           ld a,d
           cp tables/&0100:call c,mess
@@ -581,9 +858,137 @@ instr_goto_row
           djnz .lp
           ret
 
+set_arps
+          ld bc,[instr_arp+idsz] *&0100 + 1
+          jr set_column
+set_pitchs
+          ld bc,[instr_pitch+idsz] *&0100 + 2
+          jr set_column
+set_flags
+          ld bc,[instr_flags+idsz] *&0100 + 1
+          jr set_column
+set_vols
+          ld bc,[instr_vol+idsz] *&0100 + 1
+          jr set_column
+set_noises
+          ld bc,[instr_noise+idsz] *&0100 + 1
+          jr set_column
+set_hard_envs
+          ld bc,[instr_hard_arp+idsz] *&0100 + 3
+;enchaine
+set_column
+; Set whole column in instrument
+; Nb rows must have been set beforehand (instr_set_rows#)
+; In:hl=source
+    ; b=offset (field)
+    ; c=width (1 to 3 bytes)
+          ex de,hl
+          call _prelude
+          call get_instr_rows
+          jr z,.okrows  ; Ease salo's code when no rows.
+          ld a,b
+.rowlp
+          push hl
+          push bc
+          push af
+          add l:ld l,a:jr nc,$+3:inc h
+      IF dev_checks
+          inc c:dec c:call nz,unexpected
+      END
+.copy     ld a,(de):inc de
+          ld (hl),a:inc hl
+          dec c
+          jr nz,.copy
+          pop af
+          pop bc
+          pop hl
+          call is_last_row
+          jr z,okrows
+          call ld_hl_link
+          jr .rowlp
+
+.okrows
+          jp _postlude
+
+get_arps
+          ld bc,[instr_arp+idsz] *&0100 + 1
+          jr get_column
+get_pitchs
+          ld bc,[instr_pitch+idsz] *&0100 + 2
+          jr get_column
+get_flags
+          ld bc,[instr_flags+idsz] *&0100 + 1
+          jr get_column
+get_vols
+          ld bc,[instr_vol+idsz] *&0100 + 1
+          jr get_column
+get_noises
+          ld bc,[instr_noise+idsz] *&0100 + 1
+          jr get_column
+get_hard_envs
+          ld bc,[instr_hard_arp+idsz] *&0100 + 3
+;enchaine
+get_column
+; Set whole column in instrument
+; Nb rows must have been set beforehand (instr_set_rows#)
+; In:hl=dest
+    ; b=offset (field)
+    ; c=width (1 to 3 bytes)
+;Out: a=nb rows# (for convenient)
+    ;hl preserved
+          ex de,hl
+          call _prelude
+          call get_instr_rows
+          jr z,.okrows
+          ld a,b
+.rowlp
+          push hl
+          push bc
+          push af
+          add l:ld l,a:jr nc,$+3:inc h
+      IF dev_checks
+          inc c:dec c:call z,unexpected
+      END
+.copy     ld a,(hl):inc hl
+          ld (de),a:inc de
+          dec c
+          jr nz,.copy
+          pop af
+          pop bc
+          pop hl
+          call is_last_row
+          jr z,.okrows
+          call ld_hl_link
+          jr rowlp
+.okrows
+          call instr_get_rows#
+          ld a,c
+          jp _postlude
+
+
+is_last_row
+; Also used by compile and salo
+      IF need_room
+ ; iterator + call back instead
+      END
+;in: hl: link (assumbe MSB <> 0)            
+;Return Z if yes (00=end or bit7=loop)
+     ; All regs but F preserved.
+          push bc:ld b,a
+          inc hl:ld a,(hl):dec hl
+          or a
+          jr z,.okz
+          add a:sbc a:inc a ; Z iif bit7=1
+.okz
+          ld a,b:pop bc
+          ret
+
 get_instr_pnt
-; A preserved
+; In: N/A (just instr selected)
+;Out:HL = header instr
+    ; A preserved
           ld hl,(va_current_instr) ; for l
+_get_instr_pnt
       IF instr_head_size-8
  !! review this
       END
@@ -716,16 +1121,39 @@ get_param
 
 allocate_new_row
 ;...............
+; Actually allocate + setup
 ; In:  A = size to reserve (without link)
 ;Out: DE = pointer
     ; Other registers preserved
+      IF dev_checks
+; !!! for now only full ayane row supported,
+; !!! since we set instr_flags and fx0_type
+          cp instr_row_size_max:call nz,fail
+      END
           push af
           row_link ** inc a
           call allocate
-;reset link
-          xor a
-          ld (de),a:inc de
-          ld (de),a:dec de
+          push de
+          push hl
+;reset link and fields   
+          ld l,e
+          ld h,d
+.raz      ld (hl),0:inc hl:dec a:jr nz,.raz
+; Sane default: noise off, channel on
+          ld hl,instr_flags + row_link:add hl,de
+          ld (hl),&38
+; Fx are actual routine address, and must finish by fx_end.
+          ld de,fx0_type-instr_flags:add hl,de
+          ld (hl),fx_null AND &FF:inc hl
+          ld (hl),fx_null / &0100
+          ld de,instr_fx_size-1:add hl,de
+          ld (hl),fx_null AND &FF:inc hl
+          ld (hl),fx_null / &0100
+          ld de,instr_fx_size-1:add hl,de
+          ld (hl),fx_end AND &FF:inc hl
+          ld (hl),fx_end / &0100
+          pop hl
+          pop de
           pop af
           ret
 
@@ -749,8 +1177,8 @@ allocate
 
 Setup_row_r7
 ;-----------
-; Adhoc routine: setup r7 according to noise value in raw table
-; In: hl: table of rows (contiguous)
+; Adhoc for chipn: setup r7 according to noise value in raw table
+; In: hl: table of rows (!!contiguous)
     ;  b: nb rows
           ld de,instr_flags
           add hl,de
@@ -1095,10 +1523,6 @@ _table_full_len
       END
 
 ;-------------------------------------------
-get_instrs#
-          call check_bk_base
-          ld a,(va_instrs#)
-          ret
 
 chunk
 ; NB: insertion itself rewritten with this behavior:
@@ -1139,7 +1563,6 @@ va_savesp WORD
 
 jp_ret    3 ** BYTE 
 
-va_current_instr BYTE 
 
 dbg1  WORD 
 dbg2  WORD 
@@ -1176,9 +1599,10 @@ zero_start              ; Not loaded, must follow def (see check below)
       IF zero_start - [var+def_size]
  !! must be contiguous to simplify init code
       END
-va_instrs# BYTE 
+va_current_instr BYTE 
 va_arpgs# BYTE 
 va_table# BYTE 
+selected_row WORD 
 
 zero_size = $-zero_start
 

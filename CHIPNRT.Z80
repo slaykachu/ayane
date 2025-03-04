@@ -1,5 +1,11 @@
 ; tests chipnsfx convertion
-do_play = 0             ; 0: check  1: play tune
+do_play = 1             ; 0: check  1: play tune
+is_minimala = 1         ;0: 4k08 (40 years md)
+
+; /////// 2025 ////////
+; ---- v0.0ab ----                            
+ ; Feb
+   ; 27 Fix hl'=timer_noop when sfx=1 (was in hL)
 
       ORG &0100
       ENT tests
@@ -19,14 +25,17 @@ tests
 test_convert_minimal
 ; That's the name of the song.
 ; Not really minimal!
-          ld hl,minimala
+          ld hl,chp_module
           call conv_chipn
 ;-- play it
-          ld a,3:ld hl,tracks:call Amorce_song
+          call Song_get_first_track
+          call get_track_pnt
+          ld a,3
+          call Amorce_song
       IF 1-do_play
           call chip_init
       END
-frame_lp
+iter_lp
       IF do_play
           call &BD19
           call &BB1B
@@ -37,30 +46,38 @@ frame_lp
           halt
       END
 
-frame_cpt ld hl,-1      ; matches ply.tick
+tick_cpt  ld hl,-1      ; matches ply.tick
           inc hl
-          ld (frame_cpt+1),hl
+          ld (tick_cpt+1),hl
+      IF is_minimala
           ld bc,&1480
+      ELSE
+          ld bc,&1200
+      END
           or a:sbc hl,bc:jr z,end_of_tune
 
           di
-          exx:push bc
+          ex af,af:push af
+          exx
+          push bc
+          ld hl,timer_noop
+          exx
           ld bc,&7F10:out (c),c:ld c,&5F:out (c),c
           call play
       IF do_play
           ld bc,&7F10:out (c),c:ld c,&40:out (c),c
-          call psg
+          call psg_nrt
       END
           ld bc,&7F10:out (c),c:ld c,&44:out (c),c
           pop bc:exx
+          pop af:ex af,af
 
       IF 1-do_play
 ; Check against chipnsfx player
           ld bc,&7F00+BK_REF:out (c),c
-          call chip_play+&50
+          call chip_play
           ld hl,psg_ref
           call psg_read
-
 
 ;notes: period diff 3 at 683
                   ; 4 at a83
@@ -70,14 +87,17 @@ frame_cpt ld hl,-1      ; matches ply.tick
           call compare_regs
       END
 
-          jr frame_lp
+          jr iter_lp
 
 end_of_tune
 ; success!
           ret
 
-
-chip_play = &5000
+      IF is_minimala
+chip_player = &5000
+chip_setup = chip_player
+chip_setup_song = chip_player+&15
+chip_play = chip_player+&50
 chip_sng = &7000
 song_a = chip_sng+&00
 song_b = chip_sng+&0175
@@ -91,12 +111,19 @@ chip_init
           di
           ld bc,&7F00+BK_REF:out (c),c
 
-          call chip_play
+          call chip_setup
 
           ld hl,song_list
-          call chip_play+&15
+          call chip_setup_song
           ret
+      ELSE
+chip_player = &4000
+chip_play = chip_player+&E2
 
+chip_init
+; already pre-init
+          ret
+      END
 
       FILL -$ AND &FF,0
 psg_ref SKIP 14
@@ -104,15 +131,25 @@ psg_ref SKIP 14
 
 BK_REF = &C6
 
-      BANK BK_REF
-      ORG chip_play
-      LOAD "chipnsfx.out"
 
-      ORG chip_sng
-      LOAD "minimala.bin"
+      BANK BK_REF
+      IF is_minimala
+      ORG chip_player:LOAD "chipnsfx.out"
+      ORG chip_sng:LOAD "minimala.bin"
+      ELSE
+      ORG chip_player:LOAD "sqr.bin" ; player+song?
+      END
 
       BANK BK_IO
       ORG &4000
-minimala
-      LOAD "ums:music/tj/minimala.chq" ; binary version
-
+chp_module
+      IF 0
+      IF is_minimala
+      LOAD "ums:music/tj/minimala.chq" ; with header
+      ELSE
+      LOAD "4k08.chq"   ; with header
+      END
+      ELSE
+;      LOAD "ums:chp/squaroot.chp" ; with header
+      LOAD "ums:chp/vampire1.chq" ; with header
+      END

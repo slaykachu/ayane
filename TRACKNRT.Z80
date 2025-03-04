@@ -1,0 +1,1441 @@
+; >>> Unit tests. Extracted from track v4 <<<
+todo  = 1
+do_brittle = 0
+
+; ----- 2024 ----------
+; -- For ayane v0l --
+ ; Jun 14 Add test_set_phrase_after
+; -- For ayane v0g --
+ ; Apr
+     ; 10; More tests
+     ;  9: Fix tests themselve.
+     ;  8: Add test_init_track_module
+         ; Add test_prepend_event
+
+     ;  3: Remove import"liszt" (not used anymore)
+         ; s/regs/aum_regs
+         ; disabled some tests (since code disabled in track.o)
+         ; LINK(): don't store BK anymore
+
+enable_track_get_clip_at = 0
+enable = 0
+
+; Now chunks are stored backward
+chunk0 = track_events_/&0100 - 1
+
+; -- For ayane v0e --
+ ; Mar 
+     ;  4: EVT_NODE0: update event structure. 
+
+; -- For ayane v0c --
+ ; Feb 29: Replace &c4 by BK_TRACK=&c5 (no hardcoded magic values!)
+         ; A bit more robust tests.
+
+      IMPORT "memmap.i"
+
+      ORG code_start
+      ENT tests
+
+      IMPORT "const.i"
+      IMPORT "track.o"
+      IMPORT "widget.o" ; for init_widget
+      IMPORT "chung.o"  ; For creating clips via public API
+      IMPORT "init.o"
+      IMPORT "memcpc.o" ; for connect_a, bk_connected
+      IMPORT "phrase.o" ; song_select_new_phrase
+      IMPORT "ply.o"    ; for evt_* (evt_set_transpose & co)
+
+tests
+          call nrt_init
+
+; ---- Recent
+          call test_set_transpose
+          call test_flag_lifted
+          call test_set_phrase_far
+
+      IF enable
+          call test_ui
+          call &BB06
+      END
+
+; ---- Tests AUM ------
+          call test_eval_operand
+          call test_ld_add
+          call test_ld_sub
+          call test_ld_sub_flag
+          call test_flag_lifted
+          call test_call_ext
+          call test_cp
+
+; ---- Tests setup ----- 
+          call test_init_track_module
+
+; ---- Tests routines coded in AUM ----
+          call test_add_field
+          call test_connect_head
+      IF enable_track_get_clip_at
+          call test_track_get_clip_at
+          call test_track_get_clip_at'
+          call test_fun
+      END
+   ;       call test_get_first_node  !! not needed
+      IF do_brittle
+          call test_track_draw_iter
+      END
+      IF enable
+          call test_collect_pred_succ_at
+          call test_proper_colors
+          call test_track_draw
+          call &BB06
+      END
+
+; ---- Test track creation / update -----
+      IF enable_track_get_clip_at
+          call test_select_new_track
+          call test_track_get_clip_at''
+      END
+          call test_get_event_hook_at
+          call test_set_event_hook_at
+      IF 0
+ ;deactivated
+          call test_prepend_event
+      END
+          call test_track_get_event_hook_at
+          call test_set_transpose
+          call test_set_phrase_after
+          call test_set_phrase_far
+          ret
+
+nrt_init
+;--- Clear bank for easier debug
+          ld bc,&7F00 + BK_TRACK:out (c),c
+          ld hl,&4000:ld de,&4001:ld bc,&3FFF:ld (hl),l:ldir
+
+          call full_init
+; as convienence for tests, create module and select first track
+          call New_module
+          ld a,1:call Song_select_track
+          ret
+
+nrtfail = &BE00
+
+      MACRO CHECK_DE_EQ n
+          push hl
+          ld hl,n:or a:sbc hl,de:add hl,de:call nz,nrtfail
+          pop hl
+      ENDM
+
+      MACRO EMPTY_NAME
+      FILL 3,0
+      ENDM
+
+      MACRO COLOR n
+      BYTE n
+      ENDM
+
+      MACRO LINK bk,adr
+; Since v0f: don't store bk anymore, since not cross-bank
+      WORD adr
+      ENDM
+
+      MACRO LINK_NULL
+      FILL 2,0
+      ENDM
+
+      MACRO PNT adr
+; Regular pointer, but must set bk byte:
+  ; - We work with 24bits register
+  ; - Needed for sanity checks
+      WORD adr:BYTE 0
+      ENDM
+
+      MACRO DURATION val
+; For duration passed in AUM register
+      IF reg_size - 3
+ !!! review this 
+      END
+      WORD val:BYTE val / &0100 / &0100
+      ENDM
+
+      MACRO DURATION_IN_TRACK val
+; For duration encoded in track
+      IF evt0_dur_ - 2
+ !!! review this 
+      END
+      WORD val
+      ENDM
+
+      MACRO TRACK_HEADER hook_list,channel
+;Harcoded "index" for test purpose
+      IF tf_clips
+ !! review that
+      END
+      WORD hook_list
+      IF tf_output - 2
+ !! review that
+      END
+      BYTE channel      ; 1=A, 2=B, 3=C
+      IF todo
+;Add. No name for track?
+    ;      EMPTY_NAME()  ;  
+;!! Actuallu it would be good to have 'annot', to leave some comments
+  ; when making alternative.
+      END
+      ENDM
+
+      MACRO TRACK_HOOK next_hook,dur,event_list
+      IF idsz - 2
+ !! review this
+      END
+      WORD next_hook
+      IF evt0_dur
+  !! review this
+      END
+      WORD dur
+      IF evt0_link - 2
+  !! review this
+      END
+      WORD event_list
+      ENDM
+
+
+      MACRO TRACK_EVENT next_evt,type,param
+      IF idsz - 2
+ !! review this
+      END
+      WORD next_evt
+      IF evt_type
+  !! review this
+      END
+      BYTE type AND &FF
+      IF evt_param - 1
+  !! review this
+      END
+      WORD param
+      ENDM
+
+
+      MACRO TIME val
+; Encode value 24 bytes. Timestamp
+      WORD val AND &FFFF:BYTE val/&0100/&0100
+      ENDM
+
+; -----------------------------
+; MACRO for AUM virtual machine
+; -----------------------------   
+      MACRO LD2 dest,arg1
+; Variants to make for orgams' lack of overloading.
+      BYTE ld,dest,arg1
+      ENDM
+
+      MACRO LD3 dest,arg1,arg2
+; Variants to make for orgams' lack of overloading.
+      BYTE ld,dest,arg1,arg2
+      ENDM
+
+      MACRO LD4 dest,arg1,arg2,arg3
+; Variants to make for orgams' lack of overloading.
+      BYTE ld,dest,arg1,arg2,arg3
+      ENDM
+
+      MACRO FUN2 fun,arg1,arg2
+; Output result implicitly in out0, out1
+      BYTE fun2:WORD fun:BYTE arg1,arg2
+      ENDM
+
+      MACRO CALL_EXT11 rout,arg1
+      BYTE call_ext11:WORD rout:BYTE arg1
+      ENDM
+
+      MACRO CALL_EXT1'1 rout,arg1,arg2
+; Still one input parameter, but computed from 2 operands
+      BYTE call_ext11:WORD rout:BYTE arg1,arg2
+      ENDM
+
+      MACRO JP rout
+      BYTE jp:WORD rout
+      ENDM
+
+      MACRO JP_Z rout
+      BYTE jp + if_z:WORD rout
+      ENDM
+
+      MACRO JP_NZ rout
+      BYTE jp + if_nz:WORD rout
+      ENDM
+
+      MACRO JP_C rout
+      BYTE jp + if_c:WORD rout
+      ENDM
+
+      MACRO RET0
+      BYTE ret
+      ENDM
+
+      MACRO RET_Z
+      BYTE ret + if_z
+      ENDM
+
+      MACRO RET_C
+      BYTE ret + if_c
+      ENDM
+
+      MACRO RET_NC
+      BYTE ret + if_nc
+      ENDM
+
+      MACRO BRK
+      BYTE break
+      ENDM
+
+      MACRO BRK_Z
+      BYTE break + if_z
+      ENDM
+
+      MACRO BRK_NZ
+      BYTE break + if_nz
+      ENDM
+
+      MACRO BRK_NC
+      BYTE break + if_nc
+      ENDM
+
+
+NO_FLAGS = 0
+
+      MACRO SIGN in#,out#,flags
+;Signatures.
+;'flags' indicate which flags are returned by the routine.
+      BYTE in#,out#,flags
+      ENDM
+
+
+test_ld_add
+;----------
+; Note: we don't test the full 32 bits, only 16 lower.
+          ld hl,&12FE:ld (aum_regs + in0*4),hl
+          ld hl,.byc
+          call eval
+          ld hl,(aum_regs + out0*4)
+          ld de,&1302:or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ret
+.byc
+          LD3(out0,in0 + add,lit+4)
+          RET0()
+
+test_ld_sub
+;----------
+; Note: we don't test the full 32 bits, only 16 lower.
+          ld hl,.in
+          ld de,aum_regs + in0*4
+          ld bc,4 + reg_size ; 4 for padding
+          ldir
+          ld hl,.byc
+          call eval
+          ld de,.ref
+          call compare_out0
+          ret
+.in
+      BYTE &12,&34,&56,0 ;   &785634 
+      BYTE &F0,&F1,&F2,0 ; - &f3f2f1
+.ref
+      BYTE &22,&42,&63,&FF ; = &846342  (&ff when reg32)
+.byc
+          LD3(out0,in0 + sub,in1)
+          RET0()
+
+test_ld_sub_flag
+;---------------
+; Check Z is properly set
+; Check done in bytecode itself: mustn't break
+          ld hl,.byc
+          call eval
+; Addtionnal check AHL= 0
+          or h:or l:call nz,fail
+          ret
+
+; Note: value in in0 shouldn't matter
+.byc      LD3(out0,in0 + sub,in0)
+          BRK_NZ()
+          RET0()
+
+test_flag_lifted
+;---------------
+; Check flags are properly passed back to host
+          ld hl,.in
+          ld b,2
+          call setup_regs
+
+          ld hl,.byc
+          call eval
+          call z,fail
+          call nc,fail
+          ret
+
+.in   BYTE 1,0,0
+      BYTE 2,0,0
+.byc      LD3(out0,in0 + sub,in1)
+          BRK_Z()       ; sanity check
+          BRK_NC()      ; sanity check
+          RET0()
+
+
+test_call_ext
+;------------
+; Test ams routine is called with right parameters,
+; and that returned parameters are passed back.
+; Prerequisite for test_connect_head
+          ld hl,.in
+          ld de,aum_regs + in0*4
+          ld bc,reg_size
+          ldir
+
+          ld hl,.byc
+          call eval
+          ld de,.ref
+          call compare_out0
+          ret
+.in
+      BYTE "glop"
+.byc
+          CALL_EXT11(.hook,in0)
+          RET0()
+
+          SIGN(1,1,NO_FLAGS)
+.hook
+; Check parameter passed in BCDE
+          ld hl,.in
+          ld a,e:cp (hl):call nz,nrtfail
+          inc hl
+          ld a,d:cp (hl):call nz,nrtfail
+          inc hl
+          ld a,c:cp (hl):call nz,nrtfail
+      IF reg32
+          inc hl
+          ld a,b:cp (hl):call nz,nrtfail
+      END
+; returns 32 bits value in BCDE
+          ld e,"c"
+          ld d,"a"
+          ld c,"f"
+      IF reg32
+          ld b,"e"
+      END
+          ret
+.ref  BYTE "caf"
+
+test_cp
+;------
+; Actually done with sub.
+; We exercice conditional jp
+          ld hl,.in
+          ld de,aum_regs + in0*4
+          ld bc,4 + reg_size
+          ldir
+
+          ld hl,.byc
+          call eval
+          ld de,.ref
+          ld b,2
+          call compare_out_regs
+          ret
+.in
+      BYTE 0,0,&40,0    ; &400000
+      BYTE 1,0,&40,0    ; &400001
+.ref
+      BYTE 3,0,0        ; lit 3 as temoin
+      BYTE 1,0,0        ; in1-in0
+.byc
+          LD3(out0,in0 + sub,in1) ;void dest, as out0 will be overriden
+          JP_C(.lt)     ; must be taken
+.nope
+          BRK()
+.lt
+          LD2(out0,lit + 3) ; lit 3 as temoin  (mark path)
+          LD3(out1,in1 + sub,in0) ;void dest, as out0 will be overriden
+          JP_C(.nope)   ; mustn't be taken
+          RET0()
+
+
+test_get_first_node
+;------------------
+; Mainly check AUM pipeline is working
+      BRK
+; WIP TODO ??? actually not needed
+      BRK
+
+          ld hl,_test_track0
+          ld (aum_regs + in0*4),hl
+          ld bc,.byc
+          call eval
+; Empty event: must have returned 
+          call nz,nrtfail
+          ret
+.byc
+    ; TODO
+
+test_eval_operand
+;----------------    
+          call eval_init
+
+          ld hl,.in
+          ld de,aum_regs + in0*4
+          ld bc,reg_size
+          ldir
+
+          ld hl,.bytecode
+          call eval_operand
+
+          ld hl,ref
+          ld b,2
+          call compare_sized
+          ret
+
+.in       PNT(_test_track0)
+.bytecode
+      BYTE in0 + ind,lit + tf_clips
+.ref  WORD _test_event_list
+
+test_connect_head
+;----------------       
+;Prerequisite: test_eval_operand, test_call_ext
+;Prerequesite for /test_track_get_clip_at/
+          call nrt_init
+
+          ld hl,.in
+          ld de,aum_regs + in0*4
+          ld bc,reg_size
+          ldir
+
+          ld a,BK_DISP:call connect_a ; For further check
+
+          ld hl,.byc
+          call eval
+; check that bank was connected
+          ld a,(bk_connected)
+          cp BK_TRACK:call nz,nrtfail
+          ret
+
+.in       PNT(_test_track0)
+.byc
+; Sanity check: right parameters are passed
+          CALL_EXT1'1(.hook,in0 + ind,lit + tf_clips)
+; Now call reel function
+          CALL_EXT1'1(ext_connect_head,in0 + ind,lit + tf_clips)
+          BRK_Z()
+          RET0()
+
+          SIGN(1,1,0)
+.hook
+;Note: C is arbitrary, as the pointer is 16 bits
+          CHECK_DE_EQ(_test_event_list)
+          ret
+
+test_init_track_module
+;---------------------
+; For now: 3 tracks for each channel
+; Prerequiste: chunknrt.test_new_node_x
+
+; Must call full_init to setup chunk
+; otherwise, mem full or inconsistant state
+          call nrt_init
+          call Song_get_first_track
+          call get_track_pnt
+          ld b,3
+.lp
+      IF tf_clips
+ !! review this
+      END
+; Must point in track_events area
+          inc hl        ; skip LSB
+          ld a,(hl):inc hl
+          cp track_events/&0100:call c,fail
+          cp track_events_/&0100:call nc,fail
+      IF tf_output - 2
+  !! review this
+      END
+          ld a,4:sub b  ; channel: 1, 2, ,3
+          cp (hl):call nz,fail
+          inc hl
+      IF tf_mix - 3
+  !! review this
+      END
+          ld a,(hl)     ; mix mode
+          or a:call nz,fail
+          inc hl
+      IF tf_struct_size - 4
+  !! oversight
+      END
+          djnz .lp
+          ret
+
+
+test_add_field
+;-------------
+;Prerequesite for /test_track_get_clip_at/
+          ld hl,.in
+          ld b,2
+          call setup_regs
+
+          ld hl,.byc
+          call eval
+
+          ld de,.ref
+          call compare_out0
+          ret
+
+.in       PNT(_test_event_list)
+      FILL 3,0
+.byc
+; ind = (r + op)
+; we want (r) + op
+          LD4(out0,in1 + add,in0 + ind,lit + idsz + evt0_dur)
+          RET0()
+
+.ref      DURATION(ev0_dur)
+
+      IF enable_track_get_clip_at
+
+test_track_get_clip_at
+;---------------------                 
+;Prerequesites: All aum tests, test_connect_head, test_add_field
+
+          ld hl,.in
+          ld b,2
+          call setup_regs
+
+; First: when t = 0 we should have first evt.
+          ld hl,track_get_clip_at
+          call eval
+
+          ld de,.ref0
+          ld b,3
+          call compare_out_regs
+
+; Now t = one tick before next clip.
+          ld hl,ev0_dur-1:ld (aum_regs + in1*4),hl
+          ld hl,track_get_clip_at
+          call eval
+          ld de,.ref1
+          ld b,3
+          call compare_out_regs
+
+; Start of next clip
+          ld hl,ev0_dur:ld (aum_regs + in1*4),hl
+          ld hl,track_get_clip_at
+          call eval
+          ld de,.ref2
+          ld b,3
+          call compare_out_regs
+
+; Past end: &ffff01
+          ld hl,&01FF:ld (aum_regs + in1*4),hl
+          ld a,&FF:ld (aum_regs + in1*4 + 2),a
+          ld hl,track_get_clip_at
+          call eval
+; Just check Z is set
+; (ext_connect_next doesn't return NULL pointer at the end, just Z)
+          call check_z
+          ret
+
+.in
+          PNT(_test_track0)
+          DURATION(0)
+
+.ref0
+          LINK(BK_TRACK,_test_event_list)
+          DURATION(0)   ; start
+          DURATION(ev0_dur) ; end
+.ref1
+          LINK(BK_TRACK,_test_event_list)
+          DURATION(0)
+          DURATION(ev0_dur)
+.ref2
+          LINK(BK_TRACK,_test_ev1)
+          DURATION(ev0_dur)
+          DURATION(ev0_dur + ev1_dur)
+
+
+test_track_get_clip_at'
+;----------------------
+;Same with non-zero field after duration
+;Ensure duration field properly read.
+
+          ld hl,.in
+          ld b,2
+          call setup_regs
+
+; First: when t = 0 we should have first evt.
+          ld hl,track_get_clip_at
+          call eval
+
+          ld de,.ref0
+          ld b,3
+          call compare_out_regs
+
+; Now t = one tick before next clip.
+          ld hl,ev0_dur-1:ld (aum_regs + in1*4),hl
+          ld hl,track_get_clip_at
+          call eval
+          ld de,.ref1
+          ld b,3
+          call compare_out_regs
+
+; Start of next clip
+          ld hl,ev0_dur:ld (aum_regs + in1*4),hl
+          ld hl,track_get_clip_at
+          call eval
+          ld de,.ref2
+          ld b,3
+          call compare_out_regs
+
+; Past end: &ffff01
+          ld hl,&01FF:ld (aum_regs + in1*4),hl
+          ld a,&FF:ld (aum_regs + in1*4 + 2),a
+          ld hl,track_get_clip_at
+          call eval
+; Just check Z is set
+; (ext_connect_next doesn't return NULL pointer at the end, just Z)
+          call check_z
+          ret
+
+.in
+          PNT(_test_track1)
+          DURATION(0)
+.ref0
+          LINK(BK_TRACK,_test_ev0')
+          DURATION(0)   ; start
+          DURATION(ev0_dur) ; end
+.ref1
+          LINK(BK_TRACK,_test_ev0')
+          DURATION(0)
+          DURATION(ev0_dur)
+.ref2
+          LINK(BK_TRACK,_test_ev1')
+          DURATION(ev0_dur)
+          DURATION(ev0_dur + ev1_dur)
+
+      END
+
+check_z
+; Z flag from virtual cpu!
+          ld a,(aum_af)
+          bit 6,a:call z,nrtfail
+          ret
+
+check_nz
+; NZ flag from virtual cpu!
+          ld a,(aum_af)
+          bit 6,a:call nz,nrtfail
+          ret
+
+      IF enable_track_get_clip_at
+test_track_get_clip_at''
+;-----------------------                 
+; Check right at end with list, when created via API. 
+;Prerequesites: test_track_get_clip_at, test_select_new_track
+
+          xor a
+          ld b,_outputchan ; output channel
+          ld c,0        ; mix mode
+          call Song_select_new_track ; new track with empty evt list
+
+          ld hl,.clip
+          call track_append_clip
+          call nrt_load_current_track
+
+; t = nrt_dur
+          ld hl,.in
+          ld de,aum_regs + in1*4
+          ld bc,reg_size
+          ldir
+
+          ld hl,track_get_clip_at
+          call eval
+          call check_z
+
+;--- Now with 2 clips
+          ld hl,.clip
+          call track_append_clip
+
+; t= nrt_dur * 2
+          ld hl,.in2
+          ld de,aum_regs + in1*4
+          ld bc,reg_size
+          ldir
+
+          ld hl,track_get_clip_at
+          call eval
+          call check_z
+
+;--- Now with 6 clips total
+
+          ld b,4
+.lp
+          push bc
+          ld hl,.clip
+          call track_append_clip
+          pop bc
+          djnz .lp
+
+; t= nrt_dur * 6
+          ld hl,.in3
+          ld de,aum_regs + in1*4
+          ld bc,reg_size
+          ldir
+
+          ld hl,track_get_clip_at
+          call eval
+          call check_z
+
+; sanity checks: "rewind"
+          ld hl,.in2
+          ld de,aum_regs + in1*4
+          ld bc,reg_size
+          ldir
+
+          ld hl,track_get_clip_at
+          call eval
+          call check_nz
+
+; sanity checks: past end again
+          ld hl,.in3
+          ld de,aum_regs + in1*4
+          ld bc,reg_size
+          ldir
+
+          ld hl,track_get_clip_at
+          call eval
+          call check_z
+          ret
+
+.clip
+.in                     ; reuse duration
+          DURATION(6 * 64)
+          LINK_NULL()
+.in2
+          DURATION(12 * 64)
+.in3
+          DURATION(36 * 64)
+      END
+
+      IF enable_track_get_clip_at
+test_fun
+;-------
+;Prerequesite: test_track_get_clip_at,
+;Like first test of test_track_get_clip_at, via fun
+          ld hl,.in
+          ld b,2
+          call setup_regs
+
+          ld hl,.code
+          call eval
+
+          ld de,.ref0
+          ld b,3
+          call compare_out_regs
+          ret
+
+.in
+          PNT(_test_track0)
+          TIME(0)       ; time at left
+.code
+          FUN2(track_get_clip_at,in0,in1)
+          BRK_Z()
+          RET0()
+.ref0
+          LINK(BK_TRACK,_test_event_list)
+          DURATION(0)
+          DURATION(ev0_dur)
+      END
+
+      IF do_brittle
+
+test_track_draw_iter
+;-------------------
+; Prerequesite: test_fun
+; First iteration of track_draw with hook to check
+; right register setup and right parameters passages
+nrtt0 = 11
+nrtx0 = 17
+nrty0 = 19
+
+          ld hl,.in
+          ld b,4
+          call setup_regs
+
+          xor a:ld (nrtmark),a
+          ld hl,.code
+          call eval
+; Check routine was called
+          ld a,(nrtmark)
+          cp nrtmarkval:call nz,nrtfail
+
+          ld de,.ref
+          ld b,3
+          ld hl,aum_regs + in0*4
+          call compare_regs
+          ret
+
+.in
+          PNT(_test_track0)
+          TIME(nrtt0)
+          DURATION(160) ; time end (1 pixel per tick)
+          PNT(.top_left)
+.top_left
+      WORD nrtx0
+      WORD nrty0
+
+.ref
+;-- Same input parameters
+          PNT(_test_track0)
+          TIME(nrtt0)
+          DURATION(160) ; time width (1 pixel per tick)
+
+.code
+          LD3(top,topleft + ind,lit + 2)
+          LD3(out3,t + sub,t_end) ; out3: void
+          BRK_NC()      ; We must have t < t_end
+          FUN2(track_get_clip_at,track,t)
+          BRK_Z()       ; We must still point to first clip
+          LD3(t_nxt,out2 + min,t_end) ; Clip at t_end 
+
+      BYTE call_ext50:WORD .hook
+      BYTE out0 + ind,lit + idsz + cf_color ; color
+      BYTE t            ; lft
+      BYTE top          ; top
+      BYTE t_nxt        ; rgt
+      BYTE top + add,lit + TRACK_BOX_HEIGHT
+          RET0()
+
+          SIGN(5,0,NO_FLAGS)
+.hook
+          ld de,.refparams
+          ld b,10
+          call compare_sized
+          ld a,nrtmarkval
+          ld (nrtmark),a
+          ret
+
+.refparams
+      BYTE ev0_col
+      BYTE ev0_type     ; next field since 16bits are copied
+      WORD nrtt0        ; no time to x conversion in this test
+      WORD nrty0
+      WORD ev0_dur
+      WORD nrty0 + TRACK_BOX_HEIGHT
+      END
+
+nrtmark BYTE 
+nrtmarkval = 23
+
+      IF enable
+test_track_draw
+;--------------                 
+;Prerequesite: test_track_get_clip_at, test_fun, test_track_draw_iter
+
+          ld hl,.in
+          ld b,4
+          call setup_regs
+
+          ld hl,track_draw
+          call eval
+          ret
+
+.in
+          PNT(_test_track0)
+          TIME(0)
+          DURATION(192) ; time width (1 pixel per tick)
+          PNT(.top_left)
+.top_left WORD 0        ; x0
+      WORD 32           ; y0
+
+      END
+
+      IF enable_track_get_clip_at
+
+test_select_new_track
+;--------------------
+; Check proper track creation.
+; Prerequisite: test_track_get_clip_at, test_list_new
+; First: when t = 0 we should have 
+
+          xor a
+          ld b,_outputchan ; output channel
+          ld c,0
+          call Song_select_new_track ; new track with empty evt list
+
+          call nrt_load_current_track
+
+          ld hl,.in
+          ld de,aum_regs + in1*4
+          ld bc,reg_size
+          ldir
+
+          ld hl,track_get_clip_at
+          call eval
+; Check we got z
+          call check_z
+          ret
+
+.in
+          TIME(2)
+.ref
+          LINK(BK_TRACK,_test_event_list)
+
+      END
+
+      IF enable
+test_proper_colors
+;-----------------
+; (manual) Check each clip has distinct color                 
+
+          call prep_track
+
+      IF 0
+; individual track
+          call nrt_load_current_track
+          ld hl,.in
+          ld de,aum_regs + in1*4
+          ld b,3
+          call setup_regs'
+
+          ld hl,track_draw
+          call eval
+      END
+
+          call refresh_all_tracks
+          ret
+
+.in
+          TIME(0)
+          DURATION(192) ; time width (1 pixel per tick)
+          PNT(.top_left)
+.top_left WORD 0        ; x0
+      WORD 64           ; y0
+
+test_collect_pred_succ_at
+;------------------------
+; Check it correctly returns next time position
+
+          call prep_track
+
+          ld hl,.in
+          call setup_one_reg
+
+          ld hl,collect_pred_succ_at
+          call eval
+          ld de,.ref
+          ld b,1
+          ld hl,aum_regs + out1*4
+          call compare_regs
+          ret
+.in       TIME(0)
+.ref      TIME(HACK_DURATION)
+
+      END
+
+test_get_event_hook_at
+;---------------------
+; Prerequisite: all aum tests!
+; Prerequisite for test_set_event_hook_at
+
+          call nrt_init
+
+; Sanity: since there is a hook create by default at t=0,
+; must be returned
+          ld hl,.t0
+          call setup_track_t
+          ld hl,get_event_hook_at
+          call eval
+          call check_hook_address
+          push hl
+
+; Asking hook "past" last must return the same hook.
+          ld hl,.t1
+          call setup_track_t
+          ld hl,get_event_hook_at
+          call eval
+          pop de
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
+.t0       TIME(0)
+.t1       TIME(dur0)
+
+check_hook_address
+; HL must point to the hook created, in bank.
+; One chunk might already have been created. So lenient test.
+; Still brittle, though!
+          ld a,h
+          cp chunk0-1:call c,fail
+          cp chunk0+1:call nc,fail
+          ret
+
+test_set_event_hook_at
+;---------------------
+; Prerequisite: test_get_event_hook_at
+; Prerequisite for test_prepend_event
+          call nrt_init
+
+          ld hl,.t0
+          call .test
+          push hl       ;
+          ld hl,.t1
+          call .test
+;now there must be a link
+          pop hl
+          inc hl
+          ld a,(hl):or a:call z,fail
+          ret
+
+.test
+;out: hl=address hook
+          call setup_track_t
+          ld hl,set_event_hook_at
+          call eval
+          call check_hook_address
+          ret
+
+.t0       TIME(0)
+.t1       TIME(dur0)
+
+dur0  = last_duration+&10
+
+      IF 0
+test_prepend_event
+;-----------------
+; Check event properly created
+; Prerequisite: test_set_event_hook_at
+              ; test_get_event_hook_at
+          call nrt_init
+
+          ld a,evt_set_transpose AND &FF
+          ld hl,.time0
+          ld de,&CABE   ; Normally transpose value in 8 bits
+          call prepend_event
+
+          call connect_bk_track
+; Get list of event. Should be in bank.
+      IF tf_clips
+ !! review that
+      END
+          ld hl,(tracks)
+          ld a,h
+          cp track_events/&0100:call c,fail
+          cp track_events_/&0100:call nc,fail
+          push hl
+; Check structure (a bit brittle, we might just check duration)
+          ld de,.ref_evt0
+; We don't check exact address of evt: too brittle
+; Anyway we follow the pointer just below 
+          ld b,evt0_size - idsz
+          call compare_sized
+
+; Check event itself
+          ld hl,(tracks)
+          idsz+evt0_link ** inc hl
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          ld a,h
+; same pool
+          cp track_events/&0100:call c,fail
+          cp track_events_/&0100:call nc,fail
+; Check structure (a bit brittle, we might just check duration)
+          ld de,.ref_evt
+          ld b,evt_size
+          call compare_sized
+
+; --- Now try to set hook past "default duration" which is arbitrary
+; anyway (see init at Song_select_new_track)
+          ld a,evt_set_transpose AND &FF
+          ld hl,.time1
+          ld de,&CABF   ; Normally transpose value in 8 bits
+          call prepend_event
+
+          pop hl        ; must be same hook
+          push hl
+          inc hl
+; there must be a link. We assume in the same chunk
+; (a bit brittle, nevermind. Important part is that's not 0
+          ld a,(hl)
+          cp h:call nz,fail
+          inc hl
+; now check duration
+          ld e,(hl):inc hl
+          ld d,(hl)
+          CHECK_DE_EQ(dur0)
+
+; --- Now try to set hook before duration
+dur1  = 1
+          ld a,evt_set_transpose AND &FF
+          ld hl,.time2
+          ld de,&CAC0   ; Normally transpose value in 8 bits
+          call prepend_event
+
+          pop hl        ; must be same hook
+          inc hl
+; there must be a link. We assume in the same chunk
+; (a bit brittle, nevermind. Important part is that's not 0
+          ld a,(hl)
+          cp h:call nz,fail
+          inc hl
+; now check duration
+          ld e,(hl):inc hl
+          ld d,(hl)
+          CHECK_DE_EQ(dur1)
+          ret
+
+.time0    TIME(0)
+.time1    TIME(dur0)
+.time2    TIME(dur1)
+
+.ref_evt0
+; No linked hook, duration at init, pointer adress not checked
+          TRACK_HOOK(0,last_duration,&F7F7) ; 
+.ref_evt
+          TRACK_EVENT(0,evt_set_transpose,&CABE)
+      END
+
+test_track_get_event_hook_at
+;---------------------------
+          call nrt_init
+
+;Note: there is an empty hook plugged by default
+          ld hl,time0
+          call track_get_event_hook_at
+; no next hook (brittle if we decide to plug "end of track" hook?)
+          ld a,(hl):or a:call nz,fail
+          inc hl
+          ld a,(hl):or a:call nz,fail
+          inc hl
+; now points to duration. the value doesn't matter
+          evt0_link ** inc hl ; skip duration
+; check no events here
+          ld a,(hl):or a:call nz,fail
+          inc hl
+          ld a,(hl):or a:call nz,fail
+          ret
+
+test_set_transpose
+;-----------------
+; Check transpose setting and update, via API
+; Prerequisite: test_track_get_event_hook_at
+
+          call nrt_init
+
+; -- Check when setting 
+val1  = -13
+          ld a,val1
+          ld hl,time0
+          call Set_transpose_at_t
+          ld a,val1
+          ld hl,time0
+          call check_transpose
+val2  = 13
+; -- Check when updating 
+          ld a,val2
+          ld hl,time0
+          call Set_transpose_at_t
+          ld a,val2
+          ld hl,time0
+          call check_transpose
+          ret
+
+test_set_phrase_after
+;--------------------
+; Check we can set phrase after having called transpose
+; (as used to be prepend only)
+; Prerequisite: test_set_transpose
+          call nrt_init
+
+          ld a,val1
+          ld hl,time0
+          call Set_transpose_at_t
+          xor a:call song_select_new_phrase
+          xor a
+          ld hl,time0
+          call Set_phrase_at_t
+
+          ld a,val1
+          ld hl,time0
+          call check_transpose
+          xor a
+          ld hl,time0
+          call check_phrase
+          ret
+
+test_set_phrase_far
+;------------------
+; Check when hook must be place > &10000 ticks
+          call nrt_init
+
+          xor a:call song_select_new_phrase
+          xor a
+          ld hl,time_far
+          call Set_phrase_at_t
+
+          xor a
+          ld hl,time_far
+          call check_phrase
+          ret
+
+time0 FILL 3,0
+time_far WORD &CAFE:BYTE 2 ; > &10000
+
+check_transpose
+; Check transpose value at t
+; IN: hl= pnt timestampe
+    ;  a= expected value       
+          add a         ; stored value is pre-multiplied
+          ld e,a
+          ld d,0
+          ld a,evt_set_transpose AND &FF
+          jr check_
+
+check_phrase
+; Check transpose value at t
+; IN: hl= pnt timestampe
+    ;  a= expected id
+
+; The real address (post header) is stored with the event
+; we must get it for comparaison. 
+          ex de,hl
+          call Get_phrase
+          ex de,hl
+          ld e,phrase_start ;post header
+
+          ld a,evt_change_phrase AND &FF
+;enchaine
+check_
+;hl= pnt timestamp
+;de= execpted value
+; a= event type 
+          push de
+          push af
+          call track_get_event_hook_at
+          call z,fail   ; hook not found
+ ; skip link to next hook and duration. 
+          idsz + evt0_link ** inc hl
+          pop af
+          call goto_event
+          call z,fail   ; event not found
+          ex (sp),hl
+;Expected value (now hl) = got value (de)? 
+          or a:sbc hl,de:add hl,de:call nz,fail
+;-- check no other such same directive
+          pop hl
+      IF evt_param - 1
+ !! review that
+      END
+          idsz+evt_type ** dec hl
+          call goto_event
+          call nz,fail
+          ret
+
+      IF enable
+test_ui
+;------
+          call prep_track
+          jp ui_sequencer
+      END
+
+; -----------------------------
+;    Common nrt helpers
+; -----------------------------
+      IF 0
+prep_track
+;---------
+; Create a track with a good number of clips
+      IF todo
+; Exercise song_reset instead
+      END
+          call nrt_init ; reset to keep tests independents
+
+_outputchan = 2
+          xor a
+          ld b,_outputchan ; output channel
+          ld c,0        ; mix mode
+          call Song_select_new_track ; new track with empty evt list
+
+          ld b,9        ; For now, only one bank available!
+.lp
+          push bc
+          call song_select_new_phrase:call nc,fail
+!!! replaced by Set_phrase_at_t
+          call track_append_current_phrase:call nc,fail
+          pop bc
+          djnz .lp
+          ret
+      END
+
+nrt_load_current_track
+          call get_current_track_pnt
+; -- Should be a link to empty list (but link itself not null)
+;TODO: less brittle test about that explictly?
+          ld a,(hl):or a:call z,nrtfail
+
+          ld a,l:ld (aum_regs + in0*4),a
+          ld a,h:ld (aum_regs + in0*4+1),a
+          xor a:ld (aum_regs + in0*4+2),a ; Non-bk pointer
+          ret
+
+
+compare_out0
+          ld b,1
+compare_out_regs
+; IN: de : reference
+          ld hl,aum_regs + out0*4
+compare_regs
+      IF reg32
+!!! must adapt tests, since refs given on 24 bits
+      END
+.lp
+          push bc
+          push hl
+          ld b,reg_size
+          call compare_sized
+          pop hl
+          4 ** inc hl   ; even 24bits, aligned 32bits
+          pop bc
+          djnz .lp
+          ret
+
+compare_sized
+          ld a,(de):cp (hl):call nz,nrtfail
+          inc de:inc hl
+          djnz compare_sized
+          ret
+
+; ------------------------------
+;    Shared data for tests
+; ------------------------------
+      SKIP -$ AND &03   ; AUM expect confined registers
+
+_test_track0
+;Harcoded "index" for test purpose
+          TRACK_HEADER(_test_event_list,1)
+
+_test_track1
+          TRACK_HEADER(_test_event_list2,1)
+
+pad   FILL -$ AND &1F,&F7
+
+_test_event_list
+ev0_dur = 123
+ev1_dur = &FF00
+          TRACK_HOOK(_test_ev1,ev0_dur,0)
+_test_ev1
+          TRACK_HOOK(0,ev1_dur,0)
+
+pad2  SKIP -$ AND &0F
+
+_test_event_list2
+; same but with some event
+          TRACK_HOOK(_test_ev1',ev0_dur,evt_1)
+_test_ev1'
+          TRACK_HOOK(0,ev1_dur,0)
+evt_1     TRACK_EVENT(0,evt_set_transpose,&F7FF)
+
+hi
+      SKIP ramlimit' - $

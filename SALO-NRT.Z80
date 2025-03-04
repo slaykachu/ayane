@@ -1,0 +1,390 @@
+; Tests salo
+
+;/// 2025 ///
+;---- 
+  ; Mar
+    ; 3: Org in /free_ram_for_nrt/ for code to fit.
+
+;Before: no changelog!
+      ORG &0100
+      ENT tests
+
+      IMPORT "const.i"  ; just for track_param#
+      IMPORT "memmap.i"
+ ;     IMPORT "chipn.o"
+      IMPORT "init.o"
+ ;     IMPORT "ply.o"
+      IMPORT "instr.o"
+      IMPORT "chung.o"
+      IMPORT "phrase.o"
+      IMPORT "track.o"
+      IMPORT "testlib.o"
+      IMPORT "salo.o"
+
+      MACRO NO_TEXT
+;Null terminated: only the 0
+      BYTE 0
+      ENDM
+
+      SKIP ramlimit - $ ; poor man's limit
+
+      ORG free_ram_for_nrt
+
+tests
+        ;  call test_save_empty_module
+          call test_save_empty_phrase
+        ;  call test_load_empty_module
+          call test_assets
+          ret
+
+nrt_init
+          call full_init
+          ld a,1:ld bc,&1A1A:call &BC32
+          ld a,2:call &BD1C
+          ret
+
+test_save_empty_module
+;---- Check saving empty module
+          call nrt_init
+
+          ld de,destnrt
+          call nrt_save
+
+          ld hl,almost_empty
+          ld de,destnrt
+          ld bc,almost_empty_
+          call compare_sized
+          ret
+
+test_load_empty_module
+;---- Check load empty module
+          call nrt_init
+
+          ld hl,almost_empty
+          call nrt_load
+; First success is that 'load' didn't assert!
+; Now save+load+save should give back same result
+          call check_save_load_save
+          ret
+
+test_save_empty_phrase
+;---- Check saving module with just one empty phrase
+          call nrt_init
+
+          xor a:call song_select_new_phrase
+
+          ld de,destnrt
+          call nrt_save
+
+          ld hl,empty_phrase
+          ld de,destnrt
+          ld bc,empty_phrase_
+          call compare_sized
+          ret
+
+
+test_assets
+;---- Progressively build a module,
+; and checks save+load+save    
+
+          call nrt_init
+
+; - Empty instr 
+          ld a,1        ; id (0 is reserved)
+          ld b,type_instr_default
+          ld c,0        ; nb params
+          call New_instr
+          call check_save_load_save
+; -- with one row
+          ld b,1
+          ld hl,raw_row1
+          call instr_ayane_append_rows
+          call check_save_load_save
+; -- with two rows
+          ld b,1
+          ld hl,raw_row2
+          call instr_ayane_append_rows
+          call check_save_load_save
+; - New instr 2 
+          ld a,3        ; skip id 2
+          ld b,type_instr_default
+          ld c,0        ; nb params
+          call New_instr
+          call check_save_load_save
+; -- with one row
+          ld b,1
+          ld hl,raw_row3
+          call instr_ayane_append_rows
+          call check_save_load_save
+; - Empty phrase  
+          xor a
+          call song_select_new_phrase
+          call check_save_load_save
+; -- With params      
+          ld c,1
+          ld hl,paramX
+          call phrase_set_params
+          call check_save_load_save
+; ---- Sanity check
+          call phrase_get_rows#:or a:call nz,fail
+; -- With one empty row (duration 0)
+          xor a:call phrase_select_new_row
+          call phrase_get_rows#:cp 1:call nz,fail
+          call check_save_load_save
+          call phrase_get_rows#:cp 1:call nz,fail
+; --- With non-zero duration 
+          ld a,42
+          call row_add_duration
+          call phrase_get_rows#:cp 1:call nz,fail
+          call check_save_load_save
+          call phrase_get_rows#:cp 1:call nz,fail
+; --- With fx
+ ;  TODO
+; --- With note
+          ld a,43
+          call row_set_note
+          call phrase_get_rows#:cp 1:call nz,fail
+          call check_save_load_save
+          call phrase_get_rows#:cp 1:call nz,fail
+; --- With vol            
+          ld a,&0E
+          call row_set_vol
+          call check_save_load_save
+; --- With instr
+          ld a,1
+          call row_set_instr
+          call check_save_load_save
+; -- With another row
+          call phrase_select_new_row
+          call check_save_load_save
+; - Another (empty) phrase
+phrase4 = 4
+          ld a,phrase4  ; skip id 1,2,3
+          call song_select_new_phrase
+          call check_save_load_save
+; - Empty track
+          ld bc,&0100   ; output and mix mode
+          call Song_select_new_track
+          call check_save_load_save
+; -- With event
+          ld a,7
+          ld hl,time1
+          call Set_transpose_at_t
+          call check_save_load_save
+; -- With phrase at same time
+          xor a
+          ld hl,time1
+          call Set_phrase_at_t
+          call check_save_load_save
+; -- With phrase at different time
+          ld a,phrase4
+          ld hl,time2
+          call Set_phrase_at_t
+          call check_save_load_save
+; - Another track
+          ld bc,&0200   ; output and mix mode
+          call Song_select_new_track
+          call check_save_load_save
+; - Empty subsong
+          xor a
+          call Subsong_add
+          call check_save_load_save
+; -- With one track
+          ld a,1
+          call Subsong_add_track
+          call check_save_load_save
+; -- With two tracks
+          ld a,2
+          call Subsong_add_track
+          call check_save_load_save
+          ret
+
+instr_param1 BYTE "yeh"
+
+raw_row1  instr_row_size_max ** BYTE #
+raw_row2  instr_row_size_max ** BYTE #+16
+raw_row3  instr_row_size_max ** BYTE #+32
+
+paramX BYTE "X"
+
+time1 WORD &BABE:BYTE 0
+time2 WORD &8000:BYTE 2 ; more than &10000 ticks away 
+
+check_save_load_save
+; --- Check idempotence ----
+
+          ld a,".":call &BB5A
+; Save state
+          call Song_get_instr:push af
+; -- In NRT: doesn't use id > 4
+          cp 5:call nc,fail
+      ;    call phrase_get_row_position:push hl
+          call song_get_current_phrase:push af
+          cp 5:call nc,fail
+          call get_current_track_pnt:push af ; also gives ID
+          cp 5:call nc,fail
+          call Song_get_current_subsong:push af
+          cp 5:call nc,fail
+
+; Clear buffer for comparaison (we don't know exact lenght)
+
+          ld hl,destnrt:ld de,destnrt+1:ld bc,destsize-1:ld (hl),0:ldir
+          ld hl,destnrt2:ld de,destnrt2+1:ld bc,destsize-1:ld (hl),0
+          ldir
+
+; -- Save twice: must give same result
+          ld de,destnrt:call nrt_save
+          ld de,destnrt2:call nrt_save
+          ld de,destnrt
+          ld hl,destnrt2
+          ld bc,destsize
+          call compare_sized
+
+      IF 0
+; -- Reload + save 
+          ld hl,destnrt:call nrt_load
+          ld de,destnrt2:call nrt_save
+          ld de,destnrt
+          ld hl,destnrt2
+          ld bc,destsize
+          call compare_sized
+      END
+
+; Check state    
+          call Song_get_current_subsong
+          pop bc:cp b:call nz,fail
+          call get_current_track_pnt
+          pop bc:cp b:call nz,fail
+          call song_get_current_phrase
+          pop bc:cp b:call nz,fail
+     ;     call phrase_get_row_position
+     ;     pop de:or a:sbc hl,de:add hl,de:call nz,fail
+          call Song_get_instr
+          pop bc:cp b:call nz,fail
+          ret
+
+almost_empty
+; no assets, just some meta_data
+      BYTE "AYA!"
+          NO_TEXT()     ; author
+          NO_TEXT()     ; album
+; meta data
+      WORD dummy_       ; size
+dummy_data BYTE 0,1,2,3,4
+dummy_ = $ - dummy_data
+      BYTE "Tabl":BYTE SENTINELLE ; End of list
+      BYTE 0            ; Selected (given even if no table exist)
+      BYTE "Inst":BYTE SENTINELLE
+      BYTE 0
+      BYTE "Phrs":BYTE phrase_param#
+      WORD SENTINELLE_16 ; More than 256 possible phrases
+      BYTE 0
+      IF use_nest
+      BYTE "Nest":WORD SENTINELLE_16 ; Same ID space than phrase
+      END
+      BYTE "Trck":BYTE track_param#:BYTE SENTINELLE
+      BYTE 0
+      BYTE "Song"
+;Even empty module has one subsong
+      BYTE 0            ; id
+      BYTE 1            ; alternative#
+          NO_TEXT()
+      BYTE SENTINELLE   ; no tracks
+      BYTE 0            ; selected alternative
+      BYTE SENTINELLE   ; no more subsongs
+      BYTE 0            ; selected subsong
+      BYTE "Smpl":BYTE SENTINELLE
+      BYTE "Book":BYTE SENTINELLE
+      BYTE "Xtra":BYTE SENTINELLE
+      BYTE "Hist":BYTE 0
+      BYTE "End!"
+;Note: history actions are not identified. 
+     ; So we put # rather than sentinel.
+almost_empty_ = $ - almost_empty
+
+empty_phrase
+; Just one empty phrase
+      BYTE "AYA!"
+          NO_TEXT()     ; author
+          NO_TEXT()     ; album
+; meta data
+      WORD dummy_       ; size
+      BYTE 0,1,2,3,4
+      BYTE "Tabl":BYTE SENTINELLE ; End of list
+      BYTE 0            ; Selected (given even if no table exist)
+      BYTE "Inst":BYTE SENTINELLE
+      BYTE 0
+      BYTE "Phrs":BYTE phrase_param#
+      BYTE 0            ; phrase id
+      BYTE 1            ; alt#
+      BYTE type_phrase
+          NO_TEXT()
+      BYTE 1            ; color = id + 1
+      IF phrase_param# - 1
+  !! add other params here
+      END
+      BYTE 0            ; rows #
+      BYTE 0            ; alt selected
+      WORD SENTINELLE_16 ; More than 256 possible phrases
+      BYTE 0
+      IF use_nest
+      BYTE "Nest":WORD SENTINELLE_16 ; Same ID space than phrase
+      END
+      BYTE "Trck":BYTE track_param#:BYTE SENTINELLE
+      BYTE 0
+      BYTE "Song"
+;Even empty module has one subsong
+      BYTE 0            ; id
+      BYTE 1            ; alternative#
+          NO_TEXT()
+      BYTE SENTINELLE   ; no tracks
+      BYTE 0            ; selected alternative
+      BYTE SENTINELLE   ; no more subsongs
+      BYTE 0            ; selected subsong
+      BYTE "Smpl":BYTE SENTINELLE
+      BYTE "Book":BYTE SENTINELLE
+      BYTE "Xtra":BYTE SENTINELLE
+      BYTE "Hist":BYTE 0
+      BYTE "End!"
+;Note: history actions are not identified. 
+     ; So we put # rather than sentinel.
+empty_phrase_ = $ - empty_phrase
+
+
+nrt_save
+;In: de=dest
+      IF todo
+; should pass max size to memdisk
+      END
+          call memdisk_init_write
+          ld ix,memdisk_write_bloc
+    ;      ld ix,tmpbrk
+          ld de,dummy_data
+          ld bc,dummy_
+          call save
+          ret
+
+tmpbrk
+          call &BE00
+          scf           ; pretend it's ok
+          ret
+
+nrt_load
+;In: hl=source
+          call memdisk_init_read
+          ld ix,memdisk_load_bloc
+          ld de,dummy_data
+          ld bc,dummy_
+          call load
+          ret
+
+destsize = &0300
+
+      SKIP -$ AND &FF
+destnrt
+      SKIP destsize
+destnrt2
+      SKIP destsize
+
+      SKIP ramlimit' - $ ; poor man's limit
+

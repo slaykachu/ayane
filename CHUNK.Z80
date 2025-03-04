@@ -480,6 +480,7 @@ Next_node
 ; In: HL = point on current node.link
 ;Out: If such a link: NZ, HL= new link
     ; Otherwise Z, HL unchanged! (needed to plug new nodes)
+    ; A preserved.
       IF dev_checks
 ; Check MSB is < &80
           push af
@@ -491,7 +492,7 @@ Next_node
           ld e,(hl):inc hl
           ld d,(hl):dec hl
 ; !! Assume node pnt never has MSB =0
-          inc d:dec d:jr z,.exit
+          inc d:dec d:jr z,.exit ; test D=0 without trashing A
           ex de,hl
 .exit
           pop de

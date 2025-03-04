@@ -1,4 +1,22 @@
-; ---- Shared constants -----
+; ---- Shared constants and struct def -----
+
+; 2024
+     ; Sep
+         ; 13: Add fx_type_none
+                 ; fx_type_sync_buzzer
+         ; 12: Add MAX_TIMER_FXS
+         ;  7: Add instr_hard_type
+     ; Jun 20: Deactivate /instr_param#/ (moved in instr signature)
+
+MAX_TRACKS = 16         ; used by track, ply, salo
+MAX_TIMER_FXS = 15      ; used by timer only -> no ui check.
+MAX_FX_BY_INSTR = 2
+
+fx_type_none = 0
+fx_type_sync_buzzer = 1
+
+ARP_ESC_SET = &80       ; for absolute period env hard 
+ARP_ESC_SAME = &7F      ; not used yet
 
 mask_note = &80
 bit_note = 7
@@ -28,18 +46,56 @@ mask_fx3 = &08
 savepc = $
 saveobj = $$
 
-      ORG 0
-;Clip structure (inside chunk header)
-fc_type BYTE 
-fc_index BYTE 
-fc_name SKIP 3          ; PNT
-fc_color BYTE 
-clip_header_size
-
 reserved_byte = 1       ;reserved for backward reading. ply, phrase
 ;NB: We reserve it, as we don't want memory-regression when enabling
    ; the feature.               
 idsz  = 2               ; ply, track. put here to avoid YAS (track.i)
+
+
+; ---- Struct of track amorce (at /tracks/) -----
+; Empty track is denoted with tf_clips pnt = 0
+      ORG 0
+tf_clips SKIP idsz      ; list of clips/events (evt0 in track.o)
+tf_output BYTE          ; Channel. 0: main/no ouput. 1..3 = PSG: A..C
+tf_mix BYTE             ; reserved
+tf_struct_size          ; for checks in ply
+track_param# = $-tf_output ; not counting events list
+
+;---- Clip structure (inside chunk header)  Used by salo -----
+      ORG 0
+fc_index BYTE           ; First, as just for housekeeping
+fc_type BYTE            ; Before name so we can instantiate easily
+fc_name WORD 
+fc_color BYTE           ; Last, in case we add other params to copy
+clip_header_size
+
+
+; -- Instr headers (serve as index table) ------------------
+; I was tempted to put fields "verticaly" (one field per MSB), but
+;  - it prevents generic operation (link insertion for instr_head_rows)
+;  - hinder debugging
+      ORG 0
+; TODO? flags (e.g. "export" for special effects)
+;             ;-> Hm. Maybe phrase should be exported instead!
+                ; no need for flags, export all phrases!
+; Oh! For now can be put in type anyway.
+instr_head_type BYTE 
+instr_head_rows WORD    ; pnt to first rows
+instr_head_ext SKIP 3   ; static additional params (or pnt if needs more
+; Note: 3 was choosen for chipnsfx instrument POC:
+      ; - noise
+      ; - vol step
+      ; - vol start
+; Also, it makes the total size of the header be 8, 
+; which is handy for fast ID to struct* conversion in ply.o
+instr_head_name WORD    ; pnt to nt string (todo)
+instr_head_size
+
+      IF 0
+!! no! depends on instr type
+; see signatures in instr.o instead
+instr_param# = 3
+      END
 
       ORG 0
 ;Default ayane instr row 
@@ -52,14 +108,50 @@ idsz  = 2               ; ply, track. put here to avoid YAS (track.i)
 ; We don't count link, since chipn forms the record without the link.
 instr_arp BYTE 
 instr_pitch WORD 
-instr_flags BYTE        ; channel / noise
+instr_flags BYTE        ; channel / noise 
+; Note: flags are dispatched on 3 channels for fast masking
+; This means only bit 7 and 6 are free.
+; !!! NO !!! We could use noise=0 to flag absence of noise instead,
+; but that's not needed now and would be a bit slower.
+; (well, that's another story when channel is always open,
+  ;in which case we can get rid of this flag byte entirely,
+  ;which is actually done in compile phase).
+; !!!! NO !!!! actually We want to kep noise = 0
+        ; !!!! to encode "don't set noise period"
 instr_flags_
-;Note: we cannot update r5 inconditionally
-     ; -> instr without noise mustn't interfere
 instr_noise BYTE 
+;Reminder to my fool self: we cannot update r5 inconditionally
+                         ; -> instr without noise mustn't interfere
 instr_vol BYTE 
 instr_vol_
-instr_hperiod WORD      ; for hard env (could be shift instead)
+instr_hard_type BYTE 
+instr_hard_arp BYTE     ; for hard env period
+instr_hard_pitch WORD   ; for hard env period (idem)
+fx0_type WORD           ; !!ROUTINE   
+fx0_param BYTE          ; for syncbuz: env_type. for SRM: ratio or flags
+fx0_arp BYTE 
+fx0_pitch WORD 
+fx_extra_size = 0       ; eg for SRM: volume, mode, flag noise
+; for now 0 as it would take too much space unpacked
+fx0_extra SKIP fx_extra_size ; for syncbuz: shift (future)   
+instr_fx_size = $ - fx0_type
+; We reserve enough room for eg 5-notes chords
+; No!!! Takes too much space for now. Will expend when dynamic size
+; allocation is implemented.
+fx1_type WORD           ; !!ROUTINE   
+fx1_param BYTE          ; for syncbuz: env_type. for SRM: ratio or flags
+fx1_arp BYTE 
+fx1_pitch WORD 
+; for now 0 as it would take too much space unpacked
+;fx1_extra SKIP fx_extra_size ; for syncbuz: shift (future)   
+      MAX_FX_BY_INSTR-2 ** [
+.fx_type WORD           ; !!ROUTINE 
+.fx_param BYTE 
+.fx_arp BYTE 
+.fx_pitch WORD 
+.fx_extra SKIP fx_extra_size
+          ]
+      WORD              ; marker end of fx
 instr_row_size_max
 
       ORG savepc,saveobj ; restore

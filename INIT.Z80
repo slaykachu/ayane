@@ -13,6 +13,8 @@
 ; (well for now it's not exact sadly).
 ; It also avoid cyclic dependency between chunk and ply.
 
+      IMPORT "memcpc.o" ; To force order in mem
+      IMPORT "instr.o"  ; Idem
       IMPORT "track.o"
       IMPORT "phrase.o" ; for song_reset
       IMPORT "chung.o"

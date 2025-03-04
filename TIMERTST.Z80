@@ -1,0 +1,283 @@
+; ===== Manual test of timer =====
+
+      ORG &0100
+      ENT start
+
+      IMPORT "const.i"
+      IMPORT "memmap.i" ; psg_regs 
+      IMPORT "timer.o"
+      IMPORT "ppi.o"
+      IMPORT "ply.o"    ; Init_periods
+
+; 2024
+; ---------- Ayane v0.v ------------
+; Sep 30. Adapt to new timer API
+        ; Activate sync_buzzer. lots of (cool) artefacts.
+
+start
+          di
+          ld hl,&C000:ld de,&C001:ld bc,&07FF:ld (hl),&AA:ldir
+
+          ld a,&F7:ld (&38),a
+
+          call Init_periods
+          call init_timer
+;          call no_fx
+;          call no_fx_stabler  !!! too britle, depends on 
+;          call no_fx_vsync
+;          call no_fx_real
+          call fx_sync_buzzer_vsync
+    ;      call fx_sync_buzzer_real
+          ret
+
+;---------------------------------------
+      MACRO SUB_TM n
+; Update counter TM (+2 for 'sub n' itself)
+      IF n AND 1
+; Resolution: 2-nops. Must compensate
+          ld a,a:sub [n+3]/2
+      ELSE
+          sub [n+2]/2
+      END
+      ENDM
+
+      MACRO SUB_TM_CALL n
+; Update and call IX when CPT < 0 
+          SUB_TM(n+9)
+          call jp_m_hl'
+      ENDM
+;---------------------------------------
+no_fx
+;----
+; Just landmark (anchor) every 4 lines
+          ld b,&7F:out (c),0
+          exx
+          ld hl,anchor+hdr_code
+          exx
+.lp
+          ld a,&F5:in a,(&FF)
+          rra
+          jr nc,.novsync
+          ld hl,rasters
+          ld (raster_pnt),hl
+          ex af,af
+          SUB_TM(10-1)  ;-1 for jr nc
+          ex af,af
+.novsync
+          ld a,&48
+          call testkey
+          SUB_TM_CALL(24)
+          ex af,af
+          bit 2,c
+          ret z
+
+          jr .lp
+
+no_fx_stabler
+;------------
+; Showcase stability when less big "interruptions".
+          ld b,&7F:out (c),0
+          exx
+          ld hl,anchor+hdr_code
+          exx
+.lpbig
+          ld hl,rasters
+          ld (raster_pnt),hl
+          ld a,&48
+          call testkey
+          ex af,af
+          bit 2,c
+          ret z
+          ld bc,78*3 + 8 ; compensate 1 line lost per anchor
+.lpp
+          ex af,af
+;force several tests to reach 64 nops (assumes SUB_TM_CALL takes 12)
+          4 ** SUB_TM_CALL(4)
+          7 ** nop
+          ex af,af
+          dec bc
+          ld a,b:or c
+          jp nz,.lpp
+
+          ex af,af
+toto  = 24
+          SUB_TM_CALL(26+toto)
+          toto ** nop
+          ex af,af
+          jp .lpbig
+
+no_fx_vsync
+;----------
+; Showcase:
+  ; - stability when big interruptions happens less often.
+  ; - vsync_timed
+          call common_loop_vsync
+          ret
+
+no_fx_real
+;---------
+; Don't use vsync: allow to detect TM counting error.
+          call common_loop_real
+          ret
+
+fx_sync_buzzer_vsync
+;-------------------
+          call setup_sync_buzzer
+          call common_loop_vsync
+          ret
+
+fx_sync_buzzer_real
+;------------------
+          call setup_sync_buzzer
+          call common_loop_real
+          ret
+
+setup_sync_buzzer
+;----------------
+          di
+; !!! must be done first, as all routines may JP HL'
+          exx
+          ld hl,timer_nop
+          exx
+
+; Setup to hear sync buzzer
+          ld a,&3F:ld (psg_regs+7),a
+          ld a,&10:ld (psg_regs+9),a
+          ld hl,&50:ld (psg_regs+11),hl
+          call psg
+
+          ld (ret_sp),sp
+          ld sp,.regs
+g#4   = &0968
+          ld ixl,8+60 *2 ; g#4
+          jp sync_buzzer_register
+.return
+          ld sp,(ret_sp)
+          ret
+
+.regs
+    ;  WORD 2500         ; 1e6/400Hz (in nops)
+      BYTE &01
+      BYTE 0
+      WORD 2496-g#4 + 2 ;-1  ; - 1 ; picth test stable
+      WORD .return      ; don't go through fx_end: only used for cut
+
+timer_nop
+;--------         
+          add &80       ; reload
+      IF 0
+ ; unused here
+          SUB_TM(7)
+          inc d         ; MSB TM
+      ELSE
+          SUB_TM(6)
+      END
+          exx
+          ret
+
+common_loop_vsync
+;----------------
+          ld b,&7F:out (c),0
+          call preplay_init
+          exx
+          ld hl,anchor+hdr_code
+          exx
+          ex af,af
+          ld a,TM_MAX
+          ex af,af
+          call vsync_start
+
+.lpvsync
+          call vsync_timed
+;Check CPT is in sync with vsync. It should have wrapped around
+; First iteration: 30 nops counted), A'= &71
+; (we already entered
+;bornemin = &71
+; Then we should always be remains higher
+bornemin = &60          ; tmp huge tolerance
+      IF 0
+!!! fixme, even with huge tolerances, on retombe pas sur nos pattes
+          ex af,af
+.dbgpnt   ld hl,dbg_log
+          ld (hl),a
+          inc l
+          ld (.dbgpnt+1),hl
+          cp 15:jr c,.ok ; tmp hack
+          cp bornemin:call c,fail
+          SUB_TM(5-1)
+.ok
+;Note: cannot be < 0, as vsync_timed would have triggered timer,
+     ; which reloads the counter.
+;          cp bornemax+1:call nc,fail
+          SUB_TM(18)
+          ex af,af
+      END
+
+;--- Reset raster
+; Hack: we don't know whether 1st anchor was triggered or not.
+; So wait a bit to ensure trigger
+; Otherwise, jitty rasters       
+          ld b,1
+          ex af,af
+          call waitlines
+          ex af,af
+          ld hl,rasters
+          ld (raster_pnt),hl
+;---           
+; 1. Exercise /waitlines/ routine  
+; 2. Ensure no more inside vsync
+     ; (needed for TM checks assuming start of vsync)
+          ld b,160
+          ex af,af
+          call waitlines
+          ex af,af
+;---
+          ld a,&48
+          call testkey
+          SUB_TM_CALL(44)
+          ex af,af
+          bit 2,c
+          jr nz,.lpvsync
+          ret
+
+common_loop_real
+;---------------
+          ld b,&7F:out (c),0
+          exx
+          ld hl,anchor+hdr_code
+          exx
+          ld a,(current_anchor)
+          add 78
+          ld e,a
+.lpreal
+; Wait until pnt reach next page
+.wait
+          ex af,af
+          SUB_TM_CALL(10)
+          ex af,af
+          ld a,(current_anchor)
+          cp e
+          jr nz,.wait
+
+          add 78
+          ld e,a
+          ld hl,rasters
+          ld (raster_pnt),hl
+          ld a,&48
+          call testkey
+          SUB_TM_CALL(24-1)
+          ex af,af
+          bit 2,c
+          jr nz,.lpreal
+          ret
+
+      IF 0
+nrt_set_psg
+          ld de,psg_regs
+          ld bc,14
+          ldir
+;!!! todo: use timer's routine
+          ret
+      END
+      SKIP -$ AND &FF
+dbg_log FILL &0100,0

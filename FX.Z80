@@ -1,13 +1,20 @@
 ; Effects/Commands.
 
 ; \/\ 2024 /\/\/\/\/\
+   ; ---- For ayane v0t ----
+  ; Sep
+    ; 18 v4: Update TM
   ; Feb
    ; ---- For ayane v0b ----
     ; 25 v3: Complete Rewrite. See ply.o for rationale.
+
+      IMPORT "plyconf.i"
 
 fx_code
 
 fx_noFx
           pop hl        ; skip param
-;todo: tm
+      IF sfx
+          sub 6+2 /2    ; +2: Sub itself
+      END
           ret

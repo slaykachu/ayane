@@ -1,0 +1,143 @@
+; Play and analyze tune
+   ; (Min/Max/Total machine time taken)
+do_play = 0             ; 0: analyze           1: play tune at 50hz
+ayane = 0               ; 0: chipnsfx version  1: ayane version
+
+; 2024 May 17. 
+
+      ORG &0100
+      ENT tests
+
+      IMPORT "prof.o"
+ ;     IMPORT "testlib.o"
+
+; -- compiled version
+      IF ayane
+module = &4200          ; use &4000-&41xx for buffers
+play  = module+&A8
+tick  = module+&B6
+psg   = module+&0120
+Amorce_song = module+&01E9
+;psg_regs = module+&0300
+periods = module+&0300  ; shared with regs
+compiled_data = module+&0400
+      ELSE
+chip_play = &5000
+chip_sng = &7000
+play  = chip_play+&50   ; include psg
+song_a = chip_sng+&00
+song_b = chip_sng+&0175
+song_c = chip_sng+&01F8
+
+      END
+
+fail  = &BE00
+
+tests
+          call test_play_minimala
+          ret
+
+test_play_minimala
+; That's the name of the song.
+; Not really minimal!
+
+      IF ayane
+; Sanity checks
+          ld a,(psg):cp &01:call nz,fail
+          ld a,(Amorce_song):cp &11:call nz,fail
+; --        
+          ld a,3:ld hl,compiled_data:call Amorce_song
+; Check period table properly init.
+          ld a,(periods+&30):cp &77:call nz,fail
+
+          ld hl,0:ld (tick),hl
+      ELSE
+          call chip_init
+      END
+
+frame_lp
+      IF do_play
+          call &BD19
+          call &BB1B
+          ret c
+
+          halt
+          halt
+          halt
+      END
+
+frame_cpt ld hl,-1
+          inc hl
+          ld (frame_cpt+1),hl
+          ld bc,&1480
+          or a:sbc hl,bc:jr z,end_of_tune
+
+          di
+          exx:push bc
+          exx           ; necessary for profile
+          ld bc,&7F10:out (c),c:ld c,&5F:out (c),c
+      IF do_play
+          call play_tune
+      ELSE
+          ld hl,play_tune
+          call profile
+          ld de,(max):or a:sbc hl,de:add hl,de:jr c,.okmax
+          ld (max),hl
+.okmax
+          ld de,(min):or a:sbc hl,de:add hl,de:jr nc,.okmin
+          ld (min),hl
+.okmin
+          ld de,(total):add hl,de:ld (total),hl:jr nc,.oktotal
+          ld hl,total+2:inc (hl)
+.oktotal
+      END
+          ld bc,&7F10:out (c),c:ld c,&54:out (c),c
+          pop bc:exx
+          ei
+
+          jr frame_lp
+
+end_of_tune
+;finito
+          ret
+
+play_tune
+      IF ayane
+          call play
+; Play psg even in analyse mode for fair comparison with chipnsfx
+          jp psg
+      ELSE
+          jp play
+
+chip_init
+          di
+          call chip_play
+          ld hl,song_list
+          call chip_play+&15
+          ret
+song_list
+      WORD song_a-song_list-2
+      WORD song_b-song_list-4
+      WORD song_c-song_list-6
+
+      END
+
+;      FILL -$ AND &FF,0
+;psg_ref SKIP 14
+
+      IF ayane
+      ORG module
+      LOAD "minimala.gay"
+
+      ELSE
+      ORG chip_play
+      LOAD "chipnsfx.out"
+      ORG chip_sng
+      LOAD "minimala.bin"
+      END
+
+      ORG &3000
+min   WORD &FFFF
+total FILL 3,0
+max   WORD 0
+

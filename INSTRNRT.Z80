@@ -1,0 +1,169 @@
+; ------------- Tests for instr.o ----------------
+
+; !!!! For tests make sure "IF 1" in test lib for correct dummy_instr
+; TODO: use 2 dedicated instruments instead
+
+; /// 2025 ///
+; ----- v0.0ab ------
+ ; Mar
+  ; 1 Use :orgrel/prof.o (rather than ums:) 
+    ; ref2code: sync with actual code
+
+; /// 2024 ///
+; ----- v0.0x ------
+ ; Oct 
+  ; 4. Extract dummy_instr to testlib (less direct dependencies)
+; ----- v0.0w ------
+  ; 1. Adapt for new instr encoding.
+
+      ORG &0100
+      ENT tests
+
+      IMPORT "const.i"
+      IMPORT "memmap.i" ; psg_regs
+      IMPORT "testlib.o"
+      IMPORT ":orgrel/prof.o"
+      IMPORT "timer.o"  ; set_reg13_insert_and_program/_tm
+      IMPORT "instr.o"
+
+      MACRO SUB_TM n
+; Copy-paste from timer.o                  
+; Update counter TM (+2 for 'sub n' itself)
+      IF n AND 1
+; Resolution: 2-nops. Must compensate
+          ld a,a:sub [n+3]/2
+      ELSE
+          sub [n+2]/2
+      END
+      ENDM
+
+
+tests
+          call nrt_init
+          call test_instr_null
+          call test_instr
+          ret
+
+nrt_init
+          call init_for_test
+;Clean psg regs since most of them aren't touched
+          ld hl,psg_regs
+          ld b,15
+.raz      ld (hl),0:inc l:djnz .raz
+;needed since profile temporarily set EI,
+;and we need to setup HL' before that.
+          ld hl,&C9FB:ld (&38),hl
+          ret
+
+test_instr_null
+;--------------
+; Check profiling 
+          ld hl,instr_null
+          ld (instr_code_pnt),hl
+          call nrt_instr_play
+          ret
+
+test_instr
+;--------- 
+; Exercise instr_default 
+          call dummy_instr
+
+          ld l,1:call instr_setup
+;row0  
+          ld hl,.ref0
+          call check_from_channel_b
+;row1
+          ld hl,.ref1
+          call check_from_channel_b
+
+;row2 More things to check
+          ld hl,.ref2
+          call check_from_channel_b
+; check period
+          ld de,&9F71+hard_pitch /256 + 1
+          ld hl,(psg_regs+11)
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ld de,.ref2code
+          ld bc,ref2code_
+          call check_fx
+
+;Past instr: mustn't touch anything (Future-proof: easy mixing)
+; Well, R7 is reset. 
+          ld hl,.ref3
+          call check_from_channel_b
+          ld de,.ref2code
+          ld bc,ref2code_
+          call check_fx
+          ret
+
+; See /row_struct/
+.ref0 WORD &EEE4,0:BYTE 0,&3D,0,15
+.ref1 WORD &7772,0:BYTE 0,&3D,0,13
+.ref2 WORD &EEE4,0:BYTE 3,&2D,0,&10,0
+.ref2code
+          ex af,af
+          ld a,sync_env_type
+          ld de,&7772+sync_pitch ; c1
+          jp set_reg13_insert_and_program
+ref2code_ = $ - .ref2code
+      WORD &9F71+hard_pitch /256 + 1 ; +1: rounding closest
+.ref3 WORD &EEE4,0:BYTE 3,&3F,0,&10,0 ; same than ref2 except r7=&3f
+      WORD &7772+sync_pitch
+
+nrt_instr_play
+          di
+          ex af,af
+          ld a,MAX_TM
+          ex af,af
+          exx
+          ld d,0
+          ld hl,timer_nop
+          exx
+          ex af,af
+          ld a,MAX_TM
+          ex af,af
+          ld hl,instr_play
+          call profile
+          neg
+          add a
+          add MAX_TM*2-3 ;-3: final 'ret' not counted by
+          cp l:call nz,fail
+          ld a,h:exx:cp d:call nz,fail:exx
+          ret
+
+
+check_from_channel_b
+;in: hl = ref
+          push hl
+          ld a,12       ; c0
+          call nrt_instr_play ; on channel B
+          pop hl
+          ld de,psg_regs+2
+          ld bc,8
+          call compare_sized
+          ret
+
+      IF instr_flags-3
+   !! review
+      END
+      IF instr_vol-5
+   !! review
+      END
+
+check_fx
+; In: DE = pnt ref
+    ; BC = size ref
+; Just one fx, programed at pos 0 (since current_clock = 0)
+; A bit brittle. If break, we might just rely on tests in timernrt.
+          ld hl,header_events
+          ld a,(hl)
+          add hdr_code-hdr_cpt
+          ld l,a
+          inc h         ; events (but label is ambiguous)
+          call compare_sized
+          ret
+
+      SKIP ramlimit - $
+
+row_struct
+; Period (16 bits) 

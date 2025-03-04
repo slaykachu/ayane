@@ -1,0 +1,437 @@
+; ---------------------------
+; Ayane main entry point / ui
+; ---------------------------
+
+; 2025
+  ; Feb
+    ; 28: Replace :lib imports by local version
+; 2024
+  ; Jun
+    ; 19: Use "disp-jp.o"
+; 2023
+  ; Dec      
+    ; 22: Use local disp, status
+    ; 21: Setup multimode at /sequencer/   
+        ; Import from ":lib" (no need usb key anymore)
+    ; 16: Move display_help and string routines in help.o
+
+  ; Nov 
+    ; 28; question: use bandeau like orgam, scr-lo doesn't handle r1=48
+    ; 27: question: try fix cursor issues
+    ; 26: Fix display_help (set mode and ink 1)
+        ; scan_key: take C = code, not A
+        ; open: fix question handling
+        ; skip_nt: was bugged
+
+dev_checks = 1
+todo  = 1
+need_room = 1
+
+client_ayane = 1
+
+      ENT start
+
+CRTC_R1 = 48            ; Setup BYTE widget
+      IF CRTC_R1 - 48
+   !! must update widget.CRTC=R1 *and* widget.y_to_offset
+  ; Note: 48 is too big for some monitors.
+        ; nevermind for now
+      END
+CRTC_R1_IO = 40
+CRTC_R2_IO = 46
+
+      IMPORT "memmap.i" ; bk_disp, code_start, ...
+
+      BANK &C0
+      ORG code_start
+
+      IMPORT "init.o"
+      IMPORT "memcpc.o"
+      IMPORT "track.o"
+ ;     IMPORT "st128.o"
+; --- More imports at /disp_import/
+
+      IF need_room
+; Some code could me moved in disp bank
+      END
+;!! todo: move that in aya
+      IMPORT "field.o"
+      IMPORT "scan-key.o"
+      IMPORT "shortcut.o"
+;      IMPORT "scr-lo.o"    !! not meant for r1=48 (use firmware)
+
+; ---------------------------------------------
+
+call_disp
+      BRK
+;!!! todo
+          ret
+
+      MACRO CALL_DISP adr
+          call call_disp:WORD adr
+      ENDM
+
+      MACRO SET_CRTC reg,val
+!! use bandaya to set crtc (cheaper to do it there)
+          call set_crtc:BYTE reg,val,-1
+      ENDM
+
+;-----------------------------------------------
+; Firmware routines
+;-----------------------------------------------
+
+disc_in_open = &BC77
+disc_in_close = &BC7A
+disc_in_abandon = &BC7D
+disc_test_eof = &BC89   ; NC if eof
+disc_in_direct = &BC83  ; In: hl=destination
+
+disc_out_open = &BC8C
+disc_out_close = &BC8F
+disc_out_abandon = &BC92
+
+scr_mode_set = &BC0E
+scr_ink_set = &BC32
+
+mc_set_mode = &BD1C
+
+mess  = &BE00
+
+err_io = 1
+err_too_big = 2
+
+; -------------------------------
+
+
+;---------
+start
+;---------
+          call full_init
+ ;         call setup_keys      Done in full_init
+          CALL_DISP(init_disp_bk)
+          ld hl,text_welcome
+          push hl
+          ld de,text_welcome
+          CALL_DISP(conv_protext)
+;Must be done after conversion!
+          pop hl
+          CALL_DISP(help_init) ; Move in full_init? Doesn't matter!
+          call display_init
+;Welcome message / help: same thing for now 
+          call help
+
+;---------
+ui_loop
+;---------
+; Invariant: bk base is connected 
+
+          call km_wait_key ; use km_read_key for no wait
+          cp kesc
+          ret z
+
+          ld hl,shortcuts
+          ld c,a
+          call scan_key
+          jr nc,.nokey
+
+; Erase previous status (e.g. 'DOS ERROR') 
+          push hl
+clear_status = ClearQuestion
+          CALL_DISP(clear_status)
+          pop hl
+          call jp_hl
+
+.nokey
+          jr ui_loop
+
+
+jp_hl     jp hl
+
+;-----------------------------------------------
+; Commands
+;-----------------------------------------------
+
+;---------------------
+open
+;---------------------
+          ld hl,_txt_open
+          ld de,name_file
+          CALL_DISP(question)
+          ret nc
+
+;Sync   
+          call io_prelude
+
+; ---- Load file  
+          ld hl,TMP_BUF
+          CALL_DISP(get_len)
+          ld b,a
+          ld de,disc_buffer
+          CALL_DISP(disc_in_open) ; since file_name in c7
+          jr nc,_error
+      IF todo
+; Check file type (ayane vs starkos vs...)
+; For now not necessary since we only support .128 modules
+      END
+
+; For now we don't accept bigger than 16k.
+          ld a,b:cp &40
+          ld a,err_too_big
+          jr nc,io_error
+      BRK
+ ; !! todo 
+
+      IF 0
+
+          call connect_bk_st
+          ld hl,st_module ; &4000
+          call disc_in_direct
+
+          jr nc,io_error
+          call disc_in_close
+
+          call connect_bk_base ; needed?
+          call st_convert
+          call io_postlude
+;Warning: errors message shouldn't be displayed on bandeau then
+
+ ; Make senses 
+sequencer
+; Do screen setup here, as we don't want to add bandaya dep to track.o
+; (might be moved in a newly introduced trackui.o, though)
+          ld hl,mode_sequencer:ld (hook_top),hl
+          ld hl,no_op:ld (hook_int2),hl
+          ld hl,mode_help:ld (hook_int3),hl
+          jp ui_sequencer
+      END
+_error
+          ld a,err_io
+io_error
+;-------      
+      IF need_room
+; move that in disp bk, so no need to use CALL_DISP for each call
+      END
+          CALL_DISP(disp_err_message)
+          call &BB06
+;enchaine
+io_postlude
+;----------
+; Switch back to ayane display
+; CRTC done by bandaya
+         ; SET_CRTC(1,CRTC_R1)
+          ld a,CRTC_R1
+          CALL_DISP(init_disp)
+          jp status_on
+
+display_init
+;-----------
+          call firm2status ; Bandeau ON from basic 
+          jr io_postlude ; status_on again, nevermind
+
+io_prelude
+;---------  
+; Switch to classical display for proper display of amsdos messages
+          call status_off ; first so that cls is faster!
+          ld a,CRTC_R1_IO
+          CALL_DISP(init_disp)
+          CALL_DISP(cls) ; For amsdos error message
+          call set_crtc:BYTE 1,CRTC_R1_IO,2,CRTC_R2_IO,-1
+          ret
+
+_txt_open BYTE "Open:",0
+
+;---------------------
+help
+;---------------------
+          ld a,2:call mc_set_mode
+          xor a:ld b,a:ld c,a:call scr_ink_set
+          ld a,1:ld bc,&1A1A:call scr_ink_set
+          CALL_DISP(cls)
+;Welcome message / help: same thing
+          ld bc,text_welcome
+          CALL_DISP(display_page)
+          ret
+
+
+;-----------------------------------------------
+; Tables, buffer and co 
+;-----------------------------------------------
+
+shortcuts
+      BYTE "o":WORD open
+      BYTE "h":WORD help
+      BYTE 0
+
+name_file_dbg BYTE ":music/shap/pcrb3.128",0
+
+      SKIP &4000-$      ; limit
+
+;-----------------------------------------------
+; Text management
+;-----------------------------------------------
+
+; All text/fonte/disp routines in dedicated bank
+      BANK BK_DISP
+      ORG &4000
+
+; Variable to be display must be in same bank than disp.o
+
+      IF $ - &4000
+ !! must be imported first for fonte alignement
+      END
+
+disp_import
+      IMPORT "disp.o"
+
+; 'status' is calling disp directly, putting it here ensure 
+;  proper bank is connected
+      IMPORT "status.o"
+
+      IMPORT "help.o"
+
+init_disp_bk
+;-----------
+      IF 1
+;for quick tests
+          ld hl,name_file_dbg
+          ld de,name_file
+;copy_nt not in bank, but must connect for name_file
+          call copy_nt
+      ELSE
+          xor a:ld (name_file),a
+      END
+          ret
+
+text_welcome LOAD "txthelp.doc"
+
+
+disp_err_message
+;---------------
+;In: A: Message number (1 indexed)
+          call get_err_message
+          call disp_text_nl
+          ret
+
+get_err_message
+;--------------
+;In: A: Message number (1 indexed)
+;Out: HL: Pointer to message (in corresponding bank)
+
+          ld b,a
+          ld hl,messages_error
+.lp
+          dec b
+          ret z
+          call skip_nt
+          jr .lp
+
+messages_error
+      BYTE "message 1",0
+      BYTE "message 2",0
+
+;-----------------------------------------------
+; Common helpers
+;-----------------------------------------------
+
+; They are put in disp BK as soon as text is involved.
+  ; - Ensure we access fields in bank 
+       ; (e.g. field_editor doesn't depend on disp, but the field
+         ;under modification is in DISP BK)
+  ; - No need to use CALL_DISP once we're here.
+  ; - Central RAM is more precious.
+
+question
+;-------
+;In: HL: Text to display
+   ; DE: Field
+;  BANK_DISP connected (since manipulating field to be displayed)
+
+;Out: Carry if no ESC  (and field copied to TMP_BUF)
+
+          push de
+          ld de,&0200 + status_line_question
+          call disp_infos_com ; Update D: pos X
+          inc d         ; Hack. otherwise points to last char
+          pop hl        ; Field
+
+          call saisie_champ
+
+          push af
+          call nc,ClearQuestion ; if exit: clear
+          pop af
+
+; Copy out of bank to ease io (open etc...)
+          ld de,TMP_BUF
+          ld bc,MAX_FILENAME_SIZE
+          ldir
+          ret
+
+saisie_champ
+;-----------
+; Copy/paste from ed.o
+; Edition champ avec texte pre-rempli
+
+;   in: D position curseur X
+      ; HL adresse champ a remplir
+;  out: Carry si ok 
+      ; HL preserved
+      ; NC si annulation (ESC)
+
+;Place cursor at end of string.
+;Cannot use c=-1 here since it's not handled by inv_cursor.
+          call get_len:ld c,a
+
+          ld e,&80      ; Flag selected
+          ld b,MAX_FILENAME_SIZE+1
+.edit_loop
+; Regs like oFieldEditor  + D = pos X field
+
+;display   
+          call field_refresh_wait_key
+          ret z         ; Exit
+
+          dec b         ; Remove rab for cursor
+          call field_editor
+          inc b
+          jr .edit_loop
+
+field_refresh_wait_key
+;---------------------
+; Field refresh and test key.
+; In: HL: Field (preserved)
+    ; D : pos X field
+    ;  E: flags (selected)
+    ; B : length field
+    ; Out:  A: key code.
+         ;  Z if exit (Carry: return, NC: ESC)
+         ; NZ: all other keys
+
+          push de
+          ld a,e
+          ld e,status_line_question
+          call field_refresh ; in status.o
+          pop de
+
+          call km_wait_key
+          cp kesc:ret z ; ESC: NC
+          cp kreturn:ccf ; C & Z: Return
+          ret           ; NZ if otherkeys
+
+      SKIP -$ AND &FF
+
+name_file SKIP &0100    ; Don't need this much. Nevermind.
+
+;!!! Still in bank C7
+; -------------------------------
+      SKIP &7CC0-$      ; poor's man limit
+; Note: private disp vars here, but can (and should) be moved for ayane
+
+      SKIP bandaya-$    ; xx00 for confining ints at same MSB
+; Ints must be out of page 0000, since still called when rom connected
+      IMPORT "bandaya.o"
+
+      SKIP psg_regs-$   ; poor's man limit
+
+MAX_FILENAME_SIZE = 90  ; room for open: and cursor
+
+TMP_BUF = &9E00

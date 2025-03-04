@@ -1,6 +1,22 @@
 ; Common routines for tests 
 
-; 2024 
+; 2025
+; --- Ayane 0.0ab ---  
+  ; Mar
+   ;  3 +dummy_instr_ui to avoid messing with nrts (using dummy_instr)
+      ; Change memdisk_pnt_r/_w checks to accomodate for new buffer
+        ; location in salo-nrt
+      ; Fix typo in memdisk_seek_read. This also im
+                ; - memdisk_init_read
+                ; - memdisk_load_bloc
+; 2024  
+; --- Ayane ??? ---  
+  ; Oct
+   ;  6 v4: Add init_for_test, dummy_instr
+  ; Jun      
+   ; 11 v3: Add memdisk_flush and co
+   ;  3 v2: compare_regs: no noise check if vol 0
+                        ; (was done for channel open)
   ; Apr
    ; 23 v1: Add /psg_read/
    ; 22 v0: /compare_regs/ extracted from ide:ay/plybh
@@ -8,12 +24,22 @@
             ; Adjustable tolerance
 tolerance = 4
 
+      IMPORT "const.i"
+      IMPORT "memmap.i"
+      IMPORT "chung.o"  ; Init_chung and instr setup
+ ;      IMPORT "piano.o"
+      IMPORT "timer.o"  ; init_timer/fx_end/sync_buzzer_register
+      IMPORT "ply.o"    ; Init_periods
+
+
 fail  = &BE00
 
 compare_sized
           ld a,(de):cp (hl):call nz,&BE00
           inc hl:inc de
-          djnz compare_sized
+          dec bc
+          ld a,c:or b
+          jr nz,compare_sized
           ret
 
 compare_regs
@@ -62,6 +88,8 @@ compare_regs
 .perok_
           pop hl:pop de
 .perok
+          ld a,(iy+ch):or a:jr z,.noiseok ; de: volume 0
+
           bit chbit+3,(ix+7):jr z,.noise
           bit chbit+3,(iy+7):jr nz,.noiseok ; both closed
           call fail     ; mismatch
@@ -104,6 +132,27 @@ cr_nono
 
           ret
 
+psg_nrt
+; For tests: send to psg
+          di
+          ex af,af
+          push af
+          exx
+          push bc
+          ld hl,timer_noop
+          exx
+          call psg
+          pop bc
+          exx
+          pop af
+          ex af,af
+          ret
+
+timer_noop
+          exx
+          ret
+
+
 psg_read
 ; IN: hl: pnt buffer
           ld c,0
@@ -137,4 +186,198 @@ psg_read1
           out (c),c
           pop bc
           ret
+
+memdisk_write_bloc
+;In: hl = source 
+   ;  c = size (0 = 256)
+;Out: hl+= size
+memdisk_pnt_w ld de,&C000
+; Check no overrun (assume buffer in free_ram_for_nrt. cf salo-nrt.o) 
+          ld a,d
+          cp free_ram_for_nrt/&0100:call c,fail
+          cp ramlimit'/&0100:call nc,fail
+          ld b,0:dec c:inc bc
+          ldir
+;Enchaine
+memdisk_seek_write
+;"seek" might be a stretch.
+          ld (memdisk_pnt_w+1),de
+          ret
+
+memdisk_init_write = memdisk_seek_write ; IN: de = destination
+
+memdisk_load_bloc
+;In: de = dest 
+   ; bc = size !! not symetrical for now
+;Out: de += size
+memdisk_pnt_r ld hl,&C000
+; strict check for salo specifically
+          ld a,h
+          cp free_ram_for_nrt/&0100:call c,fail
+          cp ramlimit'/&0100:call nc,fail
+          ld a,b:or a:call nz,fail ; not > &ff
+          ld a,c:or a:call z,fail ; not 0
+          ldir
+;Enchaine
+memdisk_seek_read
+          ld (memdisk_pnt_r+1),hl
+          ret
+
+memdisk_init_read = memdisk_seek_read ; IN: hl = source
+
+init_for_test
+          call Init_chung
+          call Init_periods
+          call init_timer
+          ret
+
+dummy_instr
+;----------
+; !!! Do not change, as instrnrt expect this exact 3-rows instr.
+; E.G. do not add loop.
+          ld a,1        ; id (0 is reserved)
+          ld c,0        ; nb params
+          call New_instr_ayane
+          xor a
+          ld b,3
+          ld hl,row0
+          call helper_setrows
+          ret
+
+dummy_instr_ui
+;-------------
+; For manual test in instrui.o
+          ld a,1        ; id (0 is reserved)
+          ld c,0        ; nb params
+          call New_instr_ayane
+          xor a
+          ld b,2
+          ld hl,row0
+          call helper_setrows
+          ld b,1
+          ld hl,row2_ui
+          call helper_setrows
+          ret
+
+
+helper_setrows
+          push af
+          push bc
+          push hl
+          push hl
+          push af
+          call insert_empty_row
+          pop af
+          call select_row
+          pop de
+          call set_row
+          pop hl
+          ld de,instr_row_size_max
+          add hl,de
+          pop bc
+          pop af
+          inc a
+          djnz helper_setrows
+          ret
+
+      MACRO VOL n
+; Encode as expected -> xxxx0
+      BYTE n*2
+      ENDM
+
+      MACRO VOL_HARD
+      BYTE &21          ; Bit 0 and 5 Set (so after rrca, bit set)
+      ENDM
+
+
+
+row0  BYTE 0:WORD 0:BYTE &38,0
+          VOL(15)
+      FILL fx0_type - [$-row0],0
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_end
+      IF instr_row_size_max - [$-row0]
+ !!! incomplete
+      END
+
+row1  BYTE 12*2:WORD 0:BYTE &38,0 ; Arpege +12
+          VOL(13)
+      FILL fx0_type - [$-row1],0
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_end
+      IF instr_row_size_max - [$-row1]
+ !!! incomplete
+      END
+
+
+; for nrt: don't touch values
+flags = &00             ; noise
+hard_env_type = 10
+hard_arp = 7
+hard_pitch = 20
+sync_pitch = 10
+sync_env_type = 3       ; same a 0: \_____
+sync_arp = 12
+
+; for instrui manual testing
+flags_ui = &38          ; no noise
+hard_env_type_ui = 10
+hard_arp_ui = 0
+hard_pitch_ui = 0
+sync_pitch_ui = 0
+sync_env_type_ui = 4    ; /|______
+sync_arp_ui = 0
+
+row2  BYTE 0:WORD 0:BYTE flags,3 ; Noise
+          VOL_HARD()    ; Hard env 
+      BYTE hard_env_type
+      BYTE hard_arp * 2
+      WORD hard_pitch
+      IF fx0_type - [$-row2]
+   !! error align
+      END
+.syncbuzzer0
+      WORD sync_buzzer_register
+      BYTE sync_env_type
+      BYTE sync_arp*2
+      WORD sync_pitch
+      IF $-.syncbuzzer0 - instr_fx_size
+   !! missing fields
+      END
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_end
+      IF instr_row_size_max - [$-row2]
+ !!! incomplete
+      END
+
+row2_ui BYTE 0:WORD 0:BYTE flags_ui,3 ; 
+          VOL_HARD()    ; Hard env 
+      BYTE hard_env_type_ui
+      BYTE hard_arp_ui * 2
+      WORD hard_pitch_ui
+      IF fx0_type - [$-row2_ui]
+   !! error align
+      END
+.syncbuzzer0
+      WORD sync_buzzer_register
+      BYTE sync_env_type_ui
+      BYTE sync_arp_ui*2
+      WORD sync_pitch_ui
+      IF $-.syncbuzzer0 - instr_fx_size
+   !! missing fields
+      END
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_end
+      IF instr_row_size_max - [$-row2_ui]
+ !!! incomplete
+      END
+
 

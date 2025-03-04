@@ -1,0 +1,374 @@
+; Screen: Raster / Rupt under int for status bar.
+        ; Transitions.
+
+raster = 1              ; debug rasters in border
+todo  = 1
+
+      IMPORT "memmap.i"
+      IMPORT "memcpc.o"
+
+      IF BK_IO - &C0
+ !!! review that
+      END
+connect_bk_screen = connect_bk_io
+
+; 2024
+; --------- v0y ----------
+ ; Oct
+   ; 19 Simplify code (remove orgams specific stuff like tr2status)
+      ; Also, no more r9=1. Standard format in page &4000
+      ; Use memcpc.o
+
+; 2023    
+  ; Dec    
+    ; 16 Save AF, BC, HL for each int
+         ; - Takes less RAM
+         ; - Simplify hooks
+         ; - We don't really care about TM, 
+           ; since we call firmware anyway.
+    ; 15 Extracted from ums:lib/bandrupt.o
+       ; Remove orgams specific code
+       ; Add mode changes at ints
+
+mc_set_mode = &BD1C
+kl_rom_select = &B90F
+kl_rom_deselect = &B918
+
+ink1  = &46             ; in status bar
+r1    = 48
+r2    = 49
+r3    = &FC
+r4    = 38
+r4'   = 33
+r4''  = 4               ; status (40 line total)
+r6    = 25
+r6''  = r4''+1
+r6t   = 32
+r7    = 30
+r7'   = 27
+r7t   = 34
+r9'   = 7
+r12'  = &10             ; Main r12 in /offset/
+
+      MACRO ASSERT p
+      IF p:ELSE
+ !! error
+      END
+      ENDM
+
+      MACRO CHECK_MSB
+; For optim purpose, we assume all routines share same msb
+      IF $/&0100 - int0/&0100
+ !! error distinct msb
+; if it happens, assemble routine at another place
+      END
+      ENDM
+
+; -------------------------------
+
+      MACRO INT_RET col,nxt
+          CHECK_MSB()
+; !! call reused for dispatch (cf int4)
+; Must leave the call
+          call _int_ret
+      IF raster
+      BYTE col
+      END
+; Hack: we cannot use 'if $-nxt' since nxt isn't known yet.
+      ; So we rely on multi-definition allowed if same value.
+zero  = $-nxt
+      ENDM
+
+      IF $ AND &C000:ELSE
+!!! Cannot be in page 0000, since called while rom connected
+      END
+
+int0
+          CHECK_MSB()
+; Expect VSYNC. if not: don't change int#
+          ld b,&F5:in a,(c):rra
+          jr nc,_int_ret_dbg
+;          jr nc,_int_ret_
+
+          ld hl,int1
+          ld (int_dispatch+1),hl
+; Set mode via firmware
+; otherwise, bc' not update -> flicker at each firmware access
+mode_top  ld a,1:call mc_set_mode ; af corrupt, all others preserved
+
+; Int firm while vbl for keyboard handling
+          call call_int_firm
+
+; Just in time rupture. Sweet!
+          call set_crtc
+      BYTE 4,r4',12,r12',13,0,-1
+
+          halt          ; int 1 stabilized
+
+          INT_RET(&44,int2)
+int2
+hook_int2 call no_op
+          INT_RET(&55,int3)
+int3
+hook_int3 call no_op
+          INT_RET(&5C,int4)
+int4
+hook_int4 call no_op
+          INT_RET(&58,int5)
+int5
+hook_int5 call no_op
+          INT_RET(&5D,int0_)
+
+int0_     jr int0       ; Just to be able to reuse INT_RET for int5
+
+_int_ret
+          pop hl
+      IF raster
+          ld a,(hl):inc hl
+          ld bc,&7F10:out (c),c:out (c),a
+          dec c:jr nz,$-1
+          ld c,&54:out (c),c
+      END
+          ld (int_dispatch+1),hl
+;enchaine
+_int_ret_
+          pop af
+          pop bc
+          pop hl
+;enchaine
+call_int_firm
+          ex af,af
+          jp c,int_firm_carry
+          jp int_firm_nc
+
+_int_ret_dbg
+          ld a,r:and &3F:or &40
+          ld b,&7F:out (c),0:out (c),a
+          jr _int_ret_
+
+; ------
+; Raster
+; ------   
+square0'
+; Col Black Col
+          out (c),d:out (c),c:out (c),d
+          jr _line1
+
+square2'
+; Col Black Col
+          out (c),d:out (c),c:out (c),d
+          jr _line3
+int1
+          CHECK_MSB()
+
+          push de
+          ld b,20-3:djnz $:add hl,bc ; -3 for 3 push at /int_prelude/
+
+top_col   ld bc,&7F54
+          ld de,&0100+ink1:out (c),d:out (c),e
+          ld de,&1054:out (c),d:out (c),e
+top_pen   out (c),0     ; to do last!
+          out (c),c
+
+          ld e,l        ; both save and tempo
+          call set_crtc:BYTE 4,r4'',6,r6'',-1
+
+int1_status
+          CHECK_MSB()
+
+          ld b,8:djnz $
+          ld d,&58
+          xor a         ; cpt
+rasterlp_editor
+; end of line % 4 = 0. Squares
+          ld bc,&7F54
+          cp 3:jr nc,square0'
+;square0
+; Black Col Black               
+          nop
+          out (c),c:out (c),d:out (c),c
+          jr _line1     ; same tempo 
+_line1
+; line % 4 = 1.  Alternate color 
+          ld c,&44
+          out (c),c     ;-- 
+          cp 9          ; A Incremented at end of loop
+          jr z,_raster_end
+          ld b,14:djnz $
+; line % 4 = 2. Black, Ssquares shifted down & right
+          ld bc,&7F54
+          out (c),c     ;-- +
+          ld b,8:djnz $:nop ; Shift +2 nop
+          ld b,&7F
+          cp 6:jr nc,square2'
+          nop
+          out (c),c:out (c),d:out (c),c
+          jr _line3
+_line3
+; line % 4 = 3.  Alternate color 
+          ld c,&44
+          out (c),c     ;-- +65
+          ld b,15:djnz $
+; line % 4 = 0 start
+          ld bc,&7F54
+          out (c),c     ;-- +65
+          ld b,6:djnz $
+          inc a
+          jr rasterlp_editor
+
+square0''
+; Col Black Col
+          out (c),d:out (c),c:out (c),d
+          jr _line1
+
+square2''
+; Col Black Col
+          out (c),d:out (c),c:out (c),d
+          jr _line3
+
+_raster_end
+
+          ld b,&06:djnz $
+          ld a,a
+          ld hl,(offset)
+;15 bytes
+          ld bc,&BC0C:out (c),c
+          inc b:out (c),h
+          dec b:inc c:out (c),c
+          inc b:out (c),l
+
+          ld b,&19:djnz $
+          call set_crtc
+      BYTE 7,r7',4,r4,-1
+hook_top  call no_op
+          pop de
+; Musn't jump to _int_ret_:
+; Leads to desynchro for some reason  
+; (double call call_int_firm -> more than 32 lines under DI!?)
+          pop af
+          pop bc
+          pop hl
+no_op     ret           ; Any RET would do!
+
+firm2status
+; If already installed: no-op.
+; !!! NOT TRUE regarding crtc transition. Todo? fix that? !!!
+          call clearstatus ; screen itself
+          call firm2shift
+          jp status_on
+
+status2firm
+; Replace firm ints (for cat, ed, ...)
+          call status_off
+;enchaine
+shift2firm
+; Shift screen back.
+          call flyback
+          call set_crtc:BYTE 4,r7'+r4-r7,-1
+          3 ** halt
+          call set_crtc:BYTE 4,r4,7,r7,-1
+          ret
+
+firm2shift
+; shift screen (r7 to r7')
+; Setup r3
+
+          call flyback
+; We have temp r4 (41) > r7' (27)
+          call set_crtc:BYTE 3,r3,4,r7+r4-r7',-1
+          3 ** halt
+          call set_crtc:BYTE 4,r4,7,r7',-1
+          ret
+
+int_firm = &B941
+int_firm_nc = &B945
+int_firm_carry = &B978
+
+
+status_on
+;--------
+; Enable status (from shifted pos screen)
+
+; regs 1 2 3 6 constant, no need to change them via int
+          call set_crtc:BYTE 1,r1,2,r2,3,r3,6,r6,-1
+
+          di
+          ld a,&C3:ld (int_firm),a
+          ld hl,int_prelude:ld (int_firm+1),hl
+          ld hl,int0:ld (int_dispatch+1),hl
+          ei
+          ret
+
+status_off
+;---------
+; Disable status (but keep same shifted pos for main screen)
+; Must preserve BC DE IX IY (was only true of orgams?)
+
+; Restore firmware int
+          di
+          ld a,&F3:ld (int_firm),a
+          ld hl,&3808:ld (int_firm+1),hl
+          ei
+          ret
+
+; -------------------------------
+clearstatus
+          call connect_bk_screen
+          ld hl,&4000
+          ld de,&4001
+          ld bc,&3FFF
+          ld (hl),l
+          ldir
+          ret
+
+; --------------------------------
+;   Different graphic modes
+; !!! Only AF BC HL saved !!!
+; Save DE if you need it
+; --------------------------------
+mode_sequencer
+          ld hl,&44
+          jr _mode_com
+mode_help
+          ld hl,&024B
+;Enchaine
+_mode_com
+;H= mode, L= ink 1
+          ld bc,&7F01:out (c),c:out (c),l
+          ld a,h
+          jp mc_set_mode
+
+; --------------------------------
+;   Helpers
+; --------------------------------
+flyback
+; Ensure start of flyback.
+          call &BD19
+          ld b,0:djnz $
+          jp &BD19
+
+set_crtc
+; !!! Must be in int_ram2 (cf CALL_ROM)
+;Stop at &ff
+;out: b=&bd
+          pop hl
+crtclp
+;20us /iter
+          ld b,&BD:outi
+          ld b,&BE:outi
+          ld a,(hl)
+          inc a
+          jr nz,crtclp
+          inc hl
+          jp hl
+
+int_prelude
+          push hl
+          push bc
+          push af
+int_dispatch jp int0
+
+offset WORD &3000
+
+      SKIP psg_regs - $ ; poor's man LIMIT
+

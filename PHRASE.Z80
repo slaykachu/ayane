@@ -11,14 +11,19 @@ makeroom = 1
 ; This are the highest level routines
 ; -------------------------------------------------------------
   ; song_select_new_phrase
+  ; song_select_phrase
+  ; song_get_current_phrase
 
 ; -------------------------------------------------------------
 ; --- Phrase handling ---
 ; All those routines expect a phrase to be currently selected
 ; -------------------------------------------------------------
+  ; phrase_set_params
   ; phrase_select_new_row
   ; phrase_select_row_at
   ; phrase_set_blank_row_at 
+  ; phrase_get_rows#
+  ; phrase_get_row_position
   ; phrase_get_row_at
   ; Get_phrase
 
@@ -27,9 +32,20 @@ makeroom = 1
 ; All those routines expect a row to be currently selected
 ; -------------------------------------------------------------
   ; row_set_note  
+  ; row_get_note  
+  ; row_set_vol
+  ; row_get_vol
+  ; row_set_instr
+  ; row_get_instr
 
 
 ; 2024                  
+; ----- v0l ------
+  ; Jun  
+    ;24 Add /row_get_instr/
+          ; /phrase_get_row_position/
+    ;17 Add /phrase_set_params/
+    ;13 phrase_def: adapt to new header packing, add checks
 ; ----- v0i ------
   ; Mai
     ;15: fix phrase_get_row_at
@@ -85,7 +101,7 @@ phrase_start = chunk_start + clip_header_size
       IF phrases_ - &7600
  !!! inconsistent
       END
-phrases_idx = &7600     ; start chunk for each phrase (&200)
+phrases_idx = &7600     ; start chunk for each phrase &100 ** word 
       IF phrases_idx AND &01FF
  !! must be multiple of #200
       END
@@ -165,6 +181,109 @@ fill      ld (hl),a:inc l:jr nz,fill
 fillb     ld (hl),a:inc hl:djnz fillb
           ret
 
+song_select_new_phrase
+;---------------------
+; Create and select a fresh phrase, from 0 to 254
+; Init header: type, index, name (null for now), color (idx+1 for now)
+; IN: A = phrase ID: - needed by chip.o since non contiguous patterns
+                            ; by salo.o 
+                   ; - useful for user (use ids as he likes)
+
+          call _prelude
+;Must set header value **before** new_phrase_chunk which 'install' them
+;We store idx, so that track can directly point to phrase (using pnt)
+;(faster for player), but we still know the phrase# for UI purpose.
+          ld (phrase_idx),a
+          ld (va_current_phrase),a
+          inc a:call z,err_toomuchphrases
+          ld (phrase_color),a
+
+          call new_phrase_chunk:ret nc ; Exit if memory full
+      IF dev_checks
+          ld a,l:cp BK_PHRASE:call nz,mess
+      END
+          ex de,hl      ; DE= phrase chunk ID.
+;Must updates vars **after** new_phrase_chunk,
+;in case mem full -> no change.
+          call connect_bk_phrase
+          ld hl,(va_current_phrase) ; for l
+          ld h,phrases_rows/&0100:ld (hl),0 ; rows # 
+          ld h,phrases_idx/&0200:sla l:rl h
+          ld (hl),e:inc l
+      IF dev_checks
+; !! Right now we assume it's a brand new phrase.
+; When it's not the case anymore (e.g. user input), either
+; return current as is (no new_phrase_chunk) or free it (TBD).
+          ld a,(hl):or a:call nz,unexpected
+      END
+          ld (hl),d
+_ssp
+; Here and below: mustn't change flag Z!
+
+      IF 0
+;Non. see below
+          ld hl,0
+          ld (va_row_pnt),hl
+      ELSE
+; Selecting first row seems to be a better solution than
+; setting va_row_pnt (then calling e.g. row_add_duration would silently
+; add a row via connect_current_row)   
+          push af
+          ld hl,0
+; Non-existing phrase (via song_select_phrase) don't have a start
+          call nz,connect_phrase_begin
+          ld (va_row_pnt),hl
+          pop af
+      END
+_postlude
+      IF todo
+; Is carry really needed if we use exception mecanism?
+      END
+          scf
+_postlude_fail
+          pop hl
+_postlude_
+          pop ix:pop de:pop bc
+          ret
+
+song_select_phrase
+;-----------------
+; In: A: phrase number (from 0)
+; Out: Like /Get_phrase/
+  ; !! Current phrase changed even when non-initialised. Nevermind?
+
+          call _prelude
+          ld (va_current_phrase),a
+          call Get_phrase
+          jr _ssp       ; unselect row
+
+
+err_toomuchphrases
+      BRK
+
+phrase_set_params
+;----------------
+; Note: done separately to prepare for alternatives
+;In: hl: params (out of bank)
+   ;  c: size params
+          ld a,c:or a:ret z
+          dec a:call nz,unexpected ; just 1 param for now (fc_color)
+          call _prelude
+          ex de,hl
+          call connect_phrase_begin
+      IF fc_color - 4
+ !! review 
+      END
+          ld l,chunk_start + fc_color
+          ex de,hl
+          ld b,0
+      IF dev_checks
+; Check C was preserved
+          ld a,c:or a:call z,mess
+          cp 2:call nc,mess
+      END
+          ldir
+          jp _postlude
 
 phrase_select_new_row
 ;--------------------
@@ -247,6 +366,13 @@ phrase_select_row_at
           pop hl
           ret
 
+phrase_get_row_position
+;----------------------
+          call _prelude
+          pop hl        ; rectify stack
+          ld hl,(va_position)
+          jp _postlude_
+
 phrase_set_blank_row_at
 ;----------------------
 ; Create a new row at t (if not existing)
@@ -257,6 +383,7 @@ phrase_set_blank_row_at
 ; factorize with add_duration?
       END
           call _prelude
+          ld (va_position),de
           call phrase_get_row_at
           jr nc,.new_row
 
@@ -317,6 +444,24 @@ insert_new_row
           dec l
           pop de
           ret
+
+phrase_get_rows#
+;---------------  
+;In: Phrase selected
+;Out:A = nb rows  (!! different API than instr_get_rows#, simpler code) 
+
+          call _prelude
+          call connect_phrase_begin
+          ld c,0
+.lp
+          call is_end_of_phrase
+          jr z,.done
+          inc c
+          call skip_all
+          jr .lp
+.done
+          ld a,c
+          jp _postlude
 
 phrase_get_row_at
 ;----------------
@@ -381,7 +526,6 @@ phrase_get_duration
 .nxt
           call skip_all
           jr .lp
-
 
 row_add_duration
 ;---------------
@@ -511,6 +655,19 @@ row_set_instr
 
 _change_instr
           ld (hl),a
+          jp _postlude
+
+row_get_instr
+; Out: If instr: NZ, A=instr id
+     ; otherwise Z, A trashed
+          call _prelude
+          call connect_current_row_skip_length
+          bit bit_instr,(hl)
+;If Z, read garbage: nevermind 
+          push af       ; For Z/NZ
+          call skip_fx
+          pop af
+          ld a,(hl)
           jp _postlude
 
 row_set_no_param_fx_
@@ -809,6 +966,8 @@ connect_current_row
      ; - Useful for chipn.o: we only create rows when notes
           ; - If first row is "...:..", we want a blank row to set delai
      ; - It's better to do a sensible thing rather can assert.
+         ; - maybe not better: it it was silently adding rows when
+           ; re-selecting phrase + e.G. add_row-duration.
 ;Out: HL= start
     ; AF, BC, DE, DE unchanged
           ld hl,(va_row_pnt)
@@ -837,6 +996,14 @@ err_no_instr
 err_no_row_selected
       BRK
 
+connect_phrase_header
+;out: bk connected
+    ; hl= phrase HEADER itself** (connected)
+    ;  A=bk
+    ; BC, DE preserved 
+          call connect_phrase_begin
+          ld l,chunk_start
+          ret
 
 connect_phrase_begin
 ;out: bk connected
@@ -844,12 +1011,16 @@ connect_phrase_begin
     ;  A=bk
     ; BC, DE preserved
           call song_get_current_phrase
+      IF dev_checks
+          call z,mess
+      END
           ld l,BK_PHRASE
           jp connect_phrase_from_id
 
 song_get_current_phrase
 ; Get selected phrase
-;OUT:H= MSB, L= BK
+;OUT:If such phrase, NZ, H= MSB, L= BK, A=id 
+
           push bc
       IF makeroom
 ; Move bank saving in _prelude and restore in _postlude
@@ -860,6 +1031,7 @@ song_get_current_phrase
 
           ld a,(va_current_phrase)
           call Get_phrase
+          ld a,(va_current_phrase) ; reload without touching F
           call connect_c
           pop bc
           ret
@@ -906,73 +1078,6 @@ Get_phrase
           ret
 
 
-song_select_new_phrase
-;---------------------
-; Create and select a fresh phrase, from 0 to 254
-; Init header: type, index, name (null for now), color (idx+1 for now)
-; IN: A = phrase ID: - needed by chip.o since non contiguous patterns
-                   ; - useful for user (use ids as he likes)
-
-          call _prelude
-;Must set header value **before** new_phrase_chunk which 'install' them
-;We store idx, so that track can directly point to phrase (using pnt)
-;(faster for player), but we still know the phrase# for UI purpose.
-          ld (phrase_idx),a
-          ld (va_current_phrase),a
-          inc a:call z,err_toomuchphrases
-          ld (phrase_color),a
-
-          call new_phrase_chunk:ret nc ; Exit if memory full
-      IF dev_checks
-          ld a,l:cp BK_PHRASE:call nz,mess
-      END
-          ex de,hl      ; DE= phrase chunk ID.
-;Must updates vars **after** new_phrase_chunk,
-;in case mem full -> no change.
-          call connect_bk_phrase
-          ld hl,(va_current_phrase) ; for l
-          ld h,phrases_rows/&0100:ld (hl),0 ; rows # 
-          ld h,phrases_idx/&0200:sla l:rl h
-          ld (hl),e:inc l
-      IF dev_checks
-; !! Right now we assume it's a brand new phrase.
-; When it's not the case anymore (e.g. user input), either
-; return current as is (no new_phrase_chunk) or free it (TBD).
-          ld a,(hl):or a:call nz,unexpected
-      END
-          ld (hl),d
-_ssp
-; Here and below: mustn't change flag Z!
-          ld hl,0
-          ld (va_row_pnt),hl
-_postlude
-      IF todo
-; Is carry really needed if we use exception mecanism?
-      END
-          scf
-_postlude_fail
-          pop hl
-_postlude_
-          pop ix:pop de:pop bc
-          ret
-
-song_select_phrase
-;-----------------
-; In: A: phrase number (from 0)
-; Out: Like /Get_phrase/
-  ; !! Current phrase changed even when non-initialised. Nevermind?
-
-          call _prelude
-
-          ld (va_current_phrase),a
-          call Get_phrase
-          jr _ssp       ; unselect row
-
-
-err_toomuchphrases
-      BRK
-
-
 _prelude
 ; save registers and sp (for 'exception mechanisme)
 ; then connect work bank
@@ -990,6 +1095,8 @@ _prelude
           push hl
           call connect_bk_phrase
           jp jp_ret
+
+
 
 goto_end
 ;in  a= bank
@@ -1612,17 +1719,30 @@ move_tail_in_new_chunk'
           scf
           ret
 
+      MACRO CHECK_FIELD start,offset
+      IF $-start - offset
+ !!! error align 
+      END
+      ENDM
+
 phrase_def
 ;-------
 ;phrase chunk header (after last, reset by new_chunk)
       BYTE phrase_def_+3 ; +3: same reason as for /chunk_def/
       BYTE 0            ;checksum (unused now)
       BYTE 0            ; row# (mimic line# in orgams's chunk)
+_header
 ;clip header
-      BYTE type_phrase
+          CHECK_FIELD(_header,fc_index)
 phrase_idx BYTE 
-      FILL 3,0          ; Pnt name. Unused for now
+          CHECK_FIELD(_header,fc_type)
+      BYTE type_phrase
+          CHECK_FIELD(_header,fc_name)
+      WORD 0            ; Pnt name. Unused for now
+          CHECK_FIELD(_header,fc_color)
 phrase_color BYTE 
+          CHECK_FIELD(_header,clip_header_size)
+
 tag_end                 ; used by chungnrt.o
 ;duration 0 = tag eof of phrase 
       BYTE 0
@@ -1703,6 +1823,7 @@ zero_start              ; Not loaded, must follow def (see check below)
       END
 va_current_phrase BYTE 
 va_row_pnt WORD         ;address of currently selected row 
+va_position WORD        ; position in phrase (in ticks)
 
 zero_size = $-zero_start
 

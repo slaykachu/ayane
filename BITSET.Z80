@@ -1,0 +1,122 @@
+dev_checks = 1
+;  Set of integers 0..X   Max X = 255
+
+;  E.g  bs_set is alike "set a,(hl)"
+     ;  but left to right, and spanning on several bytes.
+
+; Adapted from :lib/bitset (remove tests and auto-burn)
+
+;---------------------------
+mess  = &BE00
+
+; ========================================
+      MACRO SIZE_IN_BYTES
+ ; A= size-1 
+          add 8:rra:2 ** srl a
+      ENDM
+
+      MACRO CHECK_INDEX
+; Assert (No-op if ok. Breakpoint otherwise)
+;[codesize] If invoked twice, should use a routine instead.
+
+      IF dev_checks
+          cp (hl)       ; cp with size-1
+          jr c,.ok
+          jr z,.ok
+      BRK
+.ok
+      ENDM
+
+; ========================================
+bs_init
+;------
+;in: HL= structure
+   ;  A= size (0 = 256 elements)
+;out: HL preserved. Structure zeroed on ceil(A/8) bytes.
+
+          push hl
+      IF dev_checks
+          dec a:ld (hl),a ;size - 1
+          SIZE_IN_BYTES()
+.lp       inc hl:ld (hl),0:dec a:jr nz,.lp
+      ELSE
+          SIZE_IN_BYTES()
+.lp       ld (hl),0:inc hl:dec a:jr nz,.lp
+      END
+          pop hl
+          ret
+
+bs_copy
+;------
+; out: bc,de,hl trashed 
+     ; a preserved
+
+          push af
+      IF dev_checks
+          ld a,(hl)
+          SIZE_IN_BYTES()
+          ld c,a
+      ELSE
+ !! oups, cannot use copy if size is not known.
+      END
+          ld b,0
+          inc bc
+          ldir
+          pop af
+          ret
+
+
+bs_get
+;-----
+;in: HL= structure
+   ;  A= index
+;out: All registers but F preserved. 
+    ; NZ if item is set
+    ;  Z otherwise.
+
+          push bc:push hl
+          ld c,a
+          call get_pnt
+          and (hl)
+          ld a,c
+          pop hl:pop bc
+          ret
+
+bs_set
+;-----
+;in: HL= structure
+   ;  A= index
+;out: All registers preserved.
+
+          push af:push hl
+          call get_pnt
+          or (hl):ld (hl),a
+          pop hl:pop af
+          ret
+
+get_pnt
+;------
+; In: hl=structure
+    ;  a=index
+;Out: hl=pnt in bitmap
+    ;  a=mask 
+    ; Assert index in range.
+
+          CHECK_INDEX()
+      IF dev_checks
+          inc hl        ; skip size
+      END
+          push bc
+          ld c,a
+          ld a,&80      ; Mask for very first item
+          srl c:jr nc,.no1:1 ** rrca
+.no1
+          srl c:jr nc,.no2:2 ** rrca
+.no2
+          srl c:jr nc,.no4:4 ** rrca
+.no4
+          ld b,0
+          add hl,bc
+          pop bc
+          ret
+

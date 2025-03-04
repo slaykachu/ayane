@@ -1,0 +1,374 @@
+; >>>>>>>>>> Test instr routines  <<<<<<<<<<<
+; See todonrt for chunk related routines
+
+;2024
+;  Feb
+; ---- 0.0ab ----
+ ; Oct
+; ---- 0.0y ----
+  ;19 Add /test_delete_row/
+    ; Add /test_insert_row/
+; ---- 0.0v ----
+  ; 4 Fix /test_instr_edit/ itself: set_row expect fx routine
+    ; Add test_get_row
+; ---- 0.0u ----
+; Sep
+  ; 24 Remove chipnsfx related test
+has_chipnsfx = 0
+; Apr
+  ; 11 Only keep fresh test test_loop. Old tests in todonrt.o
+
+      ORG &0100
+      ENT tests
+
+      IMPORT "memmap.i"
+      IMPORT "const.i"  ; instr_row_size_max
+      IMPORT "chung.o"
+      IMPORT "init.o"
+      IMPORT "instr.o"  ; instr_type_default  (after init for alignment)
+      IMPORT "testlib.o"
+      IMPORT "timer.o"
+
+tests
+          call nrt_init
+      IF 1
+          call test_get_row
+          call test_loop
+          call test_loop_past_end
+          call test_get_field
+          call test_instr_edit
+          call test_dummy_instr
+          call test_delete_row
+          call test_delete_row_adjust_loop
+          call test_insert_row
+      END
+          call test_insert_row_adjust_loop
+      IF has_chipnsfx
+          call test_instr_chip
+      END
+          ret
+
+fail  = &BE00
+;----------------------------------------
+
+nrt_init
+;-------
+; clear bk for easy analysis
+          ld bc,&7F00+bk_nrt:out (c),c
+          ld hl,&4000:ld de,&4001:ld bc,&3FFF:ld (hl),&F7:ldir
+
+          jp full_init
+
+test_loop
+;--------
+; Check instr_get_loop is inverse of instr_set_loop
+tl_row# = 5
+          ld a,1:call New_instr_ayane
+; no_loop returns NC
+          call instr_get_loop
+          call c,fail
+
+          ld b,tl_row#
+          call instr_set_rows# ; create empty rows
+          ld b,tl_row#
+.lp
+          push bc
+          dec b
+          ld a,b:push af
+          call instr_set_loop
+          call instr_get_loop
+          call nc,fail  ; when loop: returns Carry
+          pop af
+          cp b:call nz,fail
+          pop bc
+          djnz .lp
+          ret
+
+test_loop_past_end
+;-----------------
+; Check instr_set_loop doesn't assert past end
+; (del_row relies on that for corner case)
+          call nrt_init
+          call dummy_instr
+
+          ld b,3
+          call instr_set_loop
+          call instr_get_loop:call nc,fail
+          ld a,b:cp 2:call nz,fail
+          ret
+
+      IF has_chipnsfx
+test_instr_chip
+;--------------
+; Complete instrument building
+; Mainly check it doesn't assert!
+
+          ld bc,&CAAB   ; b= initial volume, c= step
+          ld a,1:call New_instr_chp_down_vib
+          ld b,1
+          ld hl,.vib
+          call instr_chip_append_rows_byte
+; Set loop to first row 
+          ld b,0
+          call instr_set_loop
+; Check: 1 row
+          call instr_get_rows#
+          ld a,c:cp 1:call nz,fail
+; Check: loop at 0
+          call instr_get_loop
+          ld a,b:or a:call nz,fail
+          ret
+
+.vib  WORD &BEBA        ; dummy vibrato "table"
+      END
+
+test_get_row
+;-----------
+          call nrt_init
+          ld a,1        ; id (0 is reserved)
+          ld b,type_instr_default
+          ld c,0        ; nb params
+          call New_instr
+; -- one empty row
+          xor a:call insert_empty_row
+; -- get row
+          xor a:call select_row
+          ld de,destnrt
+          call get_row
+; -- check "empty row" (flags channel open)
+          ld hl,.ref
+          ld de,destnrt
+          ld b,instr_row_size_max
+          call compare
+          ret
+.ref
+      FILL instr_flags,0
+      BYTE &38          ; flags channel open
+      FILL fx0_type-instr_flags -1,0
+      WORD fx_null:FILL instr_fx_size-2,0
+      WORD fx_null:FILL instr_fx_size-2,0
+      WORD fx_end
+      IF instr_row_size_max - [$-.ref]
+  !! incomplete
+      END
+
+test_get_field
+;-------------
+          call nrt_init
+          ld a,1        ; id (0 is reserved)
+          ld b,type_instr_default
+          ld c,0        ; nb params
+          call New_instr
+; -- with two rows
+          ld b,1
+          ld hl,raw_row1
+          call instr_ayane_append_rows
+          ld b,1
+          ld hl,raw_row2
+          call instr_ayane_append_rows
+; -- check column 'vol' 
+          ld hl,destnrt
+          call get_vols
+
+          ld hl,destnrt
+          ld de,.refvol
+          ld b,2
+          call compare
+
+; -- Now try with loop
+          ld b,0
+          call instr_set_loop
+
+          ld hl,destnrt
+          call get_arps
+
+          ld hl,destnrt
+          ld de,.refarp
+          ld b,2
+          call compare
+          ret
+
+.refvol
+      BYTE instr_vol
+      BYTE instr_vol + shift
+.refarp
+      BYTE instr_arp
+      BYTE instr_arp + shift
+
+raw_row1  fx0_type ** BYTE #
+      WORD fx_null
+          instr_fx_size-2 ** BYTE #
+      WORD fx_null
+          instr_fx_size-2 ** BYTE #
+      WORD fx_end
+      IF instr_row_size_max - [$-raw_row1]
+  !! incomplete
+      END
+shift = &10
+raw_row2  fx0_type ** BYTE # + shift
+      WORD fx_null
+          instr_fx_size-2 ** BYTE # + shift
+      WORD fx_null
+          instr_fx_size-2 ** BYTE # + shift
+      WORD fx_end
+      IF instr_row_size_max - [$-raw_row2]
+  !! incomplete
+      END
+
+test_instr_edit
+;--------------
+          call nrt_init
+          ld a,1        ; id (0 is reserved)
+          ld b,type_instr_default
+          ld c,0        ; nb params
+          call New_instr
+; -- insert empty row
+          xor a:call insert_empty_row
+          call instr_get_rows#
+          ld a,c:cp 1:call nz,fail
+; -- set data
+          xor a:call select_row
+          ld de,raw_row1
+          call set_row
+          ld de,destnrt
+          call get_row
+
+          ld hl,destnrt
+          ld de,raw_row1
+          ld b,instr_row_size_max
+          call compare
+; -- delete row
+          xor a:call del_row
+          call instr_get_rows#
+          ld a,c:or a:call nz,fail
+          ret
+
+test_dummy_instr
+;---------------
+;Check get_row, also act as sanity check for other tests
+          call nrt_init
+          call dummy_instr
+;No loop
+          call instr_get_loop:call c,fail
+;3 rows 
+          call instr_get_rows#
+          ld a,c:cp 3:call nz,fail
+;Check each row
+          ld a,0:ld hl,row0:call check_row
+          ld a,1:ld hl,row1:call check_row
+          ld a,2:ld hl,row2:call check_row
+          ret
+
+
+check_row
+;--------
+;in: a= row#
+   ;hl= ref           
+          push hl
+          call select_row
+          ld de,destnrt
+          call get_row
+          pop hl
+          ld de,destnrt
+          ld b,instr_row_size_max
+          call compare
+          ret
+
+test_delete_row
+;--------------
+;Prerequisite: test_dummy_instr
+          call nrt_init
+          call dummy_instr
+          ld a,1:call del_row
+          call instr_get_rows#
+          ld a,c:cp 2:call nz,fail
+; still no loop
+          call instr_get_loop:call c,fail
+; row0 unchanged
+          ld a,0:ld hl,row0:call check_row
+; row2 moved to row1
+          ld a,1:ld hl,row2:call check_row
+          ret
+
+test_delete_row_adjust_loop
+;--------------------------
+; Check loop is adjusted.
+;Prerequisite: test_dummy_instr, test_delete_row
+          call nrt_init
+          call dummy_instr
+          ld b,2:call instr_set_loop
+          ld a,1:call del_row
+          call instr_get_loop:call nc,fail
+          ld a,b:cp 1:call nz,fail
+; Scenario 2: remove row that was loop point
+            ; -> should point to same row#
+          call nrt_init
+          call dummy_instr
+          ld b,1:call instr_set_loop
+          ld a,1:call del_row
+          call instr_get_loop:call nc,fail
+          ld a,b:cp 1:call nz,fail
+; Scenario 3: remove last row (loop point) 
+            ; -> should point to previous as well
+          call nrt_init
+          call dummy_instr
+          ld b,2:call instr_set_loop
+          ld a,2:call del_row
+          call instr_get_loop:call nc,fail
+          ld a,b:cp 1:call nz,fail
+          ret
+
+test_insert_row
+;--------------
+;Prerequisite: test_dummy_instr
+          call nrt_init
+          call dummy_instr
+          ld a,1:call insert_empty_row
+          call instr_get_rows#
+          ld a,c:cp 4:call nz,fail
+; still no loop
+          call instr_get_loop:call c,fail
+; row0 unchanged
+          ld a,0:ld hl,row0:call check_row
+; row1 moved to row2
+          ld a,2:ld hl,row1:call check_row
+; row2 moved to row3
+          ld a,3:ld hl,row2:call check_row
+          ret
+
+test_insert_row_adjust_loop
+;--------------------------
+;Prerequisite: test_dummy_instr, test_insert_row
+          call nrt_init
+          call dummy_instr
+          ld b,2:call instr_set_loop
+          ld a,1:call insert_empty_row
+          call instr_get_loop:call nc,fail
+          ld a,b:cp 3:call nz,fail
+;Scenario 2: loop before inserted row musn't move
+          call nrt_init
+          call dummy_instr
+          ld b,0:call instr_set_loop
+          ld a,1:call insert_empty_row
+          call instr_get_loop:call nc,fail
+          ld a,b:or a:call nz,fail
+;Scenario 3: loop at inserted row is shifted
+; (well, we could let loop at same row#, but it would complicate code)
+          call nrt_init
+          call dummy_instr
+          ld b,1:call instr_set_loop
+          ld a,1:call insert_empty_row
+          call instr_get_loop:call nc,fail
+          ld a,b:cp 2:call nz,fail
+          ret
+
+
+compare
+          ld a,(de):cp (hl):call nz,&BE00
+          inc de:inc hl
+          djnz compare
+          ret
+
+      SKIP -$ AND &FF
+destnrt
+      SKIP ramlimit-$

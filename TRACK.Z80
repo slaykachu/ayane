@@ -1,16 +1,43 @@
 dev_checks = 1
 todo  = 1
 makeroom = 1
-; TODO: move get_cur_bk and co in chung.
-
 ; ----------------------------------------------------------------
 ; Track handling for ayane (replace map/songlist concept)
 ; ----------------------------------------------------------------
+      IF todo
+todo1                   ; !!! remove used_tracks
+; -> instead introduce subsong's list of tracks
+      END
 
- ; TOC (to be completed)
-    ; Song_add_map
-    ; Song_select_track
+; Setup ------
+; ------------
+    ; Init_track_module
+    ; Reset_tracks
+    ; New_module
+
+; Track creation -----
+; --------------------
     ; Song_select_new_track
+    ; Song_add_map
+
+; Track selection and queries --------
+; ------------------------------------
+    ; Song_select_track             
+    ; track_get_event_hook_at
+    ; track_get_phrase_at
+
+; Track update -------
+; --------------------
+    ; Set_phrase_at_t
+    ; Set_transpose_at_t
+
+; Subsongs -----------
+; --------------------
+    ; Song_select_subsong
+    ; Song_get_current_subsong
+    ; Song_add_track
+    ; Song_get_first_track
+    ; Song_get_next_track
 
       IF todo
 ; move clip struct here?  (or in dedicated clip.o)
@@ -39,6 +66,28 @@ reg_size = 3
       END
 
 ;2024
+; --- For v0l ---- 
+  ; Jun        
+   ; 28 fix get_event_hook_at: again mistake in t0 <= t < t1 test
+      ; eval: lift flags back to z80
+   ; 19 Subsong_add: take A = id (for consistency)    
+   ; 18 Init_track_module: don't create tracks. Instead: /New_module/
+      ; Song_select_new_track: don't add in subsong
+         ; (because salo loads all track before knowing how to dispatch)
+      ; Add: Song_add_track
+   ; 17 Add: Song_get_first_track
+           ; Song_get_next_track
+      ; For serialisation and future subsong handling.
+      ; Init_track_module/Song_add_map: start track numbering at 1
+           ; instead of 0 (to match usual channel numbering)
+
+   ; 14 Song_select_new_track: Pass ID. - Consistent with phrases etc
+                                      ; - Ease loading (salo.o)
+                             ; Pass mix mode (future proof)
+      ; Add track_get_event_hook_at
+      ; Set_phrase_at_t/Set_transpose_at_t: - call be call in any order
+                                          ; - will replace previous val
+   ; 13 Reserve slot for "mix mode": tf_mix
 ; --- For v0h ----
   ; Apr  
    ; 24 Set_phrase_at_t: add check (Get_phrase must return NZ)
@@ -175,13 +224,6 @@ idsz  = 2               ; size of id node (just pnt: not cross bank)
 savepc = $
 saveobj = $$
 
-; ---- Struct of track amorce (at /tracks/) -----
-      ORG 0
-tf_clips SKIP idsz      ; list of clips/events (evt0 below)
-tf_output BYTE          ; Channel. 0: main/no ouput. 1..3 = PSG: A..C
-tf_struct_size
-
-
 ; ---- Struct of event amorce (hook)  -----
       IF todo
  ; s/evt0/hook/ 
@@ -230,6 +272,9 @@ evt_size
       BYTE n
       ENDM
 
+      IF todo
+ ; cleanup that. Still used for aum?
+      END
       MACRO LINK bk,adr
 ;!!! Must keep little endian order: LSB, MSB, BK
 ;!!! So we can do pointer arithmetic 
@@ -406,7 +451,6 @@ FLAG_Z = &60
 ;   Track constants
 ; -------------------------
 
-MAX_TRACKS = 16
 ; We center box on char line: 14 = 3 + 8 + 3
 ; So that text can be displayed on a regular char line (easier, faster)
 TRACK_Y0 = 4            ; For cursor
@@ -569,6 +613,9 @@ eval
 ; Init frame 0
           call eval_init
           call eval_loop
+; lift flags to z80
+          ld hl,(aum_af):push hl:pop af
+; pass back ahl = out0
           ld hl,(aum_regs + out0*4)
           ld a,(aum_regs + out0*4 + 2)
           ret
@@ -946,10 +993,11 @@ call_ext_com_input
           push hl
 .com
           call jp_ix
-;Store flags
+;lift flags to aum
           push af:pop hl:ld (aum_af),hl
           pop hl
           ret
+
 
 call_ext_to_words
 ;----------------
@@ -1121,7 +1169,7 @@ opcodes
 ;------
           OPCODE_ALIGN(ret)
 _ret
-;RET 
+;RET: go back to caller
           ld hl,(frame_pnt)
           ld de,aum_regs
           or a:sbc hl,de
@@ -1841,7 +1889,7 @@ dur   = r0
           JP_Z(.ok)
 ;Recursive call.
 ;Note: not worth if to make a special macro for additional operands
-          FUN2(set_event_hook_at,track,t + add):BYTE lit20:WORD &FFFF
+          FUN2(set_event_hook_at,track,t0 + add):BYTE lit20:WORD &FFFF
 ;retry (quadratic behaviour, nevermind)
           JP(set_event_hook_at)
 
@@ -1862,7 +1910,7 @@ get_event_hook_at
 
 ; in0: track   (pnt in tracks)
 ; in1: t: target time    
-; out0: clip node
+; out0: evt0 node
 ; out1: t0 (start of event)  
 ; out2: t1 (start of following event)  
 track = in0
@@ -1879,13 +1927,9 @@ void  = r1
 .loop
 ; t1 = t0 + cur_clip.duration
           LD5(t1,t0 + add,conv16,tgcaclip + ind,lit + idsz + evt0_dur)
-; if t < t0, try next clip 
-          LD3(void,t + sub,t0)
-          JP_C(.next)
-; ret if t < t1
+; loop while t1 <= t and eoc not met
           LD3(void,t + sub,t1)
           RET_C()       ; NZ
-.next
 ; next clip  
 ; clip := clip.next() (unless last one, unchanged)
           CALL_EXT11(ext_next_node,tgcaclip)
@@ -1895,6 +1939,7 @@ void  = r1
           JP(.loop)
 
       IF 0
+!!! discarded: use track_get_event_hook_at
           SIGN(2,2,FLAG_Z)
 track_get_phrase_at
 ;------------------
@@ -1942,13 +1987,22 @@ void  = r1
 Song_select_track
 ;----------------
 ;IN: A= track id
+      IF todo
+; connect bk track
+; well, no, for now it is all in base memory
+      END
           ld (current_track),a
           ret
 
 Song_select_new_track
-;--------------------
-;IN: A = output channel (0: master unused now, 1..3: psg channel A..C)
+;-------------------- 
+; Create track (not attached to a subsong, for sharing and loading).
+    ; Use Subsong_add_track afterwards.
+;IN: A = Id
+   ; B = output channel (0: master unused now, 1..3: psg channel A..C)
+   ; C = mix mode (0: default for now. Not handled yet)
 ;Out: Track selected for track_* routines
+   ; A preserved
     ; Assert if memory full.
 ; Note: we plug an empty event hook (necessarily at t=0 since
                                     ;no duration in header)
@@ -1961,14 +2015,22 @@ Song_select_new_track
       IF todo
 ; !! proper assertion mecanishm
       END
-          call connect_bk_track
           push af
-          or a:call z,not_implemented_yet
+          call connect_bk_track
+;output 0 not handled
+          inc b:dec b:call z,not_implemented_yet
+;mixmode <> 0 not handled
+          inc c:dec c:call nz,not_implemented_yet
+          push bc
+          ld c,a
           ld a,(used_tracks):cp MAX_TRACKS:call nc,mess
           inc a
           ld (used_tracks),a
-          dec a
+          ld a,c
+          cp 4:call nc,not_implemented_yet ; see /todo1/
+          cp MAX_TRACKS:call nc,mess
           ld (current_track),a
+
           call get_track_pnt
 ; --- Init list: dummy hook at t=0    
           ld a,idsz + evt0_size
@@ -1977,30 +2039,76 @@ Song_select_new_track
           ld (hl),e:inc hl
           ld (hl),d:inc hl
 ; --- Output channel
-          pop af
       IF tf_output - 2
  !!! review this 
       END
-          ld (hl),a
-      IF tf_struct_size - 3
+          pop bc
+          ld (hl),b:inc hl
+; --- Mix mode (unused: 0 for now)
+          ld (hl),c
+      IF tf_struct_size - 4
  !!! oversight
       END
+          pop af
           ret
 
       END
+
+Song_add_track
+      BRK
+
+Song_select_subsong
+          ld (current_subsong),a
+          ret
+
+Song_get_current_subsong
+          ld a,(current_subsong)
+          ret
+
+Song_get_first_track
+;In: subsong selected (for now only 1)
+;Out: If such track: NZ, A = track ID
+                   ; HL = pnt for /Song_get_next_track/
+    ; Otherwise, Z, HL = pnt null link (for append)
+          call connect_bk_track
+          ld hl,subsongs
+          ld a,(current_subsong)
+          or a
+          jr z,.okss
+;Todo: follow links until A = 0
+          call to_be_implemented
+.okss
+          inc hl        ; skip link next subsong
+;Enchaine
+Song_get_next_track
+;In: HL points link to next track
+;Out: If such next track, NZ, A = id
+                        ; HL points to new link
+    ; Otherwise, Z
+          ld a,(hl)
+          or a
+          ret z
+          ld l,(hl)
+          inc hl        ; skip link nxt track. NO 'INC L', to keep NZ
+          ld a,(hl)
+          dec hl
+          ret
+
+Song_goto_last_track
+;In: subsong selected (for now only 1)
+;Out: HL points to last (null) link
+          call Song_get_first_track
+.lp
+          ret z
+          call Song_get_next_track
+          jr .lp
+
 
 Set_phrase_at_t
 ;--------------
 ; Set phrase into current track 
 ; In: A = id phrase        
     ; hl = pnt to t
-      IF todo
-;!!! right now we use prepend_event, as we know that converter
-; will call that first.
-; Instead, we should
- ; - check if event exist (and replace it)
- ; - or, put it last
-      END
           push hl
           call Get_phrase:call z,mess
           ex de,hl
@@ -2013,6 +2121,58 @@ Set_phrase_at_t
           pop hl
           ld a,evt_change_phrase AND &FF
 ;enchaine
+set_event
+;--------
+; If event already exist, replace it.
+; Otherwise, put it last (but before set_phrase).
+; In:  A = type event  
+    ; de = param event      
+    ; hl = pnt to t
+          call connect_bk_track
+          push de:push af
+          call setup_track_t
+          ld hl,set_event_hook_at
+          call eval
+ ; here hl= hook structure
+          idsz + evt0_link ** inc hl
+          pop af:push af
+          call goto_event
+          jr nz,.oknode
+;Must insert new node so that set_phrase is always last.
+; - Append (at hl) if set_phrase  
+; - Insert before last (at de) other
+          pop af:push af
+          cp evt_change_phrase AND &FF
+          jr z,.okpos
+          ex de,hl
+.okpos
+          ld a,idsz + evt_size
+          call Insert_new_node:call nc,mess
+          ex de,hl
+      IF dev_checks
+          ld a,h
+          cp track_events/&0100:call c,mess
+          cp track_events_/&0100:call nc,mess
+      END
+; Setup node itself
+  ; We do it in z80 rather than aum for convenience
+  ; (as time of writing no modifier to read/write single bytes)
+          idsz ** inc hl ; skip link
+.oknode
+          pop af:pop de
+      IF evt_type
+ !! review this
+      END
+          ld (hl),a:inc hl
+      IF evt_param - 1
+ !! review this
+      END
+          ld (hl),e:inc hl
+          ld (hl),d
+          ret
+
+      IF 0
+; Not needed for now. use /set_event/ instead
 prepend_event
 ;------------
 ; In:  A = type event  
@@ -2029,7 +2189,7 @@ prepend_event
       ELSE
           ld hl,set_event_hook_at
           call eval
- ; here hl= hook
+ ; here hl= hook structure
           idsz + evt0_link ** inc hl
           ld a,idsz + evt_size
           call Insert_new_node:call nc,mess
@@ -2057,6 +2217,7 @@ prepend_event
           ld (hl),e:inc hl
           ld (hl),d
           ret
+      END
 
 Set_transpose_at_t
 ;-----------------
@@ -2072,8 +2233,11 @@ Set_transpose_at_t
 ; Premultiply by 2 to match periods table.
           add a
           ld e,a
+; For checks and neater serialisation, we put unused byte at 0.
+; Future-proof as we can add flags later.
+          ld d,0
           ld a,evt_set_transpose AND &FF
-          jr prepend_event
+          jr set_event
 
       IF 0
 is_last_event
@@ -2081,6 +2245,17 @@ is_last_event
           cp evt_change_phrase AND &FF
           ret
       END
+
+track_get_event_hook_at
+;----------------------
+; In:  A = type event  
+    ; de = param event      
+    ; hl = pnt to t
+;Out: hl = hook structure
+          call connect_bk_track
+          call setup_track_t
+          ld hl,get_event_hook_at
+          jp eval
 
 setup_track_t
 ;------------
@@ -2103,6 +2278,54 @@ setup_track_t
           pop af
           ret
 
+goto_event
+;---------
+;Goto to specified event.
+ ; If no such event, return last and before last link pnts
+ ; (for append and insert before last event, respectively)
+;in: hl= link to next event (typical evt field in evt0)
+       ; Assume H<>0
+   ;  a= event type (LSB routine)
+;out: If found, NZ, HL points evt type, 
+                  ; DE=param for convenience.
+    ; otherwise  Z. HL points to last link (0000),
+                  ; DE points to prev link (can be = HL when no node) 
+
+    ; A preserved in any case
+          push hl:pop de ; de = previous link
+.find
+          push hl
+          push de
+          call Next_node
+          pop de
+          jr z,.last
+          pop de        ; de = previous link
+          idsz ** inc hl
+      IF evt_type
+ !!! review that
+      END
+          cp (hl)
+          jr z,.found
+          idsz ** dec hl
+          jr .find
+
+.last
+          pop hl
+          ret
+
+.found
+      IF evt_param - 1
+ !!! review that
+      END
+          inc hl:ld e,(hl)
+          inc hl:ld d,(hl) ; For convenience
+          2 ** dec hl
+          inc h:dec h   ; NZ 
+      IF dev_checks
+          call z,fail
+      END
+          ret
+
 
 get_current_track_pnt
 ;--------------------
@@ -2111,16 +2334,18 @@ get_current_track_pnt
 get_track_pnt
 ;------------
 ;in : a : track #
-;out: hl: track pnt*
+;out: hl: track pnt* 
+    ; a : preserved
+          push af
           cp MAX_TRACKS:call nc,mess
-      IF tf_struct_size - 3
+      IF tf_struct_size - 4
 !!! Review that
       END
-          ld l,a
           add a:call c,mess
-          add l:call c,mess
+          add a:call c,mess
           ld l,a
           ld h,tracks/&0100
+          pop af
           ret
 
 Get_tracks
@@ -2143,42 +2368,105 @@ not_implemented_yet = &BE00
 
 Init_track_module
 ;----------------
-
-; No need to reset tracks table.
-; Instead, we keep all active tracks contiguous
-; and maintain /used_tracks/.
-; The order matter, so when inserting a track it's easier to shift
-; the other ones, and when deleting by symettry just shift left.
-
+      IF todo
+; Fill tracks with 00 here,
+; and release tracks to avoid memory leaks.
+; Or init everything (e.G. track pool pointer) at reset time? 
+  ; what would be the best when multiple modules?
+      END
 ;enchaine
 Reset_tracks
-;-----------
+;-----------    
+; No tracks, no subsong.
+
           call connect_bk_track
+
+          ld hl,tracks
+          ld b,MAX_TRACKS * tf_struct_size
+;00 is needed to mark if track is used or not
+.fill     ld (hl),0:inc hl:djnz .fill
 
           ld hl,zero
           ld b,zero_
-.raz      ld (hl),0:inc hl:djnz .raz
+          xor a
+.raz      ld (hl),a:inc hl:djnz .raz
 
-; Create one track for each channel. Good default, and
-; then we don't have to handle empty song.
-; (well, we would have since user can delete all tracks manually)
+;Reset subsongs as well
+          ld hl,subsongs
+          ld (hl),a:inc l ; null link next subsong
+          ld (hl),a:inc l ; link: no track for now
+          ld a,l:ld (subsong_pool_pnt),a
+          ret
+
+New_module
+;---------
+; Create 3 track (one for each channel). Good default.
+          call Reset_tracks
+;enchaine
+          xor a
+      IF todo
+;number from 1?
+      END
+New_subsong
+;----------    
+;In: A = subsong ID
+      IF todo
+;number from 1?
+      END
+          push bc:push hl
+          call Subsong_add
           ld a,1
 .lp
           push af
  ; No need to select it per se, only the "new_track" is of interest
+          ld b,a        ; output 1 2 3  (channels A B C)
+          ld c,0
           call Song_select_new_track
+          call Subsong_add_track
           pop af
           inc a
           cp 4
           jr nz,.lp
+          pop hl:pop bc
           ret
+
+Subsong_add
+;----------
+;Add a new subsong           
+;In: a = ID  
+      IF todo
+; number from 1? (like instruments and track)
+      END
+          or a
+          ret z
+; add link in subsongs
+          call to_be_implemented
+          ret
+
+Subsong_add_track
+;-- Append track id in current subsong
+; in: a= track id
+;out: af,de preserved
+          push af
+          ld c,a
+          call Song_goto_last_track
+          ld a,(subsong_pool_pnt)
+          or a:call z,memory_full
+          ld (hl),a:ld l,a
+          ld (hl),0:inc l ; null link
+          call z,memory_full
+          ld (hl),c:inc l
+          ld a,l:ld (subsong_pool_pnt),a
+          pop af
+          ret
+
 
 clip_struct_size = 6
 
 Song_add_map
 ;-----------
-; In: 3 tracks init
-    ; hl=table song map (3x phrase id, transpose)
+; Used by import (chipn, st128, ...)
+; In; hl=table song map (3x phrase id, transpose)
     ;  b=patterns#
 
 ; Note: this routine lives here,
@@ -2188,8 +2476,9 @@ Song_add_map
 ; [crunch] Don't set phrase or transpose if same! 
       END
 
-; Start by set_phrase since at time of writing we can only prpend events
-; and 'set_phrase' must come last.
+          xor a
+          call New_subsong
+
           xor a
           call .onechannel
           call .onechannel
@@ -2202,7 +2491,8 @@ Song_add_map
           ret
 
 .onechannel
-; IN: a= channel number (0,1,2)
+; IN: a= channel number (1,2,3)
+    ;  b=patterns#
           push af:push bc:push hl
           call .prep
 .lpc
@@ -2210,7 +2500,7 @@ Song_add_map
           add hl,de
           ld a,(hl)
           push af
-          cp &28:call nc,&BE00
+          cp &28:call nc,mess ; What is that?
           ld hl,timestamp
           call Set_phrase_at_t
 
@@ -2222,7 +2512,7 @@ Song_add_map
           pop af
           call .advancetime
           pop hl
-          ld de,6:add hl,de ; new pos in table
+          ld de,6:add hl,de ; next row in input table
           pop de
           pop bc
           djnz .lpc
@@ -2264,7 +2554,8 @@ Song_add_map
           ld de,0
           ld (timestamp),de
           ld (timestamp+1),de
-          ld e,a:sla e  ; de=a*2 (shift in table)
+          ld e,a:sla e  ; de=a*2 (shift in input songmap)
+          inc a         ; Start numbering at 1
           jp Song_select_track
 
 .advancetime
@@ -2615,10 +2906,12 @@ aum_regs_
 vars
 
 zero
-used_tracks BYTE 0
+used_tracks BYTE 
+current_track BYTE 
+current_subsong BYTE 
 zero_ = $-zero
 
-current_track BYTE &FF
+subsong_pool_pnt BYTE 
       FILL 3,0          ; padding for dbg purpose
 timestamp SKIP 3        ; tmp variable
 

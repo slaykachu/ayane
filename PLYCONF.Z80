@@ -1,4 +1,6 @@
 ; Config for player
+todo  = 1
+is_minimala = 1         ; hack
 
 ; 0: Stand-alone 
 ; 1: In-tool player
@@ -15,8 +17,8 @@ compiled_data = &4600   ; tracklist, instr, phrase, tracks
 compiled_instr = compiled_data
 
       IF ayane
-; Special fx (interleave player with routine in IY)
-sfx   = 0
+; Special fx (interleave player with routine in HL')
+sfx   = 1
 
 ; How many simultaneous fx are handled
 nb_fx = 1               ; warning: 0 won't work for chung
@@ -25,7 +27,7 @@ nb_fx = 1               ; warning: 0 won't work for chung
 ; Can change "master" volume (by track basic)
 use_track_volume = 0
 ; Can change volume in phrase
-use_phrase_volume = 0
+use_phrase_volume = 1
 
 use_transpose = 1
 
@@ -36,9 +38,6 @@ use_instr_noise = 1
 use_flag_channel = 1    ; 0 if channels always open
 
 use_phrase_pitch = 0    ; chipnsfx: no effect
-
-; Periods on 14 or 13 bits instead of 12?
-increased_precision = 0 ; init (gen periods), instr.o
 
 use_instr_flag = 1      ; Flag not need when always instr in row
 use_note_flag = 1       ; Flag not need when always note in row
@@ -51,6 +50,13 @@ use_event_type = 1
 use_hard_env = 1
 
 hack_minimala = 0
+
+use_instr_default = 1
+; Removed from code for now
+;use_instr_chip_down_arp = 0
+;use_instr_chip_down_arp_noise = 0
+;use_instr_chip_down_vib = 0
+;use_instr_chip_down_vib_noise = 0
 
       ELSE
 ; Special fx (interleave player with routine in IY)
@@ -75,9 +81,6 @@ use_flag_channel = 0    ; 0 if channels always open
 
 use_phrase_pitch = 0    ; chipnsfx: no effect
 
-; Periods on 14 or 13 bits instead of 12?
-increased_precision = 0 ; init (gen periods), instr.o
-
 use_instr_flag = 0      ; Flag not need when always instr in row
 use_note_flag = 0       ; Flag not need when always note in row
 has_phrase_loop = 0     ; 0: no loop, phrase changed on time 
@@ -89,6 +92,22 @@ use_event_type = 0
 use_hard_env = 0
 
 hack_minimala = 1       ; adhoc optimisations
+
+use_instr_default = 1
+      IF is_minimala
+;minimamal
+;use_instr_chip_down_arp = 0
+;use_instr_chip_down_arp_noise = 1
+;use_instr_chip_down_vib = 1
+;use_instr_chip_down_vib_noise = 0
+      ELSE
+;4k08
+;use_instr_chip_down_arp = 1
+;use_instr_chip_down_arp_noise = 0
+;use_instr_chip_down_vib = 1
+;use_instr_chip_down_vib_noise = 1
+      END
+
       END
 
 use_volume = use_track_volume OR use_phrase_volume
