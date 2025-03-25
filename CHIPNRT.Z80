@@ -1,5 +1,10 @@
 ; tests chipnsfx convertion
-do_play = 0             ; 0: check  1: play tune
+do_play = 1             ; 0: check  1: play tune
+is_minimala = 0         ;0: --4k08-- kim9 (40 years md)
+
+; 2025
+  ; Mar
+    ; 17: Dump regs in /dbg/
 
       ORG &0100
       ENT tests
@@ -19,10 +24,13 @@ tests
 test_convert_minimal
 ; That's the name of the song.
 ; Not really minimal!
-          ld hl,minimala
+          ld hl,chp_module
           call conv_chipn
 ;-- play it
-          ld a,3:ld hl,tracks:call Amorce_song
+          call Song_get_first_track
+          call get_track_header
+          ld a,3
+          call Amorce_song
       IF 1-do_play
           call chip_init
       END
@@ -40,13 +48,24 @@ frame_lp
 frame_cpt ld hl,-1      ; matches ply.tick
           inc hl
           ld (frame_cpt+1),hl
+      IF is_minimala
           ld bc,&1480
+      ELSE
+          ld bc,&FFFF
+      END
           or a:sbc hl,bc:jr z,end_of_tune
 
           di
           exx:push bc
           ld bc,&7F10:out (c),c:ld c,&5F:out (c),c
           call play
+
+dbg_pnt   ld de,dbg
+          ld hl,psg_regs
+          ld b,11
+.cp       ld a,(hl):inc hl:ld (de),a:inc e:djnz .cp
+          ld (dbg_pnt+1),de
+
       IF do_play
           ld bc,&7F10:out (c),c:ld c,&40:out (c),c
           call psg
@@ -57,10 +76,9 @@ frame_cpt ld hl,-1      ; matches ply.tick
       IF 1-do_play
 ; Check against chipnsfx player
           ld bc,&7F00+BK_REF:out (c),c
-          call chip_play+&50
+          call chip_play
           ld hl,psg_ref
           call psg_read
-
 
 ;notes: period diff 3 at 683
                   ; 4 at a83
@@ -76,8 +94,16 @@ end_of_tune
 ; success!
           ret
 
+      FILL -$ AND &FF,0
+dbg   SKIP &0100
 
-chip_play = &5000
+      IF 1-do_play
+
+      IF is_minimala
+chip_player = &5000
+chip_setup = chip_player
+chip_setup_song = chip_player+&15
+chip_play = chip_player+&50
 chip_sng = &7000
 song_a = chip_sng+&00
 song_b = chip_sng+&0175
@@ -91,12 +117,19 @@ chip_init
           di
           ld bc,&7F00+BK_REF:out (c),c
 
-          call chip_play
+          call chip_setup
 
           ld hl,song_list
-          call chip_play+&15
+          call chip_setup_song
           ret
+      ELSE
+chip_player = &4000
+chip_play = chip_player+&E2
 
+chip_init
+; already pre-init
+          ret
+      END
 
       FILL -$ AND &FF,0
 psg_ref SKIP 14
@@ -105,14 +138,24 @@ psg_ref SKIP 14
 BK_REF = &C6
 
       BANK BK_REF
-      ORG chip_play
-      LOAD "chipnsfx.out"
+      IF is_minimala
+      ORG chip_player:LOAD "chipnsfx.out"
+      ORG chip_sng:LOAD "minimala.bin"
+      ELSE
+      ORG chip_player:LOAD "sqr.bin"
+      END
 
-      ORG chip_sng
-      LOAD "minimala.bin"
+      END
 
       BANK BK_IO
       ORG &4000
-minimala
-      LOAD "ums:music/tj/minimala.chq" ; binary version
-
+chp_module
+      IF is_minimala
+      LOAD "ums:music/tj/minimala.chq" ; with header
+      ELSE
+;      LOAD "4k08.chq"   ; with header
+;      LOAD ":40y/kim9.chq" ; binary version
+;      LOAD ":40y/kima.chq" ; binary version
+;      LOAD ":40y/kim0.chp"
+      LOAD ":40y/kimc.chp"
+      END

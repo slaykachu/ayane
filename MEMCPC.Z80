@@ -195,4 +195,4 @@ check_bk_base
 ; In ayane, we try to leave as much as working variable as possible
 ; outside of bank.
 ; Anyway, base bk is static for ayane (C6), no need for variable.
-
+      END

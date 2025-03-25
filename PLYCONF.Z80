@@ -1,17 +1,21 @@
 ; Config for player
+ayane = 1               ; 0: Stand-alone  1: In-tool player
+todo  = 1
+is_minimala = 1         ; hack
 
-; 0: Stand-alone 
-; 1: In-tool player
-ayane = 1
+; 2025
+  ; Mar
+    ; 18 Settings for kim9.chp
+       ; + default_use_arp
 
 ; Hard coded dest compile  
 ;Buffer first, so we can better concatenate code+data
 compiled_instr_buf = &4000
 compiled_stack = &4100
-compiled_player = &4200 ; instr.o (size:&8c) + ply.o
-compiled_periods = &4500
-compiled_psg_regs = &4500 ; share zone
-compiled_data = &4600   ; tracklist, instr, phrase, tracks
+compiled_player = &4220 ; instr.o + ply.o
+compiled_periods = &4400
+compiled_psg_regs = &4400 ; share zone
+compiled_data = &4500   ; tracklist, instr, phrase, tracks
 compiled_instr = compiled_data
 
       IF ayane
@@ -52,6 +56,16 @@ use_hard_env = 1
 
 hack_minimala = 0
 
+use_instr_default = 1
+;todo: harmonize naming
+default_use_arp = 1     ; Necessary 1 in-tool
+default_use_hard_env = 1 ; "
+
+use_instr_chip_down_arp = 1
+use_instr_chip_down_arp_noise = 0
+use_instr_chip_down_vib = 1
+use_instr_chip_down_vib_noise = 0
+
       ELSE
 ; Special fx (interleave player with routine in IY)
 sfx   = 0
@@ -72,6 +86,7 @@ use_instr_noise = 1
 use_noise = use_fx_noise OR use_instr_noise
 
 use_flag_channel = 0    ; 0 if channels always open
+                        ; (and infer noise flag from noise value)
 
 use_phrase_pitch = 0    ; chipnsfx: no effect
 
@@ -89,6 +104,28 @@ use_event_type = 0
 use_hard_env = 0
 
 hack_minimala = 1       ; adhoc optimisations
+
+use_instr_default = 1   ; kim uses it
+default_use_arp = 0     ; For kim9: only pitch and noise
+default_use_hard_env = 0
+      IF is_minimala
+;minimamal
+;use_instr_chip_down_arp = 0
+;use_instr_chip_down_arp_noise = 1
+;use_instr_chip_down_vib = 1
+;use_instr_chip_down_vib_noise = 0
+use_instr_chip_down_arp = 1
+use_instr_chip_down_arp_noise = 0
+use_instr_chip_down_vib = 1
+use_instr_chip_down_vib_noise = 0
+      ELSE
+;4k08
+use_instr_chip_down_arp = 1
+use_instr_chip_down_arp_noise = 0
+use_instr_chip_down_vib = 1
+use_instr_chip_down_vib_noise = 0
+      END
+
       END
 
 use_volume = use_track_volume OR use_phrase_volume

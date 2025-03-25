@@ -5,9 +5,23 @@
    ; ---- For ayane v0b ----
     ; 25 v3: Complete Rewrite. See ply.o for rationale.
 
+      IMPORT "plyconf.i"
+
+dev_checks = 1 AND ayane
+
+      IF dev_checks
+      IMPORT "instr.o"
+      END
+
 fx_code
 
 fx_noFx
           pop hl        ; skip param
-;todo: tm
+;todo: tm 
+      IF dev_checks
+          pop hl
+          ld a,h:cp instr_code/&0100:call nz,&BE00
+          jp hl
+      ELSE
           ret
+      END

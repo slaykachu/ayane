@@ -1,6 +1,12 @@
 ; Periodic table of notes!
 ; Note (ah!): init done in ply.o
 
+; 2025
+; ----- v0l2 -----
+ ; Mar 19
+    ; Don't pad, for correct binary size when assembling ply
+
+
       IMPORT "plyconf.i"
       IF increased_precision
  !! review 
@@ -19,9 +25,10 @@ periods
 ; f = 440*2^(x/12)
 ; p = cint(62500/f)
 c0
-      BYTE &EE,&0E,&18,&0E,&4D,&0D,&8E,&0C
-      BYTE &DA,&0B,&2F,&0B,&8F,&0A,&F7,&09
-      BYTE &68,&09,&E1,&08,&61,&08,&E9,&07
+      WORD &0EEE,&0E18,&0D4D,&0C8E ; C   C#  D   D#
+      WORD &0BDA,&0B2F,&0A8F,&09F7 ; E   F   F#  G
+      WORD &0968,&08E1,&0861,&07E9 ; G#  A   A#  B
 c1
-      FILL -$ AND &FF,0
+    ; Don't pad, for correct binary size when assembling ply
+    ;  FILL -$ AND &FF,0
 

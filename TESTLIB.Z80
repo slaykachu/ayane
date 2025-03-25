@@ -1,6 +1,10 @@
 ; Common routines for tests 
 
-; 2024 
+; 2024    
+  ; Jun      
+   ; 11 v3: Add memdisk_flush and co
+   ;  3 v2: compare_regs: no noise check if vol 0
+                        ; (was done for channel open)
   ; Apr
    ; 23 v1: Add /psg_read/
    ; 22 v0: /compare_regs/ extracted from ide:ay/plybh
@@ -13,7 +17,9 @@ fail  = &BE00
 compare_sized
           ld a,(de):cp (hl):call nz,&BE00
           inc hl:inc de
-          djnz compare_sized
+          dec bc
+          ld a,c:or b
+          jr nz,compare_sized
           ret
 
 compare_regs
@@ -62,6 +68,8 @@ compare_regs
 .perok_
           pop hl:pop de
 .perok
+          ld a,(iy+ch):or a:jr z,.noiseok ; de: volume 0
+
           bit chbit+3,(ix+7):jr z,.noise
           bit chbit+3,(iy+7):jr nz,.noiseok ; both closed
           call fail     ; mismatch
@@ -137,4 +145,38 @@ psg_read1
           out (c),c
           pop bc
           ret
+
+memdisk_write_bloc
+;In: hl = source 
+   ;  c = size (0 = 256)
+;Out: hl+= size
+memdisk_pnt_w ld de,&C000
+; Check no overrun 
+          ld a,d:cp &40:call nc,fail
+          ld b,0:dec c:inc bc
+          ldir
+;Enchaine
+memdisk_seek_write
+;"seek" might be a stretch.
+          ld (memdisk_pnt_w+1),de
+          ret
+
+memdisk_init_write = memdisk_seek_write ; IN: de = destination
+
+memdisk_load_bloc
+;In: de = dest 
+   ; bc = size !! not symetrical for now
+;Out: de += size
+memdisk_pnt_r ld hl,&C000
+; strict check for salo specifically
+          ld a,b:or a:call nz,fail ; not > &ff
+          ld a,c:or a:call z,fail ; not 0
+          ldir
+;Enchaine
+memdisk_seek_read
+          ld (memdisk_pnt_w+1),hl
+          ret
+
+memdisk_init_read = memdisk_seek_read ; IN: hl = source
+
 

@@ -1,8 +1,12 @@
 ; Tests compilation
 
+; 2025 Mar 19. Adapt to kima.chp
+             ; Test player before doing anything else
+             ; Dump registers 
+
 ; 2024 May 14. Proper psg_regs and periods addresses.
 
-do_play = 0             ; 0: check  1: play tune
+do_play = 1             ; 0: check  1: play tune
 
       ORG &0100
       ENT tests
@@ -12,21 +16,36 @@ do_play = 0             ; 0: check  1: play tune
       IF 1-ayane
  !! Compile: in-tool routine, so ayane must be set.
       END
-      IMPORT "memcpc.o"
+      IMPORT "compile.o"
       IMPORT "chipn.o"
       IMPORT "init.o"
+      IMPORT "track.o"  ; for monitor
+      IMPORT "memcpc.o"
       IMPORT "testlib.o"
-      IMPORT "compile.o"
 
-; -- compiled version
-play  = compiled_player+&A8
-psg   = compiled_player+&0120
-Amorce_song = compiled_player+&01E9
-psg_regs = compiled_player+&0300
+; -- compiled version     
+is_minimala = 0
+      IF is_minimala
+compiled_play = compiled_player+&A8
+compiled_psg = compiled_player+&0120
+compiled_Amorce_song = compiled_player+&01E9
+      ELSE
+;curious!
+;play  = compiled_player+&F3
+;psg   = compiled_player+&016B
+;Amorce_song = compiled_player+&0234
+
+compiled_play = &42ED
+compiled_psg = &4367
+compiled_Amorce_song = &438A
+      END
+psg_regs = &4400
 periods = psg_regs      ; sharing same chunk
 data  = compiled_data
 
 tests
+          ld a,&F7:ld (0),a
+          call check_player
           call full_init
           call test_compile_minimal
           ret
@@ -35,10 +54,12 @@ test_compile_minimal
 ; That's the name of the song.
 ; Not really minimal!
 
-; We use conv_chipn routine since SAVE/LOAD of 
-          ld hl,minimala:call conv_chipn
-
+; We use conv_chipn routine since SAVE/LOAD of .aya is not ready.
+          ld hl,minimala
+          call conv_chipn
           call compile
+          ld (data_start),de
+          ld (data_size),hl
 
           call connect_bk_compile
           call get_bk_connected
@@ -46,26 +67,18 @@ test_compile_minimal
 
 ; -- Test via compiled player
 ;"Install player"
+          call check_player
           ld hl,playcomp
           ld de,compiled_player
           ld bc,playcomp_
           ldir
 
-; Sanity checks
-; We manually set the address,
-; so crudely check it points to expected code
-          ld a,(compiled_instr_null):cp &E1:call nz,fail
-; Not compiling this one for minimala!!
-    ;      ld a,(compiled_instr_default):cp &E1:call nz,fail
-          ld a,(compiled_instr_chip_down_vib):cp &21:call nz,fail
-          ld a,(compiled_instr_chip_down_arp_noise):cp &21:call nz,fail
-          ld a,(psg):cp &01:call nz,fail
-          ld a,(Amorce_song):cp &11:call nz,fail
-; -- 
-          ld a,3:ld hl,compiled_data:call Amorce_song
-
+          ld a,3:ld hl,compiled_data:call compiled_Amorce_song
 ; Check period table properly init.
           ld a,(periods+&30):cp &77:call nz,fail
+
+          ld bc,&0F0F:call &BC38
+    ;      call &BB06
 
       IF 1-do_play
           ld a,BK_REF:call connect_a
@@ -86,20 +99,36 @@ frame_cpt ld hl,-1
           inc hl
           ld (frame_cpt+1),hl
 ; Here HL should match play.tick
-          ld bc,&1480
-          or a:sbc hl,bc:jr z,end_of_tune
+          ld bc,&04F8
+;          or a:sbc hl,bc:jr z,end_of_tune
 
           di
           exx:push bc
           call connect_bk_compile
           ld bc,&7F10:out (c),c:ld c,&5F:out (c),c
           ld hl,(frame_cpt+1)
-          ld bc,&0520
-       ;   or a:sbc hl,bc:call z,&BE00
-          call play
+          ld bc,&04F8-24
+    ;      or a:sbc hl,bc:call z,&BE00
+    ;      ld a,&F7:ld (compiled_instr_default+1),a
+          call compiled_play
+          ld a,(&411E):cp &24:call z,&BE00
+;-- dumpregisters
+          ld hl,psg_regs
+dbg_pnt   ld de,dbg
+          ld b,16       ; for nicer visu
+.dump     ld a,(hl):inc l
+          ld (de),a:inc e
+          djnz .dump
+          ld (dbg_pnt+1),de
+
+;-- mute voices for tests
+          xor a
+ ;         ld (psg_regs+8),a
+ ;         ld (psg_regs+10),a
+
       IF do_play
           ld bc,&7F10:out (c),c:ld c,&40:out (c),c
-          call psg
+          call compiled_psg
       END
           ld bc,&7F10:out (c),c:ld c,&44:out (c),c
           pop bc:exx
@@ -126,6 +155,42 @@ end_of_tune
 ; success!
           ret
 
+; ------------------------------
+check_player
+; Sanity checks
+; We manually set the address,
+; so crudely check it points to expected opcode        
+          call connect_bk_compile ; aka BK_IO
+dt    = playcomp - compiled_player ; offset at storage area
+          ld a,(dt+compiled_instr_null):cp &E1:call nz,fail
+          ld a,(dt+compiled_instr_default):cp &E1:call nz,fail
+      IF use_instr_chip_down_vib
+          ld a,(dt+compiled_instr_chip_down_vib):cp &21:call nz,fail
+      END
+      IF use_instr_chip_down_vib_noise
+          ld a,(dt+compiled_instr_chip_down_vib_noise):cp &21
+          call nz,fail
+      END
+      IF use_instr_chip_down_arp
+          ld a,(dt+compiled_instr_chip_down_arp):cp &21:call nz,fail
+      END
+      IF use_instr_chip_down_arp_noise
+          ld a,(dt+compiled_instr_chip_down_arp_noise):cp &21
+          call nz,fail
+      END
+          ld a,(dt+compiled_play):cp &ED:call nz,fail
+          ld a,(dt+compiled_psg):cp &21:call nz,fail
+          ld a,(dt+compiled_Amorce_song):cp &11:call nz,fail
+          ret
+
+; ------------------------------
+
+data_start WORD 
+data_size WORD 
+
+      FILL -$ AND &FF,&F7
+dbg   FILL &0100,0
+; ------------------------------
 
 chip_play = &5000
 chip_sng = &7000
@@ -164,10 +229,25 @@ BK_REF = &C6
       BANK BK_IO
       ORG &4000
 minimala
-      LOAD "ums:music/tj/minimala.chq" ; binary version
+  ;    LOAD "ums:music/tj/minimala.chq" ; with header
+  ;    LOAD "4k08.chq"   ; with header
+      LOAD "ums:40y/kima.chp"
+;      LOAD "ums:40y/kim0.chp" ; 2 patterns for test
+
 ;Compile uses BK_IO, so put player in same bank
+      SKIP &7D00 - $
 playcomp
-      LOAD "plycomp.bin"
+      IF is_minimala
+      LOAD "out/plycomp.bin"
+      ELSE
+;      LOAD "out/plycomp'.bin"
+      LOAD "out/plykim.bin"
+      END
 playcomp_ = $ - playcomp
       SKIP &8000 - $    ; limit
 
+monitor
+      ORG tracks_index
+;
+      ORG compiled_stack
+; ply stack

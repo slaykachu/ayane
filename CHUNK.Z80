@@ -14,6 +14,10 @@ need_room = 1
       IMPORT "memmap.i" ; for checks and Init_chunk_module
       IMPORT "memcpc.o"
 
+; \/\/\/ 2025 \/\/\/\/\/\/\/\/\/\
+; ------ v0l2 -----------
+; Mar
+    ; 21 Next_node: must return Z if loop node
 ; \/\/\/ 2024 \/\/\/\/\/\/\/\/\/\
 ; ------ v0g ------------             
 ; Apr
@@ -480,18 +484,18 @@ Next_node
 ; In: HL = point on current node.link
 ;Out: If such a link: NZ, HL= new link
     ; Otherwise Z, HL unchanged! (needed to plug new nodes)
-      IF dev_checks
-; Check MSB is < &80
-          push af
-          inc hl:ld a,(hl):dec hl
-          cp &80:call nc,mess
-          pop af
-      END
+    ; A preserved.
           push de
           ld e,(hl):inc hl
           ld d,(hl):dec hl
+          bit 7,d
+          jr z,.ok
+;loop: act as last node
+          cp a          ; Z
+          jr .exit
+.ok
 ; !! Assume node pnt never has MSB =0
-          inc d:dec d:jr z,.exit
+          inc d:dec d:jr z,.exit ; test D=0 without trashing A
           ex de,hl
 .exit
           pop de
