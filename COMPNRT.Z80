@@ -18,10 +18,18 @@ do_play = 0             ; 0: check  1: play tune
       IMPORT "testlib.o"
       IMPORT "compile.o"
 
-; -- compiled version
+; -- compiled version     
+is_minimala = 0
+      IF is_minimala
 play  = compiled_player+&A8
 psg   = compiled_player+&0120
 Amorce_song = compiled_player+&01E9
+      ELSE
+;curious!
+play  = compiled_player+&B8
+psg   = compiled_player+&0130
+Amorce_song = compiled_player+&01F9
+      END
 psg_regs = compiled_player+&0300
 periods = psg_regs      ; sharing same chunk
 data  = compiled_data
@@ -35,7 +43,7 @@ test_compile_minimal
 ; That's the name of the song.
 ; Not really minimal!
 
-; We use conv_chipn routine since SAVE/LOAD of 
+; We use conv_chipn routine since SAVE/LOAD of .aya is not ready.
           ld hl,minimala:call conv_chipn
 
           call compile
@@ -57,8 +65,13 @@ test_compile_minimal
           ld a,(compiled_instr_null):cp &E1:call nz,fail
 ; Not compiling this one for minimala!!
     ;      ld a,(compiled_instr_default):cp &E1:call nz,fail
+      IF is_minimala
           ld a,(compiled_instr_chip_down_vib):cp &21:call nz,fail
           ld a,(compiled_instr_chip_down_arp_noise):cp &21:call nz,fail
+      ELSE
+          ld a,(compiled_instr_chip_down_arp):cp &21:call nz,fail
+          ld a,(compiled_instr_chip_down_vib_noise):cp &21:call nz,fail
+      END
           ld a,(psg):cp &01:call nz,fail
           ld a,(Amorce_song):cp &11:call nz,fail
 ; -- 
@@ -164,7 +177,9 @@ BK_REF = &C6
       BANK BK_IO
       ORG &4000
 minimala
-      LOAD "ums:music/tj/minimala.chq" ; binary version
+  ;    LOAD "ums:music/tj/minimala.chq" ; with header
+      LOAD "4k08.chq"   ; with header
+
 ;Compile uses BK_IO, so put player in same bank
 playcomp
       LOAD "plycomp.bin"

@@ -1,17 +1,8 @@
-dev_checks = 1
-todo  = 1
 ; << Memory bank handling for ayane >>
 ; CPC specific PAGING (out &7fxx,&cX)
-
-; --- 2024 ------
-   ; Feb 21st. Make it ayane specific
-; --- 2023 ------
-   ; Dec 2nd. [ayane] Add /connect_c_c0/ (since IO happens in ... C0)
-   ; Jun 5th. [ayane] Use static AYANE_BK_BASE:
-                ; - Simpler code
-                ; - First step to get ride of vo_*bk variables
-                  ; and free 7cfx zone. 
-   ; May 9th. Extract from liszt VA
+; v0.0ac  5 Mar 25
+dev_checks = 1
+todo  = 1
 
       IMPORT "memmap.i"
 
@@ -108,6 +99,32 @@ connect_c_c0
       END
 
 
+scope_bk_base
+; Temporarily change bk
+; Client use:
+   ; call scope_bk_base ; <- bk base connected
+   ; <code>
+   ; ret           ; <- here initial bk is automatically reconnected
+          ex (sp),hl
+          ld (_jump+1),hl
+          ld hl,(bk_connected)
+          ex (sp),hl
+          call connect_bk_base
+_jump     call mess
+          ex (sp),hl
+          call connect_l
+          pop hl
+          ret
+
+scope_bk_phrase
+          ex (sp),hl
+          ld (_jump+1),hl
+          ld hl,(bk_connected)
+          ex (sp),hl
+          call connect_bk_phrase
+          jr _jump
+
+
 ;----------------------------------------
 ; ---- Checks related to CPC Paging ----
 ;----------------------------------------
@@ -192,8 +209,4 @@ check_bk_base
           pop bc:pop af
           ret
       END
-
-; In ayane, we try to leave as much as working variable as possible
-; outside of bank.
-; Anyway, base bk is static for ayane (C6), no need for variable.
 

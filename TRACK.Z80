@@ -2,7 +2,7 @@ dev_checks = 1
 todo  = 1
 makeroom = 1
 ; ----------------------------------------------------------------
-; Track handling for ayane (replace map/songlist concept)
+; Song & Track handling for ayane (replace map/songlist concept)
 ; ----------------------------------------------------------------
       IF todo
 todo1                   ; !!! remove used_tracks
@@ -15,48 +15,50 @@ todo1                   ; !!! remove used_tracks
     ; Reset_tracks
     ; New_module
 
+; Song creation ------
+    ; New_module
+    ; New_subsong
+    ; Subsong_add
+
+; Song selection -----
+    ; Song_select_subsong
+    ; Song_get_current_subsong
+
 ; Track creation -----
-; --------------------
-    ; Song_select_new_track
     ; Song_add_map
+    ; Song_add_track
+    ; Song_select_new_track
 
 ; Track selection and queries --------
-; ------------------------------------
     ; Song_select_track             
+    ; Song_get_first_track
+    ; Song_get_next_track
     ; track_get_event_hook_at
     ; track_get_phrase_at
 
 ; Track update -------
-; --------------------
     ; Set_phrase_at_t
     ; Set_transpose_at_t
 
-; Subsongs -----------
-; --------------------
-    ; Song_select_subsong
-    ; Song_get_current_subsong
-    ; Song_add_track
-    ; Song_get_first_track
-    ; Song_get_next_track
 
       IF todo
 ; move clip struct here?  (or in dedicated clip.o)
       END
 
       IMPORT "const.i"  ; for clip structure (fc_color etc)
-      IMPORT "widget.o"
-      IMPORT "phrase.o" ; song_get_phrase_id, phrase_start
-                        ; + all needed by Song_add_map
- ; !!! No, let ayane do the setup (or introduce trackui)
- ;      IMPORT "bandaya.o" ; to set-up /mode_sequencer/
-      IMPORT "chunk.o"  ; for chunk_start
-      IMPORT "shortcut.o"
       IF dev_checks
       IMPORT "memmap.i" ; for check BK_TRACK
       END
+
+      IMPORT "phrase.o" ; song_get_phrase_id, phrase_start
+                        ; + all needed by Song_add_map
+      IMPORT "ply.o"    ; For event ids (LSB of routines)
+                        ; and set_period_replay
+      IMPORT "chunk.o"  ; for chunk_start
+      IMPORT "widget.o"
+      IMPORT "shortcut.o"
       IMPORT "memcpc.o" ; for check get_bk_connected
  ;  import "lizst.o" !!! don't use, see rationale in journal
-      IMPORT "ply.o"    ; For event ids (LSB of routines)
 
 reg32 = 0
       IF reg32
@@ -65,153 +67,6 @@ reg_size = 4
 reg_size = 3
       END
 
-;2024
-; --- For v0l ---- 
-  ; Jun        
-   ; 28 fix get_event_hook_at: again mistake in t0 <= t < t1 test
-      ; eval: lift flags back to z80
-   ; 19 Subsong_add: take A = id (for consistency)    
-   ; 18 Init_track_module: don't create tracks. Instead: /New_module/
-      ; Song_select_new_track: don't add in subsong
-         ; (because salo loads all track before knowing how to dispatch)
-      ; Add: Song_add_track
-   ; 17 Add: Song_get_first_track
-           ; Song_get_next_track
-      ; For serialisation and future subsong handling.
-      ; Init_track_module/Song_add_map: start track numbering at 1
-           ; instead of 0 (to match usual channel numbering)
-
-   ; 14 Song_select_new_track: Pass ID. - Consistent with phrases etc
-                                      ; - Ease loading (salo.o)
-                             ; Pass mix mode (future proof)
-      ; Add track_get_event_hook_at
-      ; Set_phrase_at_t/Set_transpose_at_t: - call be call in any order
-                                          ; - will replace previous val
-   ; 13 Reserve slot for "mix mode": tf_mix
-; --- For v0h ----
-  ; Apr  
-   ; 24 Set_phrase_at_t: add check (Get_phrase must return NZ)
-      ; Song_add_map: idem
-; --- For v0g ----
-   ; 10 Fix dest_deref16: wasn't adding operand like ind does.
-   ; 09 Put missing signatures for ext_* routines
-      ; prepend_event: replace AUM code by good old z80! 
-      ; Song_add_map.prep was initializing the wrong variable!
-               ; (time instead of timestamp)
-         ; Morale: use local variable instead?
-   ; 08 Introduce eval_init (for tracknrt)
-      ; Finish s/regs/aum_regs
-          ; NOTE: why is "regs" even visible from here?
-      ; Fix another typo
-      ; Song_select_new_track: don't report flags:
-              ; - for now it cannot fail 
-              ; - if at some point we allocate something, we'll use
-                ; assertion mechanisme.
-  ; Mar 
-   ; 31 Add CALL_EXT01()
-   ; 25 Add Song_add_map
-   ; 14 Dismiss track_append_current_phrase (make no more sense with
-             ; RDV based paradigm)
-      ; Introduce Set_phrase_at_t
-      ; Deactive ui (first we must validate new APIs for convertion)
-            ; And, faster to assemble!
-; --- For v0e ----
-   ; 11 Design change: Duration in event node, not in phrase node
-                 ; - new phrase can happen before end of phrase
-                 ; - phrase is auto-looping
-                 ; - !!! actually still useful for drawing track
-                       ; (for optimisation, otherwise we would have to
-                         ;compute duration for each repetition)
-      ; Discard track_get_event_at (doesn't fit new structre very well)
-      ; introduce get_event_hook_at
-                ; set_event_hook_at
-      ; aum: introduce lit20 operand
-   ; 10 Track can have multiple events at given timestamp
-         ; Adapt structure to reflect that
-         ; ONHOLD: Introduce track_get_phrase_at
-                 ; Priority is player and convertion
-  ; Feb            
-   ; 29 Init_track: create 3 tracks with channel A, B, C
-; --- For v0c ----
-   ; 28 shortcut.o, memcpc.o: use local ones
-
-; --- For v0A ----
-;2023
- ; Dec
-   ; 22 Arrange order of imports to have main sources first
-   ; 21. Rollback previous: multi mode done by ayane,
-               ; so we don't add bandaya dependency        
-   ; 16. Set up multi-mode (under int)
-
-; --- For v09 ----  
-  ; Dec 3. lib/shortcut.o : use the one in ums: for consistency
-
-; --- For v08 ----  
-  ; May 19. Only scroll when reaching screen boundaries (no sub window)
-              ; -> less refresh overfall
-              ; -> simpler for now
-       ; Replace goto_pos by go_left/go_right
-       ; skip: add missing opcode and modifiers, fix skip_fun_com
-
-; --- For v07 ----  
-
-; v9: AUM: Change encoding to allow more modifiers
-        ; - introduce /max/
-        ; - now only 16 registers allowed: more than enough.
-    ; Introduce ui_sequencer (cursor handling for navigation)
-
-; --- For v06 ----
-
-; v8: Introduce track_append_current_phrase (nrt helper)
-    ; track_draw: must follow indirection for actual clip stucture.
-    ; Use memcpc.o (for check_hl_in_bank)
-
-; --- For v05 ----
-
-; v7: track_get_clip_at: Also return starting time
-    ;   (will be useful for navigation) 
-
-; --- For v04 ----
-
-; v6: Reverse part of v5: pointers **MUST** be little endian
-          ; to allow indexing (ind + lit n)
-      ; -> song_select_new_track: store list id little endian
-         ; (liszt routine will have proper CDE id no matter what)
-    ; binary_common: properly set Z flag.
-    ; fun_com: keep aum_af as is.
-
-; v5: --- WIP --- 
-    ;  Extract test in track.nrt
-      ; -> Avoid double ENT issue
-      ; -> Less space and faster to assemble.
-    ; Fix /track_append_clip/
-    ; Set /current_track/ (was readonly!)
-    ; [harmonisation] Set BK, MSB, LSB in that order (expected by liszt)
-    ; Remove cur_bk, set/get_bk: handled by chunk.o via liszt
-    ; call_ext_com: read 24bits regs in c,d,e to match liszt expectation
-
-; v4: API for st128 /track_append_clip/...
-    ; track_draw: Divide time by 64 to show outline.
-
-; v3: Boulet! It's not track that has color, but each clip
-
-; v2: Implement /draw_track/
-    ; + /min/ modifier
-    ; + /call_ext_to_words/
-    ; eval_operand_and_store: must return
-
-; v1: Implement /track_get_event_at/ -> Yeah.
-    ; Restrict AUM registers to 24 bits (see /reg32/)
-       ; - That fits our needs (time, epnt - extended pointeurs)
-       ; - More wouldn't help
-    ; We still align every 4 bytes though, for debugging purpose
-; v0: 4 tests aum ok.
-
-;Note: Using liszt can be error-prone (stateful iteration prevents
-     ; some concurrent use if not careful). Yet we try to use as 
-     ; much orgams code as possible:
-         ; - Exercise the code intensively
-         ; - Not reinventing the wheel
 
 scr_set_border = &BC38
 
@@ -2380,6 +2235,8 @@ Reset_tracks
 ; No tracks, no subsong.
 
           call connect_bk_track
+          ld hl,replay_50_08Hz
+          call set_replay_period
 
           ld hl,tracks
           ld b,MAX_TRACKS * tf_struct_size
@@ -2973,5 +2830,6 @@ tracks
       IF $-1 /&0100 - tracks/&0100
   !! confinement issue
       END
+
 
 

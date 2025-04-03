@@ -1,0 +1,221 @@
+ ; Help module (generic, except constants specific Ayane doc)
+dev_checks = 1
+
+MAX_NB_LINES = 21
+screen = &C000
+
+section_main = 0
+section_sequencer = 1
+NB_SECTIONS = 2
+
+      IF $ - &9000:ELSE
+ !! not meant to be assembled directly. 
+      END
+
+      IMPORT "memmap.i"
+
+      IMPORT "disp.o"
+    ; Bandaya imported at end of source
+
+help_init
+;--------
+; Make index table for fast lookup
+; In: HL: whole text document
+
+; Each section in the form "# Section Name"
+
+          ld b,NB_SECTIONS
+          ld de,index
+.idxlp
+          ld a,(hl)
+          inc a:jr z,.eof
+          dec a
+          cp "#":jr nz,.nextline
+; We skip subsections (##, ### ...)
+          inc hl:ld a,(hl)
+          cp " ":jr z,.section
+.nextline
+          call skip_nt
+      IF dev_checks
+;Sanity check, to avoid infinite loop if no text present (with -1 mark)
+          bit 7,h:call nz,mess
+      END
+          jr .idxlp
+
+.section
+          ex de,hl
+          dec de
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+          ex de,hl
+          djnz .nextline
+; Done
+.eof
+          ret
+
+set_help_at_int3
+;---------------
+          ld a,12
+          ld hl,screen + 16*r1
+          call _set_help_com
+          ld (hook_int3+1),hl
+          ret
+
+set_help_at_int4
+;---------------
+          ld a,5
+          ld hl,screen + 30*r1
+          call _set_help_com
+          ld (hook_int4+1),hl
+          ret
+
+
+_set_help_com
+;In:   A=NB lines for window help
+   ;  HL=Pnt first line text
+;OUT: HL=mode_help
+          ld (nb_lines),a
+          ld (text_offset),hl
+          ld hl,no_op
+          ld (hook_top+1),hl
+          ld (hook_int2+1),hl
+          ld (hook_int2+1),hl
+          ld (hook_int2+1),hl
+          ld (hook_int2+1),hl
+          ld (hook_int2+1),hl
+          ld hl,mode_help
+          ei
+          ret
+
+
+
+display_section
+;--------------
+; Display doc from specified section
+; TODO: Stop at following section   
+
+; Prerequisite: help_init has been called to build the index
+
+; In: A= Section #
+
+; GET HL=pnt section in doc
+          add a:add index AND &FF
+          ld l,a
+          ld h,index/&0100
+          ld c,(hl):inc hl
+          ld b,(hl)
+; Enchaine
+display_page
+;-----------
+; BC: text  
+
+; Setup help windoz
+          ld de,(text_offset)
+      IF dev_checks
+          ld a,d:and &F8:cp &C0:call nz,mess
+      END
+          call disp_locate_scr
+
+          ld a,(nb_lines):ld e,a ; Clipping (if text bigger than screen)
+
+.lp
+          ld a,(bc):inc a:ret z
+          push de
+          call disp_text_nl ;No need to use CALL_DISP, since bk already
+          pop de
+          dec e
+          jr nz,.lp
+          ret
+
+; --------------------------
+;  String helpers
+; --------------------------
+get_len
+;------
+;In: HL= nt string
+;Out: A= length
+    ; HL preserved
+          push hl
+          call skip_nt
+          ld a,l
+          dec a         ; rewind to 00
+          pop hl
+          sub l
+          ret
+
+copy_nt
+;------
+; Copy nt-string, hl to de, 0 included
+          ld a,(hl):inc hl
+          ld (de),a:inc de
+          or a
+          jr nz,copy_nt
+          ret
+
+skip_nt
+;------
+; Go past 0 of nt string.
+          ld a,(hl):inc hl
+          or a
+          jr nz,skip_nt
+          ret
+
+skip_line
+;--------
+; Go past &0a of line 
+          ld a,(hl):inc hl:cp &0A:ret z
+          jr skip_line
+
+conv_protext
+;-----------
+;Do it on the fly for now!
+;Note 
+; 0: end of line (since disp libs work with NT strings)
+;-1: end of text
+
+        ;  ld hl,text_welcome
+        ;  ld de,text_welcome
+          call skip_line ; Remove the >L------!-----R ruler
+.lp
+          ld a,(hl):inc hl
+          or a:jr z,.eof
+          cp &0D:jr z,.nl
+          cp &0A:jr z,.lp
+          cp &8A:jr z,.lp ; "wrap" nl
+          cp &90:jr z,.space
+.ok
+          ld (de),a
+          inc de
+      IF dev_checks
+          bit 7,d:call nz,mess
+      END
+          jr .lp
+
+.nl       ld a,0:jr .ok
+.space    ld a," ":jr .ok
+
+.eof
+          dec a:ld (de),a ; marker end of text (-1)
+          ret
+
+; --------------------------
+;  Variables and tables
+; --------------------------
+
+nb_lines BYTE MAX_NB_LINES
+text_offset WORD screen
+
+index SKIP NB_SECTIONS * 2
+      IF $-1 / &0100 - index/&0100
+ error alignement
+      END
+
+pc    = $
+
+      SKIP bandaya-$    ; xx00 for confining ints at same MSB
+; Ints must be out of page 0000, since still called when rom connected
+      IMPORT "bandaya.o"
+      SKIP psg_regs-$   ; poor's man limit
+
+      ORG pc            ; for host
+

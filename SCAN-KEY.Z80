@@ -1,0 +1,29 @@
+; Find entry in table in the form:
+   ;   BYTE key0:WORD value0
+   ;   BYTE key1:WORD value1
+   ;   ...
+   ;   BYTE
+
+scan_key
+;In:  C=code cherch{, HL=table
+;Out: Si trouv{, Carry, HL=routine
+;     sinon, NC
+
+.lp
+          ld a,(hl)
+          inc hl
+          cp c
+          jr z,.found
+          inc hl        ; Saute la routine associ{e
+          inc hl
+          or a          ; Fin de table
+          jr nz,.lp
+          ret           ; Combinaison non g{r{e
+.found
+          ld e,(hl)
+          inc hl
+          ld d,(hl)
+          ex de,hl
+          scf
+          ret
+

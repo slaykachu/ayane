@@ -1,0 +1,232 @@
+; Display routine in status bar (AYANE VERSION)
+
+dev_checks = 1
+
+; 2023
+  ; Dec
+    ; Reapatrie de :lib/ (Dedicated to ayane)
+
+      IMPORT "disp.o"
+
+BUF_TMP = &9100         ; Buffer de r{serve (reuse ass' compute params)
+                        ; !!Shared with ed!!
+;single_use = &9E00
+;BUF_INFO = single_use + &20 ; why +&20
+
+fail  = &BE00
+; -------------------------------
+
+      MACRO CALL_BRIC rout
+          call rout
+      ENDM
+
+; ------------------------------------------------
+disp_infos_com
+; IN/OUT: as disp_infos, with HL already out of rom.
+          push af
+          push ix:push iy ; Needed?
+          push de
+          push hl
+          CALL_BRIC(status_str_at)
+          pop bc
+          scf:sbc hl,bc ;longueur chaine
+          pop de
+          ld a,d:add l:ld d,a
+          pop iy:pop ix
+          pop af
+          ret
+
+      IF 0
+clear_buf_info
+; Clear buffer
+; OUT: hl buffer
+          ld hl,BUF_INFO
+.lp       ld (hl),0:inc l:jr nz,.lp
+      IF BUF_INFO AND &FF
+          ld l,BUF_INFO AND &FF
+      END
+          ret
+
+txt_free BYTE "Free: &",0
+txt_free' BYTE "00 ("
+
+; ----------------------
+      END
+
+ClearQuestion
+; Efface ligne question.             
+; Out: de trashed, all other registers saved
+          push af       ; Save answer and flags
+          push bc       ; Needed for C_EXP
+          push de       ; Needed for C_LABEL / C_FIND_TEXT
+          ld de,0 + status_line_question
+          CALL_BRIC(status_set_cursor)
+
+          ld b,LEN_QUESTION
+cqlp
+          ld a," "
+          push bc
+          CALL_BRIC(status_char)
+          pop bc
+          djnz cqlp
+          pop de
+          pop bc
+          pop af
+          ret
+
+
+      IF 0
+disp_modified
+; Affiche le status du source modifi{ ou non
+; In:  Z Non modifie.
+    ; NZ Modifie.
+
+          push de       ; Preserve line# when coming from quitLine context
+          ld a,ASTERIX  ; C'est plus drole comme \a
+          jr nz,$+4:ld a," " ; Clear if not modified
+          ld de,X_MODIFIED*&0100 + status_line_main
+          CALL_BRIC(status_char_at)
+          pop de
+          ret
+
+      END
+
+field_refresh
+; Affichage complet de tout le champ (overkill but nevermind)
+; dans bar status, avec cursor.
+; A utiliser conjointement avec field editor.
+; NB: utilise pour saisie question.
+
+; In:
+; HL : adr du champ (NT string)
+; DE : x, y in status bar (start champ)
+; B  : longueur max du champ           
+; C  : cursor pos dans champ (0: first)
+; A  : Si Bit 7 est mÿs, inverse video  (or &80 sur chaque char)
+; Out: A trashed, all other saved
+          push hl
+          CALL_BRIC(status_set_cursor)
+
+          push bc
+          and &80:ld c,a
+print_lp
+          ld a,(hl):or a
+          jr z,.stay_0  ; Stay at same position, and no inverse!
+          inc hl
+          or c          ; Inverse video?
+.stay_0
+          CALL_BRIC(status_char)
+          djnz print_lp
+
+
+; Don't display cursor when inverse video.
+; (expect if empty field)
+          ld a,c
+          pop bc
+          inc c:dec c:jr z,.cursor ; empty field: cursor
+          add a:jr c,.nocursor
+.cursor
+          push de
+;display cursor at Offset + C
+          ld a,d:add c:ld d,a
+          CALL_BRIC(status_inv_cursor_at)
+          pop de
+.nocursor
+          pop hl
+          ret
+
+      IF 0
+
+;----------------------
+copy_nt
+;in: HL=source, DE=dest
+
+          ld a,(hl)
+          ld (de),a
+          or a
+          ret z
+          inc hl
+          inc de
+          jr copy_nt
+
+; Conversion d'un entier 16bit en string justifie a droite.
+; Entr{e : HL=Nombre @ convertir
+;          DE=Adresse d'un buffer pour stocker la chaine
+; Sortie : Buffer remplit
+DEC2STR
+          ld a,h:or l
+          jr nz,ContDec2Str
+
+; NB: Justification a droite manquante pour 0.
+    ; Nevermind since line# always > 0.
+          ld a,"0":ld (de),a
+          inc de:xor a:ld (de),a
+          ret
+
+ContDec2Str
+          push de
+          ld bc,-10000
+          call DEC2STR1
+          ld bc,-1000
+          call DEC2STR1
+          ld bc,-100
+          call DEC2STR1
+          ld c,-10
+          call DEC2STR1
+          ld c,b
+          call DEC2STR1
+          pop hl
+          ld a,"0"
+BCL       cp (hl)
+          ret nz
+          ld (hl)," "
+          inc hl
+          jr BCL
+DEC2STR1  ld a,"0"-1
+DEC2STR2  inc a
+          add hl,bc
+          jr c,DEC2STR2
+          sbc hl,bc
+          ld (de),a
+          inc de
+          xor a
+          ld (de),a     ; Put 0 to mark end of string
+          ret
+
+; GETPATH was cubemdos's RSX.
+;nget_path BYTE "GETPATH"+&80,0 ; &80 for rsx search, 0 for copy_nt
+; PATH is unidos's version.
+nget_path BYTE "PATH"+&80,0 ; &80 for rsx search, 0 for copy_nt
+      END
+
+; ----- Constantes -----
+
+status_line_main = 0
+status_line_path = 2
+status_line_question = 3
+status_line_completion = 4
+status_line_debug = 4
+
+ASTERIX = "*"
+
+; Positions dans status
+; line 0
+X_TAB# = 2              ; "f1:"
+X_MODIFIED = X_TAB#+3
+X_FILENAME = X_MODIFIED+1
+X_CUR_LINE = 37
+X_TOT_LINES = X_CUR_LINE+5
+X_FREE = 73
+; line 2          
+X_DRIVE = 2
+X_CWD = X_DRIVE + 3
+
+WIDTH = 96              ; largeur totale bandeau
+
+LEN_QUESTION = WIDTH-2  ; Max len question (for clean)
+; Actually max would be 2 + len("import:") + LEN_SRC  
+; But for now we erase whole line (which start at 2)
+
+cnt   = &7EFC           ; before cocopy
+
+

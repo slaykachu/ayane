@@ -5,41 +5,16 @@ need_speed = 1
 ; //////// Timer emulation  //////////////
 ; For special fx (sync buzzer, Square Ring Modulation, minisamples...)
 
-; Timer with anchors every 4 lines (256 nops):
+; Timer with landmarks / every 4 lines (256 nops):
  ; - Simpler
  ; - Allow 2 nops resolution (we use signed, max = 128 -> 256 nops).
  ; - Perfect for 300Hz (as 78 entries is divisible by 6)
  ; - Still fit in 256 tables (78 * 3 = 218)
  ; - CON: more interruptions (50 nops each time without rasters). 
 
-  ; 2025
-; ------ v0.0ab ----------
- ; Mar
-  ; 1: (Re?)introduce set_reg13_insert_and_program_tm 
-
-  ; 2024         
- ; Oct               
-; ------ v0y ----------
-  ;16 Events (anchor_tm and set_psg_insert_and_program)
-    ; must use RET_ROUT to avoid overflow due to accumulated retard.
-  ;14 Fix release event when cut.   
-; ------ v0x ----------
-  ; 6 Convert PSG regs (/16)
-    ; Fix (no)retrig reg 13
-  ; 4 Discriminate fx_null vs fx_end 
-
-; ------ v0v -----------
-    ; Sep 
-      ; 26 Rewrite to setup fx directly from instr
-           ; - No intermediate virtual regs
-           ; - Simpler and Faster
-
-;  ------- Ayane v0R -----------
-      ; 13 Complete /setup_timer/
-      ; 12 Rewrite event handling.
-              ; - simpler
-              ; - faster
-      ; 10 WIP. Anchor ok and stable (tested viad timertst.o)
+; Routines plugged in instr row:
+; - fx_null                    
+; - sync_buzzer_register
 
       IMPORT "const.i"
       IMPORT "plyconf.i"

@@ -1,6 +1,6 @@
 todo  = 1
 may_optim = 1
-fixed_50hz_replay = 1   ; For now, fixed
+need_room = 1
 ; <<<<<< bouts de player, player debout. Not your ayerage player! >>>>>>
 
 ; Execution outline:
@@ -16,96 +16,6 @@ fixed_50hz_replay = 1   ; For now, fixed
 
  ; See /track_stack/
 
-; \/\/\/ 2025 \/\/\/\/\
-; ------ v0ab ---------
-
- ; Mar
-  ; 1: Fix typo (or bit corruption?) in /play/ when hack_minimala=1
-     ; Fix plynrt.test_empty_song_tm:
-                                     ; Returned: &1f7
-                                     ; Prof:     &20f 
-        ; tm0, tm2, track_end_tm, tm_read_vol were wrong
-
-
-; \/\/\/ 2024 \/\/\/\/\
-; ------ v0v ----------
-  ; Closer integration with timer: setup at each track
-
-; ------ v0t ----------
-  ; Sep 
-   ;24 Fix TM counting
-     ; Init tick=0
-   ;17 track_stack: put mask before volume (ease instr_defaut)
-     ; Remove psg replay: now in timer.
-   ;16 Use: BC for pitch instead of DE (useful in instr.o)
-          ;  E for note instead of C
-          ; IXH for volume instead of B
-
-; ------ v0n ----------
-  ; Aug
-   ; 4 WIP Add timing
-; ----- Ayane v0l -----
-  ; Jun     
-   ;17 Add type_evt_loop
-   ;12 Add SIGN_EVT for serialisation in salo.o
-
-; ----- Ayane v0h -----
-  ; May 
-   ;14 When /hack_minimala/, open channels by default
-     ; Optimise /tick/ (and return it in HL)
-  ; Apr
-   ;24 For compiled minimala:
-     ; - Version use_flags = 0 
-; ----- Ayane v0g -----
-  ; Apr                            
-   ;22 Don't handle volume if use_volume = 0
-   ;21 track_loop: connect BK_TRACK  
-   ;15 Fix init_periods
-   ;11 evt_set_transpose: add check
-     ; read_instr: use instr header
-
-   ; 8 s/regs/psg_regs to avoid mixing up with aum_regs
-
-; ----- Ayane v0f -----
-  ; Mar
-   ; 31 Simplify init: we don't need empty phrase.
-       ; instead tool we'll make sure a phrase will be set at RDV 0
-   ; 14 Adapt evt_set_transpose to new code.
-
-; ----- Ayane v0d -----
-  ; Feb
-   ; 29 Amorce_song: adapt to real track index (track.tracks)
-; ----- Ayane v0c -----
-    ; 21 s/chunk_start/phrase_start (must skip clip_header_size)
-       ; Rewrite!!! See rationale in journal.o
-           ; - Same code for each channel 
-           ; - No delay (duration encoded with note/row)     
-           ; - No init fx, instead copy address routine and 1 word param
-                         ; systematically 
-                ; Pro:
-                    ; - faster
-                    ; - simpler
-                    ; - vibrato TM peak is smoothed:
-                           ; Before: both init and 1st iter
-                           ; Now: first iter do init (replace itself)
-                                ; but doesn't change pitch. 
-                ; Con:
-                    ; Plus gourmand a stocker dans phrase
-                       ; (use 1 word even for 1 byte param fx)
-                    ; -> nevermind, can be mitigated with custom players
-           ; - Don't jump to read_fx read_ins etc via stack!
-                   ; Did i do that for Sample code interleaving!?
-                   ; (aka ADD n:RET m:jp IY)
-                   ; Well, JP m,next  works as well!
-      ;OH FUCK NO that's not enough to jump back where we are
-      ;TODO: Make the stuff work without sfx
-
-         ; Oh no I see: was needed to jump back after random fx init
-         ; -> so, simplification made possible by previous point
-       ; Don't rewrite everything!!!
-           ; - Don't fix what isn't broken
-           ; - Some reasons of doing stuff i might have forgotten
-           ; - Takes too much time for nothing
 
       IMPORT "plyconf.i"
 
@@ -264,6 +174,16 @@ change_phrase_tm = 23
                                      ; e.g. "alternate instr"
 
       IF is_instr_indexed
+;Done preemptively, as we must do it before push
+;Timer might be triggered a bit too soon, nevermind
+      IF ayane AND sfx
+update_instr_tm = 61
+      ELSE
+ !!! todo
+      END
+          EX_AF'()
+          SUB_TM_CALL(update_instr_tm-1)
+          EX_AF'()
           push hl       ; save phrase pnt
           ld l,(hl)     ; idx instru
 
@@ -277,7 +197,6 @@ change_phrase_tm = 23
           3 ** add hl,hl
 
       IF ayane
-update_instr_tm = 59
           ld a,b
           ld bc,&7F00+BK_INSTR:out (c),c
           ld b,a
@@ -301,6 +220,9 @@ update_instr_tm = 59
           inc bc        ; So B not changed by LDI
 !! todo. we use bc for indirection
       END
+      IF sfx
+ !! todo
+      END
           ld c,(hl):INC_HL()
           ld b,compiled_data / &0100 ; instr data MSB
           ld a,(bc):inc c ; type -> lsb routine
@@ -321,7 +243,7 @@ update_instr_tm = 59
       ENDM
 
       MACRO UPDATE_NOTE
-update_note_tm = 13
+update_note_tm = 15
           pop de
 ; e: note+transpose (aka current note)
 ; d: transpose
@@ -339,6 +261,9 @@ update_note_tm = 13
           SUB_TM''(6)
       END
           add d:ld e,a
+          EX_AF'()
+          SUB_TM_CALL(update_note_tm-1) ; -1 jr not taken
+          EX_AF'()
           push de
       ENDM
 
@@ -410,6 +335,7 @@ update_note_tm = 13
 
 fail  = &BE00           ; TODO: replace by guru meditation.
 mess  = &BE00
+programming_error = &BE00
 
       IF todo
 ; check occurences of this!
@@ -487,24 +413,23 @@ tick      ld bc,0       ; Nb tick (1st iter:0)
           pop hl        ; Track pnt
           jr nz,play_phrase
 
-          EX_AF'()      ; counted in tm1 (compensate jr not taken)
-
 ; -- Next RDV
       IF ayane
-tm2   = 18+22           ; until evt_handle_loop
-          ld a,l:or h:jr z,stop
+tm2   = 14+27-1         ; until evt_handle_loop ; -1: jr not taken
+          inc h:dec h:jr z,stop ; cannot use A(')
 ; read link next event hook
           ld e,(hl):inc hl
           ld d,(hl):inc hl
           res 7,d       ; Clear loop flag
-          push de
       ELSE
-tm2   = 4+22
+tm2   = 0+27
 ; no link. we'll update pointer once we've processed events
 !!! looping must be handled by special events?
 ; for now write dummy value so we can update RDV
-          push de
       END
+          SUB_TM_CALL(tm2) ; before push!
+          EX_AF'()
+          push de
 ; +duration for next RDV
           ld a,(hl):inc hl:add c:ld e,a
           ld a,(hl):inc hl:adc b:ld d,a
@@ -551,75 +476,6 @@ evt_handle_loop
           ld h,events/&0100
           jp hl
 
-      MACRO SIGN_EVT type
-      IF ayane
-      BYTE type
-      END
-; Check confinement
-      IF $/&0100 - events/&0100
- !! error confine
-      END
-      ENDM
-
-type_evt_comment = 0    ; Todo 
-type_evt_change_phrase = 1
-type_evt_transpose = 2
-;type_evt_row ; todo
-;type_evt_set ; todo? or use via type_evt_row?
-
-; In ram, no need for null event, as null link serves this purpose.
-; Needed for serialization.
-; That's why we use -1, for consistency with SENTINELLE
-; (not very important though) 
-type_evt_null = -1
-; Dedicated for serialization (and compiled version)
-; In-tool we use null link and link with bit15 set.
-type_evt_stop = -2
-type_evt_loop = -3
-
-events
-          SIGN_EVT(type_evt_transpose)
-evt_set_transpose
-          SET_TRANSPOSE()
-      IF ayane
-nxt_event_pnt ld hl,0
-      IF dev_checks
-          ld a,l:or h:call z,fail
-          EX_AF'()
-          SUB_TM(tm_evt_iter+set_transpose_tm+7+5)
-      ELSE
-          EX_AF'()
-          SUB_TM(tm_evt_iter+set_transpose_tm+7)
-      END
-      ELSE
- !! todo: tm
-      END
-          jr evt_handle_loop
-
-          SIGN_EVT(type_evt_change_phrase)
-evt_change_phrase
-; Necessarily end of list
-      IF evt_change_phrase/&0100 - events/&0100
- !!! error confine
-      END
-          CHANGE_PHRASE()
-;We don't do the whole loop, since we jump to read_row directly
-          EX_AF'()
-;Only count tm1 + tm2 once!
-      IF todo
-; What if evt_set_transpose and then null link!?!
-      END
-          SUB_TM(tm1+tm2+tm_evt_iter+change_phrase_tm+4)
-d         jr read_row
-
-      ELSE
-; For compiled minimala: always transpose and set phrase
-          ex de,hl      ; need hl has work variable
-          SET_TRANSPOSE()
-          CHANGE_PHRASE()
-          jr read_row
-      END
-
 stop
           call to_be_implemented
 ; Set flag not to call the player again.
@@ -640,7 +496,7 @@ play_phrase'
 ;---------- 
 ; Coming from event loop
           EX_AF'()
-          SUB_TM(tm2+tm_evt_play_phrase+1)
+          SUB_TM(tm_evt_play_phrase+1)
 
 ;enchaine
 play_phrase
@@ -666,10 +522,10 @@ read_row
           EX_AF'()
           ld a,h:cp &40:call c,mess
           cp phrases_/&0100:call nc,mess
-tm_read_row = 12 + 41   ; until read_fx
+tm_read_row = 12 + 43   ; until read_fx
       ELSE
           EX_AF'()
-tm_read_row = 1 + 41    ; until read_fx
+tm_read_row = 1 + 43    ; until read_fx
       END
 
           ld d,b
@@ -689,6 +545,9 @@ tm_read_row = 1 + 41    ; until read_fx
           ld c,a
           jr nc,$+3:inc b
           push hl
+          EX_AF'()
+          SUB_TM_CALL(tm_read_row) ; before PUSH!
+          EX_AF'()
           push bc
           pop hl        ; Just skip RDV
 ; DE = SP+2 (FX and instr hooks) 
@@ -759,7 +618,6 @@ tm_read_instr = 5       ; when no instr
           bit bit_instr-nb_fx,b ; (compense RR b)
           jr z,_okinstr ; no need to skip if no instr: de discarded
           UPDATE_INSTR(1)
-          SUB_TM''(update_instr_tm-1)
 _okinstr
 
 read_note
@@ -767,7 +625,6 @@ read_note
 tm_read_note = 5
           bit bit_note-nb_fx,b:jr z,.oknote
           UPDATE_NOTE()
-          SUB_TM''(update_note_tm-1)
 .oknote
 
 read_vol
@@ -811,12 +668,13 @@ tm_read_vol = 11 + 17   ; when .okvol taken
       END
       END
 
+          EX_AF'()
+; Those one weren't worse counting before
+tottm = tm_read_fx0+tm_read_instr+tm_read_note
+          SUB_TM_CALL(tottm+tm_read_vol) ; before push!
           push hl       ; Update phrase pnt
           pop hl        ; just skip
 
-          EX_AF'()
-tottm = tm_read_row+tm_read_fx0+tm_read_instr+tm_read_note+tm_read_vol
-          SUB_TM(tottm)
 play_tick
 ;--------         
 ;Here A= TM  (A') 
@@ -841,21 +699,100 @@ play_tick_tm = 6
       END
 ;-------------------- Jump to installed instr --------------
 
+;------- events ---------
+      MACRO SIGN_EVT type
+      IF ayane
+      BYTE type
+      END
+; Check confinement
+      IF $/&0100 - events/&0100
+ !! error confine
+      END
+      ENDM
+
+type_evt_comment = 0    ; Todo 
+type_evt_change_phrase = 1
+type_evt_transpose = 2
+;type_evt_row ; todo
+;type_evt_set ; todo? or use via type_evt_row?
+
+; In ram, no need for null event, as null link serves this purpose.
+; Needed for serialization.
+; That's why we use -1, for consistency with SENTINELLE
+; (not very important though) 
+type_evt_null = -1
+; Dedicated for serialization (and compiled version)
+; In-tool we use null link and link with bit15 set.
+type_evt_stop = -2
+type_evt_loop = -3
+
+events
+          SIGN_EVT(type_evt_transpose)
+evt_set_transpose
+          SET_TRANSPOSE()
+      IF ayane
+nxt_event_pnt ld hl,0
+      IF dev_checks
+          ld a,l:or h:call z,fail
+          EX_AF'()
+          SUB_TM(tm_evt_iter+set_transpose_tm+7+5)
+      ELSE
+          EX_AF'()
+          SUB_TM(tm_evt_iter+set_transpose_tm+7)
+      END
+      ELSE
+ !! todo: tm
+      END
+          jp evt_handle_loop
+
+          SIGN_EVT(type_evt_change_phrase)
+evt_change_phrase
+; Necessarily end of list
+      IF evt_change_phrase/&0100 - events/&0100
+ !!! error confine
+      END
+          CHANGE_PHRASE()
+;We don't do the whole loop, since we jump to read_row directly
+          EX_AF'()
+;Only count tm1 + tm2 once!
+      IF todo
+; What if evt_set_transpose and then null link!?!
+      END
+          SUB_TM(tm1+tm_evt_iter+change_phrase_tm+4)
+d         jp read_row
+
+      ELSE
+; For compiled minimala: always transpose and set phrase
+          ex de,hl      ; need hl has work variable
+          SET_TRANSPOSE()
+          CHANGE_PHRASE()
+          jr read_row
+      END
+
 track_end
 ;All tracks have been handled
       IF sfx
 ; Mark end of lists
           ld hl,(change_pnt):ld (hl),0
           ld hl,(cut_pnt):ld (hl),0
-      IF fixed_50hz_replay
-track_end_tm = 47
           ld hl,(current_clock)
-          ld bc,312*64
+replay_default = replay_50_08Hz * replay_unit
+             ; = 312*64  cf const.i
+      IF ayane
+          ld bc,(replay_period_in_nops)
+      ELSE
+          ld bc,replay_default
+      END
+      IF dev_checks
+track_end_tm = 47+12
+; Todo [persitence] make sure it is repopulated
+          ld a,c:cp replay_default AND &FF:call z,programming_error
+          ld a,b:cp replay_default / &0100:call z,programming_error
+      ELSE
+track_end_tm = 47
+      END
           add hl,bc
           ld (current_clock),hl
-      ELSE
-  !!! todo
-      END
       END
           ld hl,(tick+1)
           inc hl
@@ -999,6 +936,61 @@ Init_periods
           jr c,.note_lp
           ret
 
+      IF ayane
+get_diapason
+; Out: A = freq - 256
+; Init in init.o
+          call scope_bk_base
+          ld a,(diapason)
+          ret
+
+set_diapason
+; In: A = freq - 256
+; Todo: rebuild period table if different!       
+   ; for now only one diapasion...
+          cp diapason_default:call nz,programming_error
+      IF need_room
+; use generic routine set_a_in_bk_base
+      END
+          call scope_bk_base
+          ld (diapason),a
+          ret
+
+set_replay_period
+; In: hl = period
+; Init in Track_init_module
+          xor a         ; id tool box. 
+; Start with highest periods to keep NC
+          ex de,hl
+          ld hl,replay_25_04Hz:sbc hl,de:jr z,.ok
+          inc a
+          ld hl,replay_50_08Hz:sbc hl,de:jr z,.ok
+          inc a
+          ld hl,replay_100_16Hz:sbc hl,de:jr z,.ok
+          inc a
+          ld hl,replay_300_48Hz:sbc hl,de
+
+          call nz,programming_error
+.ok
+          ex de,hl
+          call scope_bk_base
+          ld (replay_period),hl
+          ld (replay_period_ui),a
+      IF replay_unit - 16
+  !! todo
+      END
+          4 ** add hl,hl
+          ld (replay_period_in_nops),hl
+          ret
+
+      END
+
+; -----------------------------
+vars
+      IF ayane
+replay_period_in_nops WORD replay_default
+      END
+
 ; -----------------------------
       IF use_volume
 track_stack_size0 = 12  ; Only read with POP: no MSB issue 
@@ -1088,4 +1080,5 @@ track_stack_
       IF 1-ayane
       ORG save_org
       END
+
 

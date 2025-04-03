@@ -1,0 +1,1155 @@
+; Disp: Routines d'affichage text. Tirees de Orgams.
+
+dev_checks = 1
+todo  = 1
+
+      IF todo
+; !!!! remove is_ei
+      END
+
+; \/\/\/ 2024 \/\/\/\/\/
+; Jun
+  ; 19: Add jump table and "memmap.i"
+      ; Reenable code (as size isn't a constraint)
+enable = 1
+; \/\/\/ 2023 \/\/\/\/\/
+; Dec
+  ; 22: Extract from :lib/disp.o (25 Nov)
+
+      IMPORT "memmap.i"
+
+      ORG disp_start
+
+; Files generated with ums:orgrel/#burnfnt.bas (using 'convfnt.o)
+fonte_gris
+      LOAD ":lib/fntgris.bin"
+fonte
+      LOAD ":lib/fntorg.bin"
+
+      IF fonte_gris AND &03FF
+ !! error align   ; must be 0 mod &400
+      END
+
+      IF fonte AND &03FF
+ !! error align   
+      END
+
+      IF $-&4800
+ !! review "disp-jp.o"
+      END
+
+; Same order than orgams ROM.
+          jp init_disp
+          jp cls        ;!!To be called before disp_* (not _at)
+          jp disp_locate_scr ;de:pos in screen (e.g.) &c000 
+          jp disp_locate_x ;a:x  Change pos to "line start + x"
+          jp disp_locate_inc
+;5*3
+          jp disp_chr   ;a:chr, de:dest
+          jp disp_chr_at
+          jp disp_chr_shaded
+          jp disp_chr_shaded_at
+;9*3
+          jp disp_text  ;hl:nt string
+          jp disp_text_at ;" de:dest
+          jp disp_text_shaded
+          jp disp_text_shaded_at
+          jp disp_text_inv
+          jp disp_text_inv_at ;" video inversion
+          jp disp_text_nl
+  ;        JP   disp_text_nl_at !! weird behavior, and no more room
+
+          jp str_pad
+          jp str_pad_ei
+
+          jp disp_inline ;call x, "text", 0
+          jp disp_inline_at ;"  de: dest
+          jp disp_inline_nl
+     ;        JP   disp_inline_nl_at ;!! weird behavior
+          3 ** BRK
+          jp disp_nl
+     ;         JP   disp_nl_at !! weird behavior and no more room
+
+          jp str_pad_shaded_ei
+
+;18*3
+          jp disp_deci_a
+          jp disp_deci_a_inv
+          jp disp_deci_a_shaded
+          jp disp_deci_hl
+          jp disp_deci_hl_inv
+          jp disp_deci_hl_shaded
+          jp disp_hexa_a
+          jp disp_hexa_a_inv
+          jp disp_hexa_a_shaded
+          jp disp_hexa_hl
+          jp disp_hexa_hl_inv
+          jp disp_hexa_hl_shaded
+
+          jp put_deci_a
+          jp put_deci_hl
+          jp put_hexa_a
+          jp put_hexa_hl
+
+          jp dump_ascii
+          jp dump_ascii_shaded
+          jp dump_hexa
+          jp dump_hexa_shaded
+
+          jp str_pad_at
+m         jp str_pad_at_ei
+
+          jp status_set_cursor
+
+          jp status_char_at
+          jp status_str_at
+          jp status_pad_at
+          jp status_deci_a_at
+          jp status_deci_hl_at
+          jp status_hexa_a_at
+          jp status_hexa_hl_at
+
+          jp status_char
+          jp status_str
+          jp status_pad
+          jp status_deci_a
+          jp status_deci_hl
+          jp status_hexa_a
+          jp status_hexa_hl
+          jp status_inv_cursor_at
+          jp status_clear_line_at
+          jp status_str_shaded_at
+          jp status_str_shaded
+
+
+      IF enable
+str_pad
+          ld de,(vo_scrpos)
+str_pad_at
+;In: hl= nt string
+   ; de= pos screen
+   ;  b= len (padding or clipping may occur)
+
+; NB: when coming from str_pad_at_ei with b=0,
+    ; we must update vo_scrpos so client can chain with no _at_ routines
+          inc b:dec b:jp z,_disp_ret_
+
+; Copy/paste disp_chr_ for faster loop.
+          di
+          ld (vo_savesp),sp
+          ld ixl,b
+          ld c,l:ld b,h
+          ld iy,spa_ret
+spa_lp
+          ld a,(bc)
+          or a:jp z,disp_space_ ; 0: stay at same place
+          inc bc
+          jp disp_chr_internal
+spa_ret
+          ld de,1-&2000
+          add hl,de
+          res 3,h
+          ex de,hl
+          dec ixl
+          jr nz,spa_lp
+          jp disp_ret_
+
+;------------
+str_pad_shaded_ei
+          ld de,(vo_scrpos)
+str_pad_shaded_at_ei
+
+          ld iyh,fonte_gris/&0400
+          jr str_pad_com
+
+;------------
+str_pad_ei
+          ld de,(vo_scrpos)
+str_pad_at_ei
+; As str_pad_at but reactivate int for rupture.
+; Todo: remove str_pad_at
+
+          ld iyh,fonte/&0400
+
+str_pad_com
+; NB: when coming from str_pad_at_ei with b=0,
+    ; we must update vo_scrpos so client can chain with no _at_ routines
+          inc b:dec b:jp z,_disp_ret_
+
+          ld iyl,b
+spae_lp
+          ld a,(hl)
+          or a:jr z,disp_space2_ ; Stay at same place
+
+          inc hl
+          cp &20
+          jr z,disp_space2
+
+          ld b,iyh
+          add a         ;NB: Inv not handled here
+      2 ** [add a:rl b]
+          ld c,a
+
+   ;0-1 
+          ld a,(bc)
+          ld (de),a
+          inc c:ld a,(bc)
+          set 3,d:ld (de),a
+   ;3-2
+          inc c:ld a,(bc)
+          set 4,d:ld (de),a
+          inc c:ld a,(bc)
+          res 3,d:ld (de),a
+   ;6-7
+          inc c:ld a,(bc)
+          set 5,d:ld (de),a
+          inc c:ld a,(bc)
+          set 3,d:ld (de),a
+   ;5-4
+          inc c:ld a,(bc)
+          res 4,d:ld (de),a
+          inc c:ld a,(bc)
+          res 3,d:ld (de),a
+
+          jr spae_next
+
+
+disp_space2
+          xor a
+disp_space2_
+
+          ld (de),a
+          set 3,d:ld (de),a
+          set 4,d:ld (de),a
+          res 3,d:ld (de),a
+          set 5,d:ld (de),a
+          set 3,d:ld (de),a
+          res 4,d:ld (de),a
+          res 3,d:ld (de),a
+
+spae_next
+          inc de
+          ld a,d:and &C7:ld d,a
+
+          dec iyl
+          jr nz,spae_lp
+
+          ld (vo_scrpos),de
+          ret
+      END
+
+mess  = &BE00
+
+_status_cursor
+;In: d=x (0 based) e=y (0 based) <= 4
+;Out: HL= Scr pos.
+          push af
+r1'   = 48
+      IF dev_checks
+          ld a,d:cp r1'*2:call nc,mess
+          ld a,e:cp 5:call nc,mess
+      ELSE
+          ld a,e
+      END
+;one text line is 4*2*r1' (&180)
+          add a:add e   ; <= 12
+          rrca
+          ld l,a        ; line# <= 6
+          and 7
+          ld h,a:set 7,h
+          xor l:add d:ld l,a
+          pop af
+          ret
+
+status_get_pos
+          ld de,(vo_statuspos)
+      IF dev_checks
+; Trash B, since saved beforehand, and used afterhand!
+          ld b,a        ; backup
+          ld a,d
+          cp &80:call c,mess
+          cp &86:jr c,.ok
+          call nz,mess
+          ld a,e
+          cp &60:call nc,mess
+.ok
+          ld a,b
+      END
+          ret
+
+
+status_char_at
+;In: de=x,y (logicial 0-based) 
+   ; A trashed
+          call status_set_cursor
+status_char
+          call status_prelude
+          call _status_char
+_status_ret
+          ld (vo_statuspos),de
+_status_ret_
+          pop de:pop bc:pop ix
+          ret
+
+status_prelude
+; save ix, bc, de
+          ex (sp),ix
+          push bc:push de
+          call status_get_pos
+          jp ix         ; ret. Ix can be used by routines, yeah!
+
+status_str_at
+          call status_set_cursor
+status_str
+          call status_prelude
+.lp
+          ld a,(hl):or a:jr z,_status_ret
+          call _status_char
+          inc hl
+          jr .lp
+
+      IF enable
+status_str_shaded_at
+          call status_set_cursor
+status_str_shaded
+          call status_prelude
+.lp
+          ld a,(hl):or a:jr z,_status_ret
+          call _status_char_shaded
+          inc hl
+          jr .lp
+      END
+
+status_pad_at
+; Similar to str_pad_at but for status.
+;In: hl= nt string
+   ; de= pos cursor
+   ;  b= len (clipping OR padding may occur)
+          call status_set_cursor
+status_pad
+          call status_prelude
+
+; NB: when coming from status_pad_at with b=0,
+; we must update vo_statuspos so client can chain with no _at_ routines
+          inc b:dec b:jr z,_status_ret
+
+          ld iyl,b
+stapae_lp
+          ld a,(hl)
+          or a:jr z,$+3:inc hl ; Stay at same place
+
+          call _status_char
+          dec iyl
+          jr nz,stapae_lp
+
+          jr _status_ret
+
+_status_char_shaded
+          ld b,fonte_gris/&0400
+          jr _status_char_
+_status_char
+          ld b,fonte/&0400
+_status_char_
+;in: A = chr     
+   ; B = fonte/&400 
+   ; DE= pos
+
+;0 to &20 treated as space.
+;No special routine (not worth it)
+          cp &20
+          jr nc,$+4:ld a,&20
+
+          ld ixl,0      ; default: no inverse video
+          add a:jr nc,$+4:dec ixl
+      2 ** [add a:rl b]
+          ld c,a
+
+; Assert to detect problem init.
+; De: pos in &8000 - &8fff  
+          ld a,d:and &F0:cp &80:call nz,&BE00
+
+   ;0-1 
+          ld a,(bc):xor ixl:ld (de),a
+          set 3,d
+          inc c:ld a,(bc):xor ixl:ld (de),a
+   ;3-2                   
+          ld a,e:add r1'*2:ld e,a:jr nc,$+3:inc d
+          inc c:ld a,(bc):xor ixl:ld (de),a
+          res 3,d
+          inc c:ld a,(bc):xor ixl:ld (de),a
+   ;6-7
+          ld a,e:add r1'*4:ld e,a:jr nc,$+3:inc d
+          inc c:ld a,(bc):xor ixl:ld (de),a
+          set 3,d
+          inc c:ld a,(bc):xor ixl:ld (de),a
+   ;5-4
+          ld a,e:sub r1'*2:ld e,a:jr nc,$+3:dec d
+          inc c:ld a,(bc):xor ixl:ld (de),a
+          res 3,d
+          inc c:ld a,(bc):xor ixl:ld (de),a
+
+          ld a,e:sub r1'*4 - 1:ld e,a:jr nc,$+3:dec d
+          ld a,d:and &F8:cp &80:call nz,&BE00
+          ld a,d
+          and &07
+          or &80        ; sanity: reboucle page
+          ld d,a
+          ret
+
+      IF enable
+status_clear_line_at
+          call status_set_cursor
+          call status_prelude
+          call .clr1
+          set 3,d
+          call .clr1
+          jp _status_ret_
+
+.clr1
+          push de
+          xor a
+          ld b,4*r1'    ; Words so that < &100
+.lp
+          ld (de),a:inc de
+          ld (de),a:inc de
+          djnz .lp
+          pop de
+          ret
+
+status_deci_a_at
+          call status_set_cursor
+status_deci_a
+          push ix:ld ix,put_deci_a
+          jr _status_num
+
+status_deci_hl_at
+          call status_set_cursor
+status_deci_hl
+          push ix:ld ix,put_deci_hl
+          jr _status_num
+
+
+status_hexa_a_at
+          call status_set_cursor
+status_hexa_a
+          push ix:ld ix,put_hexa_a
+          jr _status_num
+
+
+status_hexa_hl_at
+          call status_set_cursor
+status_hexa_hl
+          push ix:ld ix,put_hexa_hl
+_status_num
+          push de:push hl
+          ld de,vo_tmp
+          push de
+          call jp_ix
+          pop hl
+          call status_str
+          pop hl:pop de
+          pop ix
+          ret
+      END
+
+
+init_disp
+;in A = Reg1
+
+          ld (vo_reg1),a
+          ld de,&C000
+disp_locate_scr
+          ld (vo_scrpos0),de
+          ld (vo_scrpos),de
+          ret
+
+      IF enable
+disp_locate_x
+          push hl
+          ld hl,(vo_scrpos0)
+          add l:ld l,a:jr nc,$+3:inc h
+_disp_locate_
+          res 3,h
+          ld (vo_scrpos),hl
+          pop hl
+          ret
+
+disp_locate_inc
+          push hl
+          ld hl,(vo_scrpos)
+          inc hl
+          jr _disp_locate_
+      END
+
+cls
+;corrupt hl, de, af
+;!! disable interruptions
+
+          di
+          xor a
+          ld l,a
+          ld h,a
+          ld e,a
+          ld d,a
+          add hl,sp
+          ex de,hl
+          ld sp,hl
+;
+cls_lp
+      FILL 32,&E5       ;push hl
+          dec a
+          jr nz,cls_lp
+
+          ld (vo_scrpos0),sp ;$C000
+          ld (vo_scrpos),sp ;$C000
+
+          ex de,hl
+          ld sp,hl
+          ret
+
+      IF enable
+disp_chr
+          ld de,(vo_scrpos)
+disp_chr_at
+;in: a=chr (bit 7 for video inverse)
+   ;de=screen dest
+;out:de=new pos
+    ;hl trashed
+
+          ld h,fonte/&0400
+_disp_chr
+          di
+          ld (vo_savesp),sp
+          ld iy,disp_ret
+          jp disp_chr_internal_
+
+disp_chr_shaded
+          ld de,(vo_scrpos)
+disp_chr_shaded_at
+          ld h,fonte_gris/&0400
+          jr _disp_chr
+
+      END
+
+disp_ret
+          ld de,1-&2000
+          add hl,de
+          res 3,h
+          ex de,hl
+disp_ret_
+          ld sp,(vo_savesp)
+_disp_ret_
+          ld (vo_scrpos),de
+          ret
+
+      IF enable
+
+disp_inline_nl
+          pop bc
+          call disp_text_nl
+          push bc
+          ret
+
+disp_inline_nl_at
+          pop bc
+          call disp_text_nl_at
+          push bc
+          ret
+
+disp_inline
+          ld de,(vo_scrpos)
+disp_inline_at
+          pop bc
+          call disp_text_at
+          push bc
+          ret
+      END
+
+disp_text_nl
+          call disp_text
+          jr disp_nl
+
+      IF enable
+disp_text_nl_at
+
+;!!! hum, weird behavior
+
+          push de
+          call disp_text_at
+          pop hl
+          jr disp_nl_at
+      END
+
+disp_nl
+          push af:push bc:push de:push hl
+          ld hl,(vo_scrpos0)
+disp_nl_at
+          ld a,(vo_reg1)
+          add a
+          jr z,dnl_end  ;sanity : avoid infinite loop
+          ld e,a:ld d,0
+          ld bc,(vo_scrpos)
+dnl_lp
+          add hl,de:res 3,h
+;new adresse must be after current one
+          or a:sbc hl,bc:ld a,h:add hl,bc
+          and 7
+          jr nz,dnl_lp
+
+          ld (vo_scrpos0),hl
+          ld (vo_scrpos),hl
+dnl_end
+          pop hl:pop de:pop bc:pop af
+          ret
+
+      IF enable
+disp_text_shaded
+          ld de,(vo_scrpos)
+disp_text_shaded_at
+;like disp_text_at, but with fonte grisee
+          di
+          ld (vo_savesp),sp
+
+          ld iy,dshd_lp
+          jr dshd_start
+dshd_lp
+          ld de,1-&2000
+          add hl,de
+          res 3,h
+          ex de,hl
+dshd_start
+          ld a,(bc)
+          inc bc
+          or a
+          jr z,disp_ret_
+
+          ld h,fonte_gris/&0400
+          jr disp_chr_internal_
+
+
+disp_text_inv
+          ld de,(vo_scrpos)
+disp_text_inv_at
+;like disp_text_at, but inversed
+
+          di
+          ld (vo_savesp),sp
+
+          ld iy,dint_lp
+          jr dint_start
+dint_lp
+          ld de,1-&2000
+          add hl,de
+          res 3,h
+          ex de,hl
+dint_start
+          ld a,(bc)
+          inc bc
+          or a
+          jp z,disp_ret_
+
+          xor &80
+          jr disp_chr_internal
+      END
+
+disp_text
+          ld de,(vo_scrpos)
+disp_text_at
+;in : bc= zero terminated string
+    ; de= dest screen
+;out : bc= past string (after zero)
+     ; de= new dest
+
+          di
+          ld (vo_savesp),sp
+          ld iy,dnt_lp
+          jr dnt_start
+dnt_lp
+          ld de,1-&2000
+          add hl,de
+          res 3,h
+          ex de,hl
+dnt_start
+          ld a,(bc)
+          inc bc
+          or a
+          jp z,disp_ret_
+
+disp_chr_internal
+;in : !!caller must DI!!
+    ;  a = chr
+    ; de = dest screen
+    ; iy = ret adr
+
+;out: hl = de+$2000
+    ; de, sp corrupted
+
+          ld h,fonte/&0400
+disp_chr_internal_
+          add a
+          jr c,dc_inv
+
+          cp &40
+          jr z,disp_space
+
+          ld l,a
+          add hl,hl
+          add hl,hl
+          ld sp,hl
+
+          ex de,hl
+   ;0-1
+          pop de
+          ld (hl),e
+          set 3,h
+          ld (hl),d
+   ;3-2
+          pop de
+          set 4,h
+          ld (hl),e
+          res 3,h
+          ld (hl),d
+   ;6-7
+          pop de
+          set 5,h
+          ld (hl),e
+          set 3,h
+          ld (hl),d
+   ;5-4
+          pop de
+          res 4,h
+          ld (hl),e
+          res 3,h
+          ld (hl),d
+
+jp_iy     jp iy         ;ret
+
+dc_inv
+          cp &40
+          jr z,disp_space_inv
+
+          ld l,a
+          add hl,hl
+          add hl,hl
+          ld sp,hl
+
+          ex de,hl
+   ;0-1
+          pop de
+          ld a,e
+          cpl
+          ld (hl),a
+          ld a,d
+          cpl
+          set 3,h
+          ld (hl),a
+   ;3-2
+          pop de
+          ld a,e
+          cpl
+          set 4,h
+          ld (hl),a
+          ld a,d
+          cpl
+          res 3,h
+          ld (hl),a
+   ;6-7
+          pop de
+          ld a,e
+          cpl
+          set 5,h
+          ld (hl),a
+          ld a,d
+          cpl
+          set 3,h
+          ld (hl),a
+   ;5-4
+          pop de
+          ld a,e
+          cpl
+          res 4,h
+          ld (hl),a
+          ld a,d
+          cpl
+          res 3,h
+          ld (hl),a
+
+          jp iy
+
+disp_space_inv
+          scf
+disp_space
+          sbc a         ;0 or $ff
+disp_space_
+          ex de,hl
+
+          ld (hl),a
+          set 3,h
+          ld (hl),a
+          set 4,h
+          ld (hl),a
+          res 3,h
+          ld (hl),a
+          set 5,h
+          ld (hl),a
+          set 3,h
+          ld (hl),a
+          res 4,h
+          ld (hl),a
+          res 3,h
+          ld (hl),a
+
+          jp iy         ;ret
+
+      IF enable
+disp_hexa_bc
+          push hl
+          ld h,b
+          ld l,c
+          call disp_hexa_hl
+          pop hl
+          ret
+
+disp_hexa_de
+          ex de,hl
+          call disp_hexa_hl
+          ex de,hl
+          ret
+
+disp_hexa_hl_shaded
+          push iy:ld iy,disp_text_shaded
+          jr _disp_hexa_hl
+
+disp_hexa_hl_inv
+          push iy:ld iy,disp_text_inv
+          jr _disp_hexa_hl
+
+disp_hexa_hl
+          push iy:ld iy,disp_text
+_disp_hexa_hl
+          push ix:ld ix,put_hexa_hl
+          jr _disp_num_com
+
+disp_hexa_a_shaded
+          push iy:ld iy,disp_text_shaded
+          jr _disp_hexa_a
+
+disp_hexa_a_inv
+          push iy:ld iy,disp_text_inv
+          jr _disp_hexa_a
+
+disp_hexa_a
+          push iy:ld iy,disp_text
+_disp_hexa_a
+          push ix:ld ix,put_hexa_a
+_disp_num_com
+          push af:push bc:push de
+          ld de,vo_tmp
+          push de
+          call jp_ix
+          pop bc
+          push hl
+          call jp_iy
+          pop hl:pop de:pop bc:pop af:pop ix:pop iy
+          ret
+
+jp_ix     jp ix
+
+disp_deci_hl_shaded
+          push iy:ld iy,disp_text_shaded
+          jr _disp_deci_hl
+
+disp_deci_hl_inv
+          push iy:ld iy,disp_text_inv
+          jr _disp_deci_hl
+
+disp_deci_hl
+          push iy:ld iy,disp_text
+_disp_deci_hl
+          push ix:ld ix,put_deci_hl
+          jr _disp_num_com
+
+
+disp_deci_a_shaded
+          push iy:ld iy,disp_text_shaded
+          jr _disp_deci_a
+
+disp_deci_a_inv
+          push iy:ld iy,disp_text_inv
+          jr _disp_deci_a
+
+disp_deci_a
+          push iy:ld iy,disp_text
+_disp_deci_a
+          push ix:ld ix,put_deci_a
+          jr _disp_num_com
+
+
+put_hexa_hl
+          push af
+          ld a,h:call put_hexa_a
+          ld a,l:call put_hexa_a
+          pop af
+          ret
+
+put_hexa_a
+          push af
+          call put_hexa_qh
+          pop af
+          push af
+          call put_hexa_ql
+          xor a
+          ld (de),a
+          pop af
+          ret
+
+
+put_hexa_qh
+          rrca
+          rrca
+          rrca
+          rrca
+put_hexa_ql
+          and &0F
+          or a
+          daa
+          add &F0
+          adc &40
+          or &20        ;lowercase
+          ld (de),a
+          inc de
+          ret
+
+;
+put_deci_hl
+;Affiche "hl" en decimal
+;        
+          push hl
+          push bc
+          ld bc,10000
+          call pwfigno0
+          ld bc,1000
+          jr nz,pwdec4
+          call pwfigno0
+          ld bc,100
+          jr nz,pwdec3
+          call pwfigno0
+          ld a,l
+          ld b,10
+          jr nz,ddec100
+          jr put_dec_
+pwdec4
+;>=10000 il faut afficher nombre des 1000
+;
+          call pwfig
+          ld bc,100
+pwdec3
+          call pwfig
+          ld a,l
+          ld b,10
+          jr ddec100
+;
+pwfig
+          xor a
+pwfigwf
+          inc a
+          or a
+          sbc hl,bc
+          jr nc,pwfigwf
+;
+          add hl,bc
+          dec a
+          or &30
+          ld (de),a
+          inc de
+          ret
+;
+pwfigno0
+          xor a
+pwfn0wf
+          inc a
+          or a
+          sbc hl,bc
+          jr nc,pwfn0wf
+          add hl,bc
+          dec a
+          ret z
+;
+          or &30
+          ld (de),a
+          inc de
+          or &30        ;force nz
+          ret
+;
+put_deci_a
+          push hl       ;not modified, but must mimic put_deci_hl
+          push bc
+          ld b,100
+          call dpfigno0
+          ld b,10
+          jr nz,ddec100
+put_dec_
+          call dpfigno0
+          jr ddecunit
+ddec100
+;>=100 il faut afficher nombre des dizaines
+;
+          call dpfig
+ddecunit
+          or &30
+          ld (de),a
+          inc de
+          xor a
+          ld (de),a
+          pop bc
+          pop hl
+          ret
+dpfig
+          ld c,-1
+dpfigwf
+          inc c
+          sub b
+          jr nc,dpfigwf
+          add b
+          ld b,a
+          ld a,c
+          or &30
+          ld (de),a
+          inc de
+          ld a,b
+          ret
+;
+dpfigno0
+          ld c,-1
+dpfn0wf
+          inc c
+          sub b
+          jr nc,dpfn0wf
+          add b
+          ld b,a
+          ld a,c
+          and a
+          jr z,dpfn0ret
+;
+          or &30
+          ld (de),a
+          inc de
+          or &30        ;force nz
+dpfn0ret
+          ld a,b
+          ret
+
+;-------
+
+dump_hexa
+;In: DE: buffer
+   ;  B: nb bytes to display
+          call is_ei
+;out:hl trashed.
+dump_hexa_lp
+          ld a,(de):inc de
+          call disp_hexa_a
+          call disp_locate_inc
+          call vo_ei
+          djnz dump_hexa_lp
+          ret
+
+dump_hexa_shaded
+          call is_ei
+dump_hexa_shaded_lp
+          ld a,(de):inc de
+          call disp_hexa_a_shaded
+          call disp_locate_inc
+          call vo_ei
+          djnz dump_hexa_shaded_lp
+          ret
+
+
+dump_ascii
+;TODO: use bc instead as a pointer?
+          call is_ei
+dump_ascii_lp
+          call get_chr
+          push de
+          call disp_chr
+          pop de
+          inc de
+          call vo_ei
+          djnz dump_ascii_lp
+          ret
+
+dump_ascii_shaded
+;TODO: use bc instead as a pointer?
+          call is_ei
+dump_ascii_shaded_lp
+          call get_chr
+          push de
+          call disp_chr_shaded
+          pop de
+          inc de
+          call vo_ei
+          djnz dump_ascii_shaded_lp
+          ret
+
+get_chr
+;Chr pour dump (#00-#1f -> ".")
+          ld a,(de)
+          cp &20
+          ret nc
+          or a
+          ret z
+          ld a,"."
+          ret
+
+is_ei
+;Retain if we are under DI or EI,
+;so we can reactivate EI if needed
+          push hl
+          ld hl,&C9FB
+          ld a,i:jp pe,_isei
+; Must double check to counteract z80 bug. 
+          ld a,i:jp pe,_isei
+          ld l,h        ; No-op
+_isei
+          ld (vo_ei),hl
+          pop hl
+          ret
+
+vo_ei     ret:ret       ; might be replace by ei:ret above
+
+      END
+
+status_inv_cursor_at
+; NB: doesn't change internal cursor position
+          push bc:push hl
+          call _status_cursor
+          ld b,8
+sicalp
+          ld a,h:and &F0:cp &80:call nz,&BE00
+          ld a,(hl):cpl:ld (hl),a
+          ld a,h:add 8:bit 4,a:jr z,sicaok
+          ld a,l:add r1'*2:ld l,a
+          ld a,h:adc -8
+sicaok
+          ld h,a
+          djnz sicalp
+          pop hl:pop bc
+          ret
+
+status_set_cursor
+;Locate and print
+;In: d=x (0 based) e=y (0 based) <= 4
+          push hl
+          call _status_cursor
+          ld (vo_statuspos),hl
+          pop hl
+          ret
+
+; -----------------------------
+
+vo_scrpos0 WORD &C000
+vo_scrpos WORD &C000
+vo_tmp SKIP 6
+vo_reg1 BYTE 40
+vo_savesp WORD 
+vo_statuspos WORD 

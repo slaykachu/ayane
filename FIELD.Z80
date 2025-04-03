@@ -1,0 +1,311 @@
+; ----- Field editor ------
+; Display and input agnostic: 
+; just modify field in memory according to "key" passed.
+
+; Tests in fieldnrt.o
+
+ ; It differs from :lib/ version -> cursor not allowed past /00
+
+todo  = 1
+dev_checks = 1
+fail  = &BE00
+
+; TODO [space optim] Reuse shortcut.o for /scan_key/
+     ; Or the other way around: shortcut would reuse this instance.
+
+scan_key
+      IMPORT "scan-key.o"
+
+; 2024 
+  ; Jul       
+     ; 8. Customization ayane: kright at end of field must return NC
+          ; (hence, seen as unhandled: parent struct can go to nxt cell)
+          ; Difference from lib/ -> end of field is /00, 
+             ; instead of full capacity. No "free cursor"
+
+      IF todo
+; do same for k_lft?  or don't allow to navigate in field?
+      END
+     ; 1. Taken from lib (version B -- 2023 12 13)
+
+field_editor
+;  A: key
+; HL: adr field (NT field)
+;  E: Bit 7: Selection if 1 (I.e all field erased when pressing key)
+;  B: max length (memory-wise. We are not concerned with display here.
+    ; It includes last /00 
+    ; !! 0 means 256
+;  C: initial cur pos in string (&ff = last)
+; Warning!! Cannot pass IY since modified by RST &18.
+
+; out: C= new pos. (&ff converted to valid pos) 
+     ; E bit 7: cleared if selected deactivated (e.g. after fe_DEL_CHAR)
+     ; Carry, NZ if handled, buffer modified. A trashed.
+     ; Carry, Z if handled, buffer not modified (e.g. left/right)
+     ; NC,Z if not handled, A unchanged (e.g. left at start, up)
+     ; I.e. NZ iif buffer modified
+     ; HL, B preserved
+
+; Note: The case LEFT at start (and RIGHT at end)
+      ; are considered "UNHANDLED".
+      ; This seems ambiguous, because the key is managed, 
+      ; it just happens to have no effect.
+      ; The rationale is, we group together cases without any change:
+         ; - neither the buffer or cursor has to be refreshed 
+         ; - it can be detected by host (e.g. go to left cell, or beep)
+; TODO? Also consider buffer full as UNHANDLED?
+      ; OTOH we might want to indicate key was "consumed".
+; Other inconsistency: CTRL-LEFT/RIGHT use UNCHANGED incondionnally
+   ; For now, doesn't matter much (we prioritize compactness of code)
+   ; Let me know if you need that fixed.
+
+      MACRO MODIFIED
+; set flags C,NZ   (!! modify A)
+          scf:sbc a
+      ENDM
+
+      MACRO UNCHANGED
+; set flags C,Z
+          cp a:scf
+      ENDM
+
+      MACRO UNHANDLED
+; set flags NC,Z 
+          cp a
+      ENDM
+
+;corrige &ff -> last pos 
+; Do it first so that C is valid at (early) return.
+          push af
+          ld a,c
+          inc c         ; Don't use A, since backup in case NZ
+          call z,LEN_STR
+          ld c,a
+          pop af
+
+; CTRL-0: act as no key pressed (Carry, Z)
+          or a:jr z,fe_unchanged
+
+          cp &20:jr c,fe_SPECIALK ; A < 32 -> special char
+      IF todo
+; Allow character 126 (tilde)?
+; Prerequisite: ED must maps CONTROL-2 to a new code.
+      END
+          cp &7E:jr nc,fe_SPECIALK ; A >= 126 (CONTROL-2, DEL, ...)
+
+          bit 7,e
+          jr z,.ok_sel
+;Was selected -> erase all field
+          ld c,0        ; position curseur
+          ld (hl),c
+          res 7,e
+.ok_sel
+          push hl
+          push bc
+          push af
+          dec b         ; -1 for last /00
+; Si pos >= B-1 -> would be full once padding done
+          ld a,c
+          cp b:jr nc,.full
+; Si len >= B-1 -> full
+          call LEN_STR
+          cp b:jr nc,.full
+
+      IF dev_checks
+          cp c
+          call c,fail   ; pos must be <= pos 
+      END
+
+; now insert char
+          pop af
+          ld b,0
+          add hl,bc
+.swap
+          ld b,(hl)
+          ld (hl),a
+          inc hl
+          or a
+          ld a,b
+          jr nz,.swap
+
+          pop bc
+          inc c
+          jr fe_modified_pop_hl
+
+.full
+          pop af
+          pop bc
+          pop hl
+          jr fe_unchanged
+
+;   Test des touches : DEL, cursor ETC...
+fe_SPECIALK
+          push hl
+          push de
+          push bc
+          ld hl,fe_keys
+          ld c,a
+          call scan_key
+          ld a,c
+          pop bc
+          pop de
+          jr nc,fe_unhandled_pop_hl
+
+          res 7,e       ; desactive selection
+          ex (sp),hl    ; Recupere hl = buffer et
+          ret           ; ... appel la bonne routine 
+
+fe_unhandled_pop_hl
+          pop hl
+fe_unhandled
+          UNHANDLED()
+          ret
+
+fe_MOVE_L
+;preserve A
+          dec c:inc c
+          jr z,fe_unhandled ; 0: Already at start
+          dec c
+          jr fe_unchanged
+
+fe_MOVE_R
+          push bc
+          push hl
+          ld b,0:add hl,bc
+          ld b,a
+          ld a,(hl)
+          or a
+          ld a,b
+          pop hl
+          pop bc
+          ret z         ; Act as not handled (NC, Z)
+          inc c
+fe_unchanged
+          UNCHANGED()
+          ret
+
+
+fe_DEL_CHAR
+          call fe_MOVE_L
+          ret nc
+;enchaine avec clr
+fe_CLR_CHAR
+          push hl
+          push bc
+          ld b,0
+          add hl,bc
+.clr_lp   ld a,(hl)
+          or a
+          jr z,.clr_end
+          inc hl:ld a,(hl)
+          dec hl:ld (hl),a
+          inc hl
+          jr .clr_lp
+.clr_end
+;Enchaine
+fe_modified_pop_bchl
+          pop bc
+fe_modified_pop_hl
+          pop hl
+;nb: flag modified even with clr at end (no op), nevermind
+fe_modified
+          MODIFIED()
+          ret
+
+; Supprime tout ce qui est @ droite du curseur
+;  IN : HL = buffer (not necessary aligned xx00)
+;     : C = pos in buffer 
+; OUT : Rien
+S_CLR
+;----     
+          push hl
+          call add_hl_c:ld (hl),0 ; Marque fin 
+          jr fe_modified_pop_hl
+
+; Supprime du d{but de la ligne jusqu'au curseur sur la ligne 
+; courante
+;  IN : HL = buffer (not necessary aligned xx00)
+;     : C = pos in buffer
+; OUT : Rien           
+S_DEL
+;----
+          inc c:dec c   ; On est au d{but de la ligne?
+          scf:ret z     ; Si oui, retour car il n'y a rien @ supprimer
+          push hl
+          push bc
+          ld b,c        ; Longueur a supprimer
+SfillLP
+;We must stop at EoL marker (otherwise, bug#102: marker erased)
+          ld a,(hl):or a:jr z,fe_modified_pop_bchl
+          ld (hl)," "
+          inc hl
+          djnz SfillLP
+          jr fe_modified_pop_bchl
+
+
+fe_C_LEFT
+;--------
+          xor a
+          jr update_cursor
+
+fe_C_RIGHT
+;---------
+          call LEN_STR  ; Don't use -1 since we want to return valid pos
+update_cursor
+          ld c,a
+          jr fe_unchanged
+
+
+add_hl_c
+          ld a,c
+add_hl_a
+          push af
+          add l:ld l,a
+          jr nc,$+3:inc h
+          pop af
+          ret
+
+; ----------------------------
+
+kclr  = &10
+kdel  = &7F
+kleft = &F2
+kright = &F3
+kcleft = &FA
+kcright = &FB
+ksdel = 160             ; Plugged in field.o
+ksclr = 161
+
+fe_keys
+      BYTE kleft:WORD fe_MOVE_L ; Fleche GAUCHE
+      BYTE kright:WORD fe_MOVE_R ; Fleche DROITE
+      BYTE kcleft:WORD fe_C_LEFT ; CTRL+ fleche gauche
+      BYTE kcright:WORD fe_C_RIGHT ; CTRL+ fleche droite
+      BYTE kdel:WORD fe_DEL_CHAR
+      BYTE kclr:WORD fe_CLR_CHAR
+      BYTE ksdel:WORD S_DEL ; SHIFT + DEL
+      BYTE ksclr:WORD S_CLR ; SHIFT + CLR
+
+      BYTE 0            ; End of table
+
+LEN_STR
+;Compute string length (without 0), with clipping.
+;IN: HL= NT chaine
+   ;  B= max longueur
+;OUT: A= longueur
+
+          push hl
+          push bc
+.lp
+          ld a,(hl)
+          or a
+          jr z,.ok
+          inc hl
+          djnz .lp
+.ok
+          ld a,l
+          pop bc
+          pop hl
+          sub l
+          ret
+

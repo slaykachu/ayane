@@ -14,6 +14,10 @@ need_room = 1
       IMPORT "memmap.i" ; for checks and Init_chunk_module
       IMPORT "memcpc.o"
 
+; Disable 'free' code (must be re-viewed)
+enable_free = 0
+
+
 ; \/\/\/ 2024 \/\/\/\/\/\/\/\/\/\
 ; ------ v0g ------------             
 ; Apr
@@ -24,7 +28,6 @@ need_room = 1
     ; 10 Next_node: mustn't change hl when pnt is zero
        ; Insert_new_node: add checks
        ; Disable 'free' code (must be re-viewed)
-enable_free = 0
 
     ;  8 Introduce v_free5_list, v_free6_list.
            ; Not used right now, but avoid assert in get_node_list
@@ -852,3 +855,4 @@ fail_memoryfull = 251
 fail_unexpectedmess = 247
 
       ORG savepc,saveobj ; for host
+

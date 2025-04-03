@@ -1,25 +1,19 @@
 ; Tests salo
+; v0.0ac  05 Mar 25
 
-;/// 2025 ///
-;---- 
-  ; Mar
-    ; 3: Org in /free_ram_for_nrt/ for code to fit.
-
-;Before: no changelog!
       ORG &0100
       ENT tests
 
       IMPORT "const.i"  ; just for track_param#
       IMPORT "memmap.i"
- ;     IMPORT "chipn.o"
-      IMPORT "init.o"
- ;     IMPORT "ply.o"
-      IMPORT "instr.o"
-      IMPORT "chung.o"
-      IMPORT "phrase.o"
-      IMPORT "track.o"
-      IMPORT "testlib.o"
+
       IMPORT "salo.o"
+      IMPORT "init.o"
+      IMPORT "track.o"
+      IMPORT "phrase.o"
+      IMPORT "chung.o"
+      IMPORT "instr.o"
+      IMPORT "testlib.o"
 
       MACRO NO_TEXT
 ;Null terminated: only the 0
@@ -31,9 +25,9 @@
       ORG free_ram_for_nrt
 
 tests
-        ;  call test_save_empty_module
+          call test_save_empty_module
           call test_save_empty_phrase
-        ;  call test_load_empty_module
+          call test_load_empty_module ; also test save-load-save
           call test_assets
           ret
 
@@ -162,7 +156,8 @@ phrase4 = 4
           ld a,phrase4  ; skip id 1,2,3
           call song_select_new_phrase
           call check_save_load_save
-; - Empty track
+; - Empty track                              
+          ld a,1        ; id
           ld bc,&0100   ; output and mix mode
           call Song_select_new_track
           call check_save_load_save
@@ -182,6 +177,7 @@ phrase4 = 4
           call Set_phrase_at_t
           call check_save_load_save
 ; - Another track
+          ld a,2
           ld bc,&0200   ; output and mix mode
           call Song_select_new_track
           call check_save_load_save
@@ -212,7 +208,6 @@ time2 WORD &8000:BYTE 2 ; more than &10000 ticks away
 
 check_save_load_save
 ; --- Check idempotence ----
-
           ld a,".":call &BB5A
 ; Save state
           call Song_get_instr:push af
@@ -240,7 +235,6 @@ check_save_load_save
           ld bc,destsize
           call compare_sized
 
-      IF 0
 ; -- Reload + save 
           ld hl,destnrt:call nrt_load
           ld de,destnrt2:call nrt_save
@@ -248,7 +242,6 @@ check_save_load_save
           ld hl,destnrt2
           ld bc,destsize
           call compare_sized
-      END
 
 ; Check state    
           call Song_get_current_subsong
@@ -263,15 +256,18 @@ check_save_load_save
           pop bc:cp b:call nz,fail
           ret
 
+
 almost_empty
 ; no assets, just some meta_data
       BYTE "AYA!"
           NO_TEXT()     ; author
           NO_TEXT()     ; album
+      BYTE delai_ui_default
+      BYTE diapason_default
 ; meta data
       WORD dummy_       ; size
-dummy_data BYTE 0,1,2,3,4
-dummy_ = $ - dummy_data
+dummy_meta BYTE 0,1,2,3,4
+dummy_ = $ - dummy_meta
       BYTE "Tabl":BYTE SENTINELLE ; End of list
       BYTE 0            ; Selected (given even if no table exist)
       BYTE "Inst":BYTE SENTINELLE
@@ -279,15 +275,13 @@ dummy_ = $ - dummy_data
       BYTE "Phrs":BYTE phrase_param#
       WORD SENTINELLE_16 ; More than 256 possible phrases
       BYTE 0
-      IF use_nest
-      BYTE "Nest":WORD SENTINELLE_16 ; Same ID space than phrase
-      END
       BYTE "Trck":BYTE track_param#:BYTE SENTINELLE
       BYTE 0
       BYTE "Song"
 ;Even empty module has one subsong
       BYTE 0            ; id
       BYTE 1            ; alternative#
+      WORD replay_50_08Hz
           NO_TEXT()
       BYTE SENTINELLE   ; no tracks
       BYTE 0            ; selected alternative
@@ -307,6 +301,8 @@ empty_phrase
       BYTE "AYA!"
           NO_TEXT()     ; author
           NO_TEXT()     ; album
+      BYTE delai_ui_default
+      BYTE diapason_default
 ; meta data
       WORD dummy_       ; size
       BYTE 0,1,2,3,4
@@ -318,6 +314,7 @@ empty_phrase
       BYTE 0            ; phrase id
       BYTE 1            ; alt#
       BYTE type_phrase
+      BYTE 0            ; no custom delai_ui
           NO_TEXT()
       BYTE 1            ; color = id + 1
       IF phrase_param# - 1
@@ -327,15 +324,13 @@ empty_phrase
       BYTE 0            ; alt selected
       WORD SENTINELLE_16 ; More than 256 possible phrases
       BYTE 0
-      IF use_nest
-      BYTE "Nest":WORD SENTINELLE_16 ; Same ID space than phrase
-      END
       BYTE "Trck":BYTE track_param#:BYTE SENTINELLE
       BYTE 0
       BYTE "Song"
 ;Even empty module has one subsong
       BYTE 0            ; id
       BYTE 1            ; alternative#
+      WORD replay_50_08Hz
           NO_TEXT()
       BYTE SENTINELLE   ; no tracks
       BYTE 0            ; selected alternative
@@ -357,11 +352,11 @@ nrt_save
 ; should pass max size to memdisk
       END
           call memdisk_init_write
-          ld ix,memdisk_write_bloc
+          ld hl,memdisk_write_bloc
     ;      ld ix,tmpbrk
-          ld de,dummy_data
+          ld de,dummy_meta
           ld bc,dummy_
-          call save
+          call save:call nc,fail
           ret
 
 tmpbrk
@@ -369,14 +364,29 @@ tmpbrk
           scf           ; pretend it's ok
           ret
 
+
 nrt_load
-;In: hl=source
+;In: hl=source   
+
+; Clear dest for check below
+          ld b,5
+          ld de,dest_meta
+          xor a
+.clr      ld (de),a:inc de:djnz .clr
+
           call memdisk_init_read
-          ld ix,memdisk_load_bloc
-          ld de,dummy_data
+          ld hl,memdisk_load_bloc
+          ld de,dest_meta
           ld bc,dummy_
-          call load
+          call load:call nc,fail
+; Check meta data was loaded
+          ld hl,dummy_meta
+          ld de,dest_meta
+          ld bc,dummy_
+          call compare_sized
           ret
+
+dest_meta SKIP dummy_
 
 destsize = &0300
 
@@ -387,4 +397,5 @@ destnrt2
       SKIP destsize
 
       SKIP ramlimit' - $ ; poor man's limit
+
 

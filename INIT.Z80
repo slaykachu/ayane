@@ -1,26 +1,23 @@
 ; ---- Init all modules ------
-
-; Question: should we keep that, on only init immediate dependencies?
-          ; YAGNI!!!
-
-; 2024 
-  ; Apr  8. Do "ayane_init" part, and Init_track_module        
-      ;  3. ayane_init now lives in phrase.o
-  ; Feb 21. Use local shorcut and chunk.
+; v0.0ac  5 Mar 25
+todo  = 1
 
 ; This middle-man module avoid unnecessary imports.
 ; They are replaced by transitive imports, which are more efficient.
 ; (well for now it's not exact sadly).
 ; It also avoid cyclic dependency between chunk and ply.
 
-      IMPORT "memcpc.o" ; To force order in mem
-      IMPORT "instr.o"  ; Idem
+      IMPORT "const.i"  ; diapason_default
+
       IMPORT "track.o"
       IMPORT "phrase.o" ; for song_reset
       IMPORT "chung.o"
+      IMPORT "ply.o"    ; for set_diapason, set_
+      IMPORT "instr.o"
       IMPORT "chunk.o"
       IMPORT "widget.o" ; for init_widget
       IMPORT "shortcut.o"
+      IMPORT "memcpc.o" ; To force order in mem
 
 bk_ayane = &C7
 
@@ -34,4 +31,9 @@ full_init
           call Init_track_module
           call setup_keys
           call init_widget ; compute RGB so we see the boxes
+
+          ld a,diapason_default
+          call set_diapason
+; replay_period init in Init_track_module
           ret
+

@@ -2,27 +2,6 @@
 ; Ayane main entry point / ui
 ; ---------------------------
 
-; 2025
-  ; Feb
-    ; 28: Replace :lib imports by local version
-; 2024
-  ; Jun
-    ; 19: Use "disp-jp.o"
-; 2023
-  ; Dec      
-    ; 22: Use local disp, status
-    ; 21: Setup multimode at /sequencer/   
-        ; Import from ":lib" (no need usb key anymore)
-    ; 16: Move display_help and string routines in help.o
-
-  ; Nov 
-    ; 28; question: use bandeau like orgam, scr-lo doesn't handle r1=48
-    ; 27: question: try fix cursor issues
-    ; 26: Fix display_help (set mode and ink 1)
-        ; scan_key: take C = code, not A
-        ; open: fix question handling
-        ; skip_nt: was bugged
-
 dev_checks = 1
 todo  = 1
 need_room = 1
@@ -46,7 +25,6 @@ CRTC_R2_IO = 46
       ORG code_start
 
       IMPORT "init.o"
-      IMPORT "memcpc.o"
       IMPORT "track.o"
  ;     IMPORT "st128.o"
 ; --- More imports at /disp_import/
@@ -58,6 +36,7 @@ CRTC_R2_IO = 46
       IMPORT "field.o"
       IMPORT "scan-key.o"
       IMPORT "shortcut.o"
+      IMPORT "memcpc.o"
 ;      IMPORT "scr-lo.o"    !! not meant for r1=48 (use firmware)
 
 ; ---------------------------------------------
@@ -107,7 +86,6 @@ err_too_big = 2
 start
 ;---------
           call full_init
- ;         call setup_keys      Done in full_init
           CALL_DISP(init_disp_bk)
           ld hl,text_welcome
           push hl

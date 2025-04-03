@@ -1,15 +1,16 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  OvL!
+; v0.ac  6 Mar 2025
 dev_checks = 1
 dev_checks_display = 0  ; 0: let display fails, easier to see problem
 export = 0              ; 0: to be imported. 1: make lib (wip)
 need_room = 1
 todo  = 1
 hack  = 1
+        ; Disable /test_all_fields_refreshed/ for now
+enable = 0
 
 ; ==== Shortcuts ========================
  ; - invariant
- ; - hist
- ; - TODO
  ; - memmap
  ; - widgets: define built-in widgets
    ; - main_state: variables current focus 
@@ -29,125 +30,6 @@ hack  = 1
 
       IMPORT "field.o"
       IMPORT "conv.o"
-
-hist
-; --- 2025 ----    
- ; --- Ayane 0ab ----
-; Mar
-   ;  3 force_refresh_custom: save state_sp 
-                            ; (rather than clients doing it)
-; Feb
-   ; 26 Fix force_refresh_custom for multiline refresh
-; --- 2024 ----    
- ; --- Ayane 0aa ----
-; Dec
-   ;28 export/import
-   ;21 field_editing: call /auto_validate/ when buffer is full.
- ; --- Ayane 0z ----
-   ;12 force_refresh: Fix test_set_multiline_refresh and co
-; Nov                                       
-   ;11 force_refresh: re-enter  
-   ; 7 gedeihen_enter: widget stack must be already setup, 
-           ; to be able to re-enter same state 
-   ; 3 Use state_stack_disp for display, so we don't overwrite state
-   ; 1: Fix gednrt.test_focus_multiline_struct_refresh      
-      ; force_refresh: save cursor location 
-; Oct       
- ; --- Ayane 0y ----
-   ;21: Add checks
-   ;20: [cancelled] Add /set_root_state/
-      ; Add /force_refresh_custom/
-   ;17: key_hexa_digit: reset field editor to accept new char
-   ;14: Remove double inverse video in disp_optional.
-   ;12: Fix optional when going from enabled to disable via w_multiline
- ; --- Ayane 0v ----
-; Sep
-   ;25: Fix toggle API: any non-zero value should be considered as set
- ; --- Ayane 0p ----
-   ; 7: multiline: erase lines past "last line"
-; Aug         
-   ; 24: Fix all for instrui, but break test_disp_table_of_sprite
-   ; Well, w_optional_readwrite cannot follow /invariant/ 1
-   ; 19: w_hexa_digit_custom: auto-validate
- ; --- Ayane 0o ----
-   ; Rewrite w_optional to respect /invariant/ 1
- ; --- Ayane 0n ----
-   ; Fix w_key_handler (mustn't setup widget in init: /invariant/ 3)
-   ; Add w_optional_readwrite
-; Jul
-   ; 26 /is_readwrite/ Handle dynamic (for w_optional)
-   ; 16 **While editing** Left-justify to solve cursor issue!
-      ; -> no more cursor past field
-              ; (would need erasing, not handy if special separators) 
- ; --- Ayane 0m ----
-; Jul            
-   ; 11: Remove deci_width: we don't handle dynamic width field for now
-   ; 10: set_deci_custom and co: don't clean buffer
-                               ; (see rationale in routine)
-       ; /enter/ does it instead.
-       ; [cosmetic] handler returns event in A instead of E
-       ; disp_toggle_custom: display inverse video
-            ; (note: each 'on_display' routine must call it, since
-                   ; we want to remain able to customize)
-
-    ; 8: Inverse video when focus.
-       ; Disable cursor for now (yagni, also might conflict with 
-       ; seperator). Actually it wasn't handled, just put instead of
-       ; inverse video.
-
-    ; 5: Introduce disp_deci_padded 
-    ; 1: Add w_deci_99_signed
-       ; Design change: add on_enter 
-; Jun          
-    ; 30: h_kstruct: handle k_rgt
-    ; 28: Reprise!
-        ; Remove inRom/export version
-        ; Disable /test_all_fields_refreshed/ for now
-enable = 0
-
-; --- 2023? ---
-     ;25  F: Add and fix /test_all_fields_refreshed/
-              ; -> Well, not really fixed after all? Disabled!
-        ; E: Export/import
-        ; D: NRT: Simplification: only pass 1 address for all nrt data.
-        ; C: Relaxed constraints in CHECK_EXPORT if export.
-        ; B: Clearly separate this 3 phases:
-               ; - gedeihen_init
-               ; - gedeihen_set_hooks 
-               ; - setup_widget
-           ; Don't set_cursor in init: more control for client.
-           ; NRT macros: also use routine, so code can be reused
-           ; rather than copy/pasted, and variables kept private.
-   ; 23   A: GET_* & co macros: use routine rather than inlining,
-                              ; to ease step by step debugging.
-   ; 22   9: gedeihen_iter doesn't call init itself.
-           ; That allows more flexibility.
-       ; v2: Introduce w_key_handler. TODO? Rename event_handler.
-
-; --------------------------
-TODO
-; Todo next:list (1 column table). Or should we do heterogenous table
-           ; instead -> To align header with columns.
-           ; decimal in Z with min/max and two floating part.
-
-; Todo harmonize dyn / custom (or maybe not, to discriminate RO/RW).
-; Todo renam: cur_row -> table_row.  cur -> cursor
-; Todo frame: replace previous input/output when popping out of frame
-            ; Not done for now by laziness, since main use case is
-            ; to setup global io externally.
-            ; Or maybe that's done automaticaly by stack mecanism?
-
-; --------------------------
-; Was: TABATA AO (Renamed since that's the whole UI motor,
-             ; not just table/data editor).
-
-; --------------------------
-
-; TODO? Must reset wv_edit_buffer at each level?
-; TODO? Reuse param for wv_text_pnt / wv_byte_pnt?
-      ; Or add them in state? 
-; TODO? Screen init (e.g. setup cursor at 101) should be done by client?
-      ; Then should state be saved between disp and run?
 
       IF need_room
  ; remove non-custom widgets:
@@ -1351,7 +1233,7 @@ w_text_dyn = 4
       WORD disp_text_custom
       WORD text_width_custom
       WORD return_1
-      WORD break        ; todo
+      WORD noevent
       WORD set_null
       WORD h_null
       WORD wc_text_custom
@@ -2276,7 +2158,10 @@ disp_text
           jp txt_write_string
 
 disp_text_custom
-          xor a         ; No focus on R/O text
+      IF hack
+ ; Actually for selector we want focus
+  ;        xor a         ; No focus on R/O text
+      END
           push af
           CALL_STATE(text_getter)
           jp txt_write_string
@@ -2652,6 +2537,7 @@ get_zero
 
 _deci_byte_to_buffer
 ;note: a bit unnecessary. see not after /invariant/ 2.
+;!! used by instrsel.o
           ld de,wv_tmp_buffer
           push de
           call put_deci_a

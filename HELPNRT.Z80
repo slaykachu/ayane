@@ -1,0 +1,82 @@
+ ; Manual and automated tests
+
+      ORG &4000
+      ENT tests
+; Pre-import, to minic ayane memory map
+      IMPORT ":lib/disp.o"
+
+text_welcome LOAD "txthelp.doc"
+
+      ORG &9200         ; xx00 for confining ints at same MSB
+; Ints must be out of page 0000, since still called when rom connected
+      IMPORT "bandaya.o"
+
+      IMPORT "help.o"
+tests
+          call nrt_init
+
+; Manual tests: ESC exit,
+              ; other key: next test
+.loop
+          call one_line:call exit_or_key
+          call help_sequencer_at_int4:call exit_or_key
+          call help_main_at_int3:call exit_or_key
+          jr .loop
+          ret
+
+one_line
+;Check than clipping
+          ld bc,dummy_string
+          call display_page
+          ret
+
+help_sequencer_at_int4
+          call cls
+          call set_help_at_int4
+          call nrt_mode0_at_top
+          ld a,section_sequencer
+          call display_section
+          ret
+
+help_main_at_int3
+          call cls
+          call set_help_at_int3
+          call nrt_mode0_at_top
+          ld a,section_main
+          call display_section
+          ret
+
+
+; ---- Helpers -------
+
+nrt_init
+          ld hl,text_welcome
+          ld de,text_welcome
+          call conv_protext ; must be done before help_init
+          ld hl,text_welcome
+          call help_init
+          call firm2status ; Bandeau ON from basic 
+          ld a,r1       ; in bandaya
+          call init_disp
+          jp status_on
+
+nrt_mode0_at_top
+;force mode 0 at top of screen, so we can see demarkation
+          ld hl,mode_sequencer
+          ld (hook_top+1),hl
+          ret
+
+exit_or_key
+          call &BB06
+          cp &FC
+          ret nz
+      RESTORE
+
+
+
+
+; ---- Data --------
+
+dummy_string BYTE "yeah",0,-1
+
+

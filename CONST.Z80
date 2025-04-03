@@ -8,6 +8,19 @@
          ;  7: Add instr_hard_type
      ; Jun 20: Deactivate /instr_param#/ (moved in instr signature)
 
+; Unit is 16nops. 
+; Line unit wouldn't allow half-lines (e.g. perfect 50hz),
+; The slowest replay is then 65535 * replay_unit / 312 / 64 = 52 frames
+replay_unit = 16
+; replay_50hz = 20000 / replay_unit  ; unused
+replay_25_04Hz = 624 * 64 / replay_unit
+replay_50_08Hz = 312 * 64 / replay_unit
+replay_100_16Hz = 156 * 64 / replay_unit
+replay_300_48Hz = 52 * 64 / replay_unit
+
+delai_ui_default = 6
+diapason_default = 440-256
+
 MAX_TRACKS = 16         ; used by track, ply, salo
 MAX_TIMER_FXS = 15      ; used by timer only -> no ui check.
 MAX_FX_BY_INSTR = 2

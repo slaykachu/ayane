@@ -1,7 +1,6 @@
 ; ========= Shared buffers and variables ==========
 todo  = 1
-
-  ; 2024 Sep 27. Remove instruments: now in bank
+need_room = 1
 
 savepc = $
 saveobj = $$
@@ -46,9 +45,9 @@ phrases_across_banks = 0 ; 1 when allowing several banks
 phrases_ = &7600        ; end
 ;phrases and phrase_index defined by chung
 
-; ----------------------------------------------
-; ------- c5: Base BK, instr, tables -----------
-; ----------------------------------------------
+;  ---------------------------------------------
+; -- c5: Base BK, instr, tables, persitent var --
+;  ---------------------------------------------
       ORG &4000
 
 ; -- tracks  (aka song map)
@@ -68,8 +67,26 @@ instr_idx_
  !! align issue for subsongs
       END
 subsongs SKIP &0100     ; &100 for chained list with just LSB
+; --- Vars ---        
+      IF need_room
+; Bulk load/save in salo.o
+      END
 current_subsong BYTE 
 nb_subsong BYTE 
+delay_ui BYTE           ; Only impact display
+diapason BYTE           ; 432hz vs 440hz -256 so it fits in bytes
+
+; ! Actually those 2 variables must be populated when switching subsong.
+; ! For now set to default by Track_init_module
+      IF need_room
+; ! Then can be moved in ply.o (YAGNI) 
+; We would save room because we wouldn't need bk connection anymore.
+      END
+replay_period WORD      ; value saved in .aya 
+replay_period_ui BYTE   ; id in drop down list (no free setting for now)
+;replay_period_in_nops WORD  ; in ply.o
+; ----
+
 ;79xx-7f00 : free
 
       SKIP &7F00 - $

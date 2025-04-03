@@ -5,6 +5,7 @@ may_crunch = 1
       IMPORT "plyconf.i"
 
 dev_checks = 0 AND ayane ; deactivate: otherwise TM doesn't fit
+;-> not really true anymore as of 03 Mar 2025 as we added /SUB_TM_CALL/
 
 ; Routine for each type of intruments:
       ; - instr_null
@@ -17,10 +18,10 @@ dev_checks = 0 AND ayane ; deactivate: otherwise TM doesn't fit
       IF ayane
       IMPORT "const.i"  ; instr_head_size
       IMPORT "memmap.i" ; BK_INSTR, instr_idx, psg_regs
-      IMPORT "periods.o"
       IF sfx
       IMPORT "timer.o"  ; for ret_sp
       END
+      IMPORT "periods.o"
       ELSE
 psg_regs = compiled_psg_regs
  ; instr is imported at start of ply.o (to ensure confinement)
@@ -35,61 +36,6 @@ save_org = $
       END
 
 
-; \\\\\ 2024 ///
-; ---- v0u ----
-; Sep
-  ;19 Rewrite /.special_fx/ to use SP (see rational there)
-    ; Handle end of instrument
-; ---- v0t ----
-; Sep             
-  ;   Rewrite instr_default to accomodate hard env and sync buzzer
-       ; - Pass volume in ixh
-       ; - Pass pitch in BC  
-    ; Remove chipnsfx version, not worth maintaining:
-       ; - For speed: No-fap
-       ; - For crunch: No-fap or ad-hoc
-       ; - For UI/crunch: plug "special column" in instr_defaut
-              ; Or use hard-env!
-
-; ---- v0n ----
-; Aug
-  ; 5 WIP Add timing
-; Jun
-; ---- v0l ----
-  ; 22 Add param# in signature
-  ; 11 Put signature before each instr
-     ; Reorder code so all amorces fit in &100 
-            ; Plus, compress better:
-               ; + similar code together
-               ; - JPs instead or similar JRs
-                   ; -> This one can change if we handle noise first
-                      ; and factorise vib/vib_noise (same for arp) 
-; ---- v0k ----
-  ;  3 Fix LSB static checks (handle when instr no assembled)
-     ; enable /instr_chip_down_arp/
-; May
-  ; 20 Add variants:
-           ; - instr_chip_down_arp
-           ; - instr_chip_down_vib_noise
-     ; Make instr_state_pnt a variable for better crunching
-; ---- v0h ----
-  ; 14 Fix 'table link' in compiled version
-     ; Optimise instr_chip_down_vib (no noise: no need to touch r7)
-; Apr            
-  ; 29 Add instr_chip_down_arp_noise
-; ---- v0g ----
-  ; 22 Don't handle volume if use_volume = 0
-  ; 14 Add instr_null
-  ; 11 Filter loop bit flag
-     ; instr_chip_down_vib: fix reg 7 handling
-
-; Mar 
-  ;31: instr_chip_down_vib: proper init
-  ; 30: Add amorce code
-      ; Use INC HL as rows aren't confined anymore.
-        ; We might revisit that if we really need speed.
-      ; Optimise instr_default!
-; Madram 25 Feb 2024. v0
 
 loop_bit = 7
 fail  = &BE00
@@ -138,6 +84,13 @@ r14   = psg_regs+14     ; Reset by ply before iteration
           SUB_TM(tm+2)  ; +2 for "ex af,af"
           ex af,af
       END
+      ENDM
+
+      MACRO SUB_TM_CALL n
+; Update and call HL' when CPT < 0 
+          SUB_TM(n+9)
+; Cannot use call m,jp_hl', as it must take the same time in both case
+          call jp_m_hl'
       ENDM
 
       MACRO RET_ROUT tm
@@ -207,7 +160,7 @@ instr_end
    ; - Time efficient for buzzs
    ; - Needed for future: track mix
 ; Routine placed here to be reachable by jr
-tm1_  = 8               ; for .exec to here
+tm1_  = 8               ; from .exec to jr instr_end (taken)
           pop hl        ; consume regs+vol
           pop hl        ; consume regs+mask            
           RET_ROUT(tm1_+6)
@@ -221,7 +174,6 @@ instr_default
 ; First iteration
       IF ayane
  ; replace jp for next iterations
-          SUB_TM(26)    ; until .exec
           EX_AF'()
           ld hl,.exec:push hl:pop hl
  ; get row pnt from header.
@@ -234,10 +186,11 @@ instr_default
           cp tables_/&0100:call nc,fail
 ; no loop in header.
           bit loop_bit,h:call nz,fail
-          SUB_TM(18)
+          SUB_TM''(18)
       END
-          push hl
           EX_AF'()
+          SUB_TM_CALL(26) ; from instr_default until .exec
+          push hl
 ;enchaine with .exec
 .exec
       ELSE
@@ -255,24 +208,29 @@ instr_default
       ;  A = TM
           pop hl        ; Instr table
           inc h:dec h:jr z,instr_end
-tm1   = tm1_-1 + 65     ; Until jr ok_noise (taken)
-          EX_AF'()
+tm1   = tm1_-1 + 66     ; Until jr ok_noise (taken)
 ; Follow next link.
 ; Handling that first allows to skip optional field at the end for free
                           ; and use L or H to read last 
-          ld a,e        ; free E and used below
-          ld ixl,e      ; BASE note (for hard env and fx)
+; BASE note (for hard env and fx)
+; free E and used below
+          ld ixl,e
           ld e,(hl):inc hl
           ld d,(hl):inc hl
       IF ayane
           res loop_bit,d
       END
+; Must be done before push
+; Might trigger timer early,
+; it's still better than delaying it for too long
+          SUB_TM_CALL(tm1)
           push de       ; for next time
           pop de        ; skip
-
 ; Start by arpeggio and pitch, since we must do that anyway
 ; Except if absolute value, but:
-   ; - We don't handle those anyway :)
+   ; - We don't handle those anyway :)        
+          EX_AF'()
+          ld a,ixl
           add (hl):inc hl
 ; Compute period now:
    ; - optimised since we read pitch anyway
@@ -293,7 +251,7 @@ tm1   = tm1_-1 + 65     ; Until jr ok_noise (taken)
           ld a,(de):adc (hl):inc hl:ld b,a
       END
 
-; r7 
+; r7
           pop de        ; Mask channel / noise for current channel
 
       IF use_flag_channel
@@ -308,7 +266,7 @@ tm1   = tm1_-1 + 65     ; Until jr ok_noise (taken)
           bit 3,(hl):inc hl ; any bit 3,4,5 would work
           jr nz,.ok_noise
 
-;Noise register: don't set if 0 (piloted from elsewhere)
+;---- Noise register: don't set if 0 (piloted from elsewhere)
           dec e         ; reg 6
           ld a,(de)     ; current value
           ld e,(hl)
@@ -388,10 +346,16 @@ tm2'  = 10
           EX_AF'()
           SUB_TM(tm2')
 .ok_vol
-tm3   = 25              ; until RET_ROUT'
+tm3   = 16              ; until SUB_CALL_TM
+          pop hl        ; last word popped
           EX_AF'()
-          pop hl
           ld (hl),a
+          ld (ret_sp),sp
+          ld sp,trash+2 ; to use SUB_TM_CALL
+          EX_AF'()
+          SUB_TM_CALL(tm2+tm3)
+tm3'  = 14              ; until RET_ROUT'
+          EX_AF'()
  ; period register. Vol 8->0  9->2  10->4
  ; !!! Full 16 bits precisions. Converted on the fly,
      ; Since it's cumbersome to do it here (must preserve hl,de,bc)
@@ -409,10 +373,9 @@ tm3   = 25              ; until RET_ROUT'
          ; pass mask and volume before hand in one go)
      ; - Constraints might change (e.g. custom table for some fields)
      ; - YAGNI
-          ld (ret_sp),sp
           ex de,hl
           ld sp,hl
-          RET_ROUT'(tm1+tm2+tm3) ; fx_end or sync_buzzer
+          RET_ROUT'(tm3') ; fx_end or sync_buzzer
 
 
       ELSE
@@ -522,6 +485,7 @@ instr_param WORD
       END
 
 instr_state_pnt WORD instr_state
+trash WORD 
 
 hi
       IF ayane
@@ -531,3 +495,4 @@ instr_state
       ELSE
 instr_state = compiled_instr_buf
       END
+
