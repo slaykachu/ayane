@@ -4,6 +4,7 @@ todo  = 1
 makeroom = 1
 
 ; 2025
+  ; Mar 29: Add song_get_phrases#
   ; Mar 18: Remove tmp dbg
 
 ; Table Of Content (to be completed). 
@@ -13,9 +14,11 @@ makeroom = 1
 ; --- Song handling ---
 ; This are the highest level routines
 ; -------------------------------------------------------------
+  ; song_reset
   ; song_select_new_phrase
   ; song_select_phrase
   ; song_get_current_phrase
+  ; song_get_phrases#
 
 ; -------------------------------------------------------------
 ; --- Phrase handling ---
@@ -161,11 +164,8 @@ unexpected = &BE00
 programming_error = &BE00
 not_supported = &BE00
 to_be_implemented = &BE00
-;implement/handle me
-          ret
 ;==============================================
 
-;enchaine
 song_reset
 ;---------
           call connect_bk_phrase
@@ -193,14 +193,19 @@ song_select_new_phrase
                    ; - useful for user (use ids as he likes)
 
           call _prelude
+
 ;Must set header value **before** new_phrase_chunk which 'install' them
 ;We store idx, so that track can directly point to phrase (using pnt)
 ;(faster for player), but we still know the phrase# for UI purpose.
           ld (phrase_idx),a
+
           ld (va_current_phrase),a
           inc a:call z,err_toomuchphrases
           ld (phrase_color),a
 
+      IF todo
+ ; must call postlude in case of error? 
+      END
           call new_phrase_chunk:ret nc ; Exit if memory full
       IF dev_checks
           ld a,l:cp BK_PHRASE:call nz,mess
@@ -260,6 +265,25 @@ song_select_phrase
           call Get_phrase
           jr _ssp       ; unselect row
 
+song_get_phrases#
+;----------------
+;Out: A= number of phrases
+      IF todo
+;!!! BUG: if 256 phrases, returns 0
+      END
+          call _prelude
+
+;Scan all phrases, and count non-empty
+          ld bc,0       ;c = cnt
+.lp
+          ld a,b
+          call Get_phrase
+          jr z,.next
+          inc c
+.next
+          djnz .lp
+          ld a,c
+          jp _postlude
 
 err_toomuchphrases
       BRK
@@ -1046,6 +1070,7 @@ Get_phrase
     ; Otherwise, Z, HL thrased. 
             ; Needed by compile.o to iterate among existing phrases.
     ; Reconnect caller's bank (handy for track.o to plug pnt).
+    ; A trashed
           push bc
       IF makeroom
 ; Move bank saving in _prelude and restore in _postlude
@@ -1075,7 +1100,8 @@ Get_phrase
           ld l,chunk_start ; phrase header
           call connect_c
           pop bc
-;We can ask for non-existing phrase (needed for compile.o)
+;We can ask for non-existing phrase
+;(needed for compile.o and song_get_phrases#)
 ;In that case, set Z flag.
           ld a,h:or a   ; Z/NZ
           ret

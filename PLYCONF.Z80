@@ -4,7 +4,9 @@ todo  = 1
 is_minimala = 1         ; hack
 
 ; 2025
-  ; Mar
+  ; Mar               
+    ; 29 Add /is_pattern_indexed/ 
+    ; 24 Add /pattern_size/ for kima  (N/A on kimb)
     ; 18 Settings for kim9.chp
        ; + default_use_arp
 
@@ -13,9 +15,10 @@ is_minimala = 1         ; hack
 compiled_instr_buf = &4000
 compiled_stack = &4100
 compiled_player = &4220 ; instr.o + ply.o
-compiled_periods = &4400
-compiled_psg_regs = &4400 ; share zone
-compiled_data = &4500   ; tracklist, instr, phrase, tracks
+compiled_periods = [compiled_player AND &FF00] + &0200
+compiled_psg_regs = compiled_periods ; share zone
+; tracklist, instr, phrase, tracks
+compiled_data = compiled_periods + &0100
 compiled_instr = compiled_data
 
       IF ayane
@@ -25,6 +28,7 @@ sfx   = 0
 ; How many simultaneous fx are handled
 nb_fx = 1               ; warning: 0 won't work for chung
 
+pattern_size = 32*3     ; 0 for dynamic
 
 ; Can change "master" volume (by track basic)
 use_track_volume = 0
@@ -49,6 +53,7 @@ use_note_flag = 1       ; Flag not need when always note in row
 has_phrase_loop = 1     ; 0: no loop, phrase changed on time 
 
 is_instr_indexed = 1
+is_compiled_phrase_indexed = 1
 
 use_event_type = 1
 
@@ -69,6 +74,8 @@ use_instr_chip_down_vib_noise = 0
       ELSE
 ; Special fx (interleave player with routine in IY)
 sfx   = 0
+
+pattern_size = 32*3     ; 0 for dynamic
 
 ; How many simultaneous fx are handled
 nb_fx = 0               ; warning: 0 won't work for chung
@@ -97,7 +104,8 @@ use_instr_flag = 0      ; Flag not need when always instr in row
 use_note_flag = 0       ; Flag not need when always note in row
 has_phrase_loop = 0     ; 0: no loop, phrase changed on time 
 
-is_instr_indexed = 0
+is_instr_indexed = 0    ; 0: direct LSB in first &100 chunk
+is_compiled_phrase_indexed = 1
 
 use_event_type = 0
 

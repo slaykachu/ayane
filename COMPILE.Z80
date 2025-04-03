@@ -1,11 +1,15 @@
 dev_checks = 1
-hack_minimala = 1       ; actually hack kim!
+hack_chp = 1
+hack_minimala = 0
+hack_kim = 1
 todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
 ; 2025  
 ; ----- v0l2 ------
  ; Mar
+  ; 29: Handle is_pattern_indexed
+  ; 24: Handle constant /pattern_size/ 
   ; 21 Encode song loop
   ; 20 Fix empty row handling: was replaced by instr_null 
            ; (since unconditional reading of instr)
@@ -76,8 +80,9 @@ todo  = 1
 compiled_instr_null = compiled_player + 0
       IF hack_minimala
 ;compiled_instr_default = compiled_player + 0 ; Not used for minimal
+      END
+      IF hack_kim
 compiled_instr_default = compiled_player + &04 ; used for kim
-      ELSE
       END
       IF 0
 ;minimala
@@ -450,8 +455,8 @@ instr_next
           inc l
           jp nz,instr_lp
 
-      IF hack_minimala
-; For minimala: assume instr fit in &100
+      IF is_instr_indexed
+; For chp: assume instr fit in &100
           ld a,d:cp dest/&0100:call nz,mess
       END
 
@@ -459,6 +464,19 @@ phrases
 ;......
 ; Same principle: iter all phrases, skip non-existing ones
 ; We iterate on all possible instruments, as they are not contiguous 
+
+      IF is_compiled_phrase_indexed
+;reserve index (must fit in first &100 chunk)
+          ld (phrase_idx_pnt0),de
+          ld (phrase_idx_pnt),de
+          call song_get_phrases#
+          add a         ; one word per phrase
+          add e:jr z,.ok ; just fit
+          call c,mess   ; doesn't fit
+.ok
+          ld e,a
+      END
+
           ld hl,phrases_map ; L = phrase #
 phrases_lp
       IF dev_checks
@@ -467,11 +485,13 @@ phrases_lp
           cp &80:call nc,mess
       END
           push hl
-; Store instrument pnt in compiled file
-; (note: done even for empty instrument, to free HL)
+      IF is_compiled_phrase_indexed
+          ld a,(phrase_idx_pnt)
+          ld (hl),a
+      ELSE
           ld (hl),e:inc h
           ld (hl),d
-
+      END
           ld a,l
       IF hack_minimala
 ; skip empty residual pattern
@@ -485,6 +505,14 @@ phrases_lp
       ;    cp &1C:call nc,&BE00
           call song_select_phrase
           jp z,phrases_next
+
+      IF is_compiled_phrase_indexed
+          call connect_bk_compile
+          ld hl,(phrase_idx_pnt)
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+          ld (phrase_idx_pnt),hl
+      END
 
           call poke_init
           call connect_phrase_begin
@@ -514,7 +542,7 @@ phrases_lp
 .okrow
           inc hl
           ld a,c
-      IF hack_minimala
+      IF hack_chp
 ; Replace duration 1 + &ff by 0. More precisily:
 ; &01, note  -> 0, note
 ; &ff, empty -> skip it
@@ -552,7 +580,7 @@ phrases_lp
           ld a,(_use_instr_flag):or a:jr z,.no_instr_flag
           call to_be_implemented
 .no_instr_flag
-      IF hack_minimala
+      IF hack_chp
 ; Flag always set. Expect for:
   ; - empty intermediate row (skipped above for minimala)
   ; - empty phrase (actually contains one empty row)
@@ -577,12 +605,10 @@ no_instr_escape_code = compiled_instr_null ; handled by ply
           push hl
           ld l,(hl)
           ld h,instr_map / &0100
-      IF hack_minimala
-      IF dev_checks
+      IF hack_chp
 ; All instr in first &100, so only need for LSB
           inc h:ld a,(hl):dec h
           cp dest / &0100:call nz,mess
-      END
           ld a,(hl)
           call poke_a
       ELSE
@@ -644,13 +670,21 @@ track_lp
 .hooklp
           push hl
           idsz ** inc hl
+      IF pattern_size
+;Constant size. We don't encode it, but check it matches
+          ld a,pattern_size AND &FF:cp (hl):call nz,fail
+          inc hl
+          ld a,pattern_size / &0100:cp (hl):call nz,fail
+          inc hl
+      ELSE
           2 ** call poke_ldi ; duration
+      END
 ; Now follow list of event 
           call Next_node
 ; Might be empty (intermediate hook)
 ; For now, not suported
           call z,to_be_implemented
-      IF hack_minimala
+      IF hack_chp
 ; For now, rely on the fact there is always transpose following by
 ; phrase (aka "static")
   ; -> No need for indirection (would take space)
@@ -673,13 +707,13 @@ track_lp
           call connect_bk_phrase
           ld l,chunk_start+fc_index
           ld l,(hl)
-; We poke full address rather than id:
-   ; - no indirection
-   ; - *might* compress as well (ref needed!)
           ld h,phrases_map/&0100
           ld a,(hl):call poke_a
+      IF 1-is_compiled_phrase_indexed
+; We poke full address rather than id:
           inc h
           ld a,(hl):call poke_a
+      END
       ELSE
 .evtlp
 ;tmp dbg
@@ -705,12 +739,23 @@ track_lp
           push af
           call connect_bk_compile
           xor a
+      IF pattern_size
+          ld (de),a:inc de ;no transpose
+      ELSE
       3 ** [ld (de),a:inc de] ; no duration, no transpose
+      END
+      IF is_compiled_phrase_indexed
+; Escape code 00, which cannot be a valid phrase idx
+          xor a:ld (de),a:inc de
+          ldi
+          ldi
+      ELSE
 ; Link with bit 15 set: track reset instead of phrase link
           ldi
           ld a,(hl):inc hl
           set 7,a
           ld (de),a:inc de
+      END
           inc hl        ; skip output in songlist
           pop af
           inc a
@@ -832,6 +877,8 @@ phrases_map FILL 512,0
 var
 loop_pnt WORD 
 last_row WORD 
+phrase_idx_pnt0 WORD 
+phrase_idx_pnt WORD 
 
 ; ----- Flags for compilation -----
       IF todo

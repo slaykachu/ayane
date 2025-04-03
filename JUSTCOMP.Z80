@@ -1,0 +1,59 @@
+; Pilotage compilation 
+
+; 2025 Mar 27; Bbased sur compnrt
+
+      ORG &1000
+      ENT do_compile
+
+      IMPORT "memmap.i"
+      IMPORT "plyconf.i" ; just for check below
+      IF 1-ayane
+ !! Compile: in-tool routine, so ayane must be set.
+      END
+
+      IMPORT "init.o"
+      IMPORT "track.o"  ; for monitor
+      IMPORT "memcpc.o"
+      IMPORT "testlib.o"
+; compile and chipn at end of source (to leave room for basic)
+
+;psg_regs = &4400
+;periods = psg_regs      ; sharing same chunk
+data  = compiled_data
+
+do_compile
+          ld a,&F7:ld (0),a
+          call full_init
+; We use conv_chipn routine since SAVE/LOAD of .aya is not ready.
+          ld hl,chpfile
+          call conv_chipn
+          call compile
+          ld (data_start),de
+          ld (data_size),hl
+          ret
+
+; ------------------------------
+
+data_start WORD 
+data_size WORD 
+
+; ------------------------------
+hi
+      SKIP &4000-$      ; poor man's limit
+
+      BANK BK_IO
+      ORG &4000
+chpfile
+  ;    LOAD "4k08.chq"   ; with header
+ ;     LOAD "ums:40y/kima.chp"
+      LOAD "ums:40y/kimc.chp"
+;      LOAD "ums:40y/kim0.chp" ; 2 patterns for test
+
+      SKIP &8000 - $    ; limit
+
+      ORG freeroom
+      IMPORT "compile.o"
+      IMPORT "chipn.o"
+      SKIP ramlimit' - $
+
+

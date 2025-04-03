@@ -107,7 +107,8 @@ psg_regs SKIP &0100     ;  Room for pseudo registers and ???
 workzone SKIP &0300     ; Sharable. Used by st128
 buf_chung SKIP &0200
 buf_chung_
-ramlimit' = &A000
+freeroom
+ramlimit' = &A200
       IF todo
 ; Replace ramlimit by himem
 ; -> More ram  if himem > &a000 (typical)

@@ -2,6 +2,7 @@ todo  = 1
 may_optim = 1
 ; <<<<<< bouts de player, player debout. Not your ayerage player! >>>>>>
 
+
 ; Execution outline:
  ; ---- /track_loop/
    ; Check RDVs
@@ -93,6 +94,7 @@ hist
 ; \/\/\/ 2025 \/\/\/\/\
 ; ----- Ayane v0l2 -----
   ; Mar
+; Mar 24: Handle constant /pattern_size/ 
    ;21 Handle loop for compiled version  
       IF todo
          ; (in-tool use link, check if it's done properly)
@@ -236,6 +238,30 @@ r13   = psg_regs+13
 
 
       MACRO CHANGE_PHRASE
+      IF is_compiled_phrase_indexed AND [1-ayane]
+      IF 0
+dd        ld a,1
+          dec a
+          call z,&BE00
+          ld (dd+1),a
+      END
+          ld a,(de):inc de
+;Special case: since no link for track hooks, we use
+;escape code 00 to flag track loop, as it cannot a valid LSB for phrase
+          or a
+          jr nz,.okphrase
+          ld a,(de):inc de:ld l,a
+          ld a,(de):ld h,a
+          jr track_reset
+.okphrase
+; We expect index in first &100 segment
+; This is enforce
+          ld l,a
+          ld h,compiled_data/&0100
+          ld a,(hl):inc l
+          ld h,(hl):ld l,a
+      ELSE
+
           ld a,(de):inc de:ld l,a
           ld a,(de)
       IF ayane
@@ -247,11 +273,11 @@ r13   = psg_regs+13
           rlca:srl a    ; Bit 7 in carry and cleared in A
           ld h,a
           jr c,track_reset
-
+      END
+      END
 ; update track pnt for next time
           push de
           pop de
-      END
           pop de        ; skip row RDV
           pop de        ; skip current row pnt (since new one)
       ENDM
@@ -513,9 +539,17 @@ track_reset
 ; We'll update pointer once we've processed events (see CHANGE_PHRASE)
 ; The pushed DE is dummy value so we can update RDV
           push de
-; +duration for next RDV
+; +duration for next RDV 
+;!!! oh bug: numeric AND between &60 & 1
+;      IF pattern_size AND [1-ayane] ; ayane: always dynamic
+      IF [1-ayane]      ; ayane: always dynamic
+;Constant: must read
+          ld d,b
+          ld a,c:add pattern_size:ld e,a:jr nc,$+3:inc d
+      ELSE
           ld a,(hl):inc hl:add c:ld e,a
           ld a,(hl):inc hl:adc b:ld d,a
+      END
           push de
           pop de        ; skip rdv
           pop de        ; skip pnt
