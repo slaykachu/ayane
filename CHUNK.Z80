@@ -17,7 +17,10 @@ need_room = 1
 ; Disable 'free' code (must be re-viewed)
 enable_free = 0
 
-
+; \/\/\/ 2025 \/\/\/\/\/\/\/\/\/\
+; ------ v0l2 -----------
+; Mar
+    ; 21 Next_node: must return Z if loop node
 ; \/\/\/ 2024 \/\/\/\/\/\/\/\/\/\
 ; ------ v0g ------------             
 ; Apr
@@ -494,6 +497,12 @@ Next_node
           push de
           ld e,(hl):inc hl
           ld d,(hl):dec hl
+          bit 7,d
+          jr z,.ok
+;loop: act as last node
+          cp a          ; Z
+          jr .exit
+.ok
 ; !! Assume node pnt never has MSB =0
           inc d:dec d:jr z,.exit ; test D=0 without trashing A
           ex de,hl

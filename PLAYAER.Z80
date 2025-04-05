@@ -1,0 +1,7 @@
+; Jump bloc for out/plykimc4.bin  HAVE FUN!
+aya_start = &411A
+aya_init = &428A ; A=3 HL=&4400
+aya_play = &41E5
+aya_psg = &4267
+
+aya_psg_regs = &4300

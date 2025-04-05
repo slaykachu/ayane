@@ -27,7 +27,54 @@ todo1                   ; !!! remove used_tracks
 ; Track creation -----
     ; Song_add_map
     ; Song_add_track
+; Track creation -----
+; --------------------
     ; Song_select_new_track
+    ; Song_add_map
+
+; Track selection and queries --------
+; ------------------------------------
+    ; Song_select_track             
+    ; track_get_event_hook_at
+    ; track_get_phrase_at
+
+; Track update -------
+; --------------------
+    ; Set_phrase_at_t
+    ; Set_transpose_at_t
+    ; Set_track_loop
+
+; Clip ---------------
+; --------------------
+    ; Clip_set_duration
+
+
+; Subsongs -----------
+; --------------------
+    ; New_subsong
+    ;  ;; Subsong_add ?? Replaced by New_subsong?
+    ; Song_select_subsong
+    ; Song_get_current_subsong
+    ;  ;; Song_add_track ?? Replaced by Subsong_add_track?
+    ; Subsong_add_track
+    ; Song_get_first_track
+    ; Song_get_next_track
+
+; Helpers ------------
+; --------------------
+    ; Get_tracks
+    ; get_current_track_header
+    ; get_track_header
+    ; track_get_hook_at
+    ; track_get_last_hook
+
+; Aum helpers --------
+; --------------------
+    ; ext_insert_hook_node_after
+    ; ext_next_node
+    ; ext_connect_head
+    ; set_hook_at
+    ; get_hook_at (!use track_get_hook_at)
 
 ; Track selection and queries --------
     ; Song_select_track             
@@ -67,6 +114,160 @@ reg_size = 4
 reg_size = 3
       END
 
+;2025
+; --- For v0l2 ---- 
+  ; Mar      
+   ; 21 + Clip_set_duration
+      ; + Set_track_loop
+      ; Song_add_map: use those
+   ; 20 Remove temporary dbg
+;2024
+; --- For v0l ---- 
+  ; Jun        
+   ; 28 fix get_event_hook_at: again mistake in t0 <= t < t1 test
+      ; eval: lift flags back to z80
+   ; 19 Subsong_add: take A = id (for consistency)    
+   ; 18 Init_track_module: don't create tracks. Instead: /New_module/
+      ; Song_select_new_track: don't add in subsong
+         ; (because salo loads all track before knowing how to dispatch)
+      ; Add: Song_add_track
+   ; 17 Add: Song_get_first_track
+           ; Song_get_next_track
+      ; For serialisation and future subsong handling.
+      ; Init_track_module/Song_add_map: start track numbering at 1
+           ; instead of 0 (to match usual channel numbering)
+
+   ; 14 Song_select_new_track: Pass ID. - Consistent with phrases etc
+                                      ; - Ease loading (salo.o)
+                             ; Pass mix mode (future proof)
+      ; Add track_get_event_hook_at
+      ; Set_phrase_at_t/Set_transpose_at_t: - call be call in any order
+                                          ; - will replace previous val
+   ; 13 Reserve slot for "mix mode": tf_mix
+; --- For v0h ----
+  ; Apr  
+   ; 24 Set_phrase_at_t: add check (Get_phrase must return NZ)
+      ; Song_add_map: idem
+; --- For v0g ----
+   ; 10 Fix dest_deref16: wasn't adding operand like ind does.
+   ; 09 Put missing signatures for ext_* routines
+      ; prepend_event: replace AUM code by good old z80! 
+      ; Song_add_map.prep was initializing the wrong variable!
+               ; (time instead of timestamp)
+         ; Morale: use local variable instead?
+   ; 08 Introduce eval_init (for tracknrt)
+      ; Finish s/regs/aum_regs
+          ; NOTE: why is "regs" even visible from here?
+      ; Fix another typo
+      ; Song_select_new_track: don't report flags:
+              ; - for now it cannot fail 
+              ; - if at some point we allocate something, we'll use
+                ; assertion mechanisme.
+  ; Mar 
+   ; 31 Add CALL_EXT01()
+   ; 25 Add Song_add_map
+   ; 14 Dismiss track_append_current_phrase (make no more sense with
+             ; RDV based paradigm)
+      ; Introduce Set_phrase_at_t
+      ; Deactive ui (first we must validate new APIs for convertion)
+            ; And, faster to assemble!
+; --- For v0e ----
+   ; 11 Design change: Duration in event node, not in phrase node
+                 ; - new phrase can happen before end of phrase
+                 ; - phrase is auto-looping
+                 ; - !!! actually still useful for drawing track
+                       ; (for optimisation, otherwise we would have to
+                         ;compute duration for each repetition)
+      ; Discard track_get_event_at (doesn't fit new structre very well)
+      ; introduce get_event_hook_at
+                ; set_event_hook_at
+      ; aum: introduce lit20 operand
+   ; 10 Track can have multiple events at given timestamp
+         ; Adapt structure to reflect that
+         ; ONHOLD: Introduce track_get_phrase_at
+                 ; Priority is player and convertion
+  ; Feb            
+   ; 29 Init_track: create 3 tracks with channel A, B, C
+; --- For v0c ----
+   ; 28 shortcut.o, memcpc.o: use local ones
+
+; --- For v0A ----
+;2023
+ ; Dec
+   ; 22 Arrange order of imports to have main sources first
+   ; 21. Rollback previous: multi mode done by ayane,
+               ; so we don't add bandaya dependency        
+   ; 16. Set up multi-mode (under int)
+
+; --- For v09 ----  
+  ; Dec 3. lib/shortcut.o : use the one in ums: for consistency
+
+; --- For v08 ----  
+  ; May 19. Only scroll when reaching screen boundaries (no sub window)
+              ; -> less refresh overfall
+              ; -> simpler for now
+       ; Replace goto_pos by go_left/go_right
+       ; skip: add missing opcode and modifiers, fix skip_fun_com
+
+; --- For v07 ----  
+
+; v9: AUM: Change encoding to allow more modifiers
+        ; - introduce /max/
+        ; - now only 16 registers allowed: more than enough.
+    ; Introduce ui_sequencer (cursor handling for navigation)
+
+; --- For v06 ----
+
+; v8: Introduce track_append_current_phrase (nrt helper)
+    ; track_draw: must follow indirection for actual clip stucture.
+    ; Use memcpc.o (for check_hl_in_bank)
+
+; --- For v05 ----
+
+; v7: track_get_clip_at: Also return starting time
+    ;   (will be useful for navigation) 
+
+; --- For v04 ----
+
+; v6: Reverse part of v5: pointers **MUST** be little endian
+          ; to allow indexing (ind + lit n)
+      ; -> song_select_new_track: store list id little endian
+         ; (liszt routine will have proper CDE id no matter what)
+    ; binary_common: properly set Z flag.
+    ; fun_com: keep aum_af as is.
+
+; v5: --- WIP --- 
+    ;  Extract test in track.nrt
+      ; -> Avoid double ENT issue
+      ; -> Less space and faster to assemble.
+    ; Fix /track_append_clip/
+    ; Set /current_track/ (was readonly!)
+    ; [harmonisation] Set BK, MSB, LSB in that order (expected by liszt)
+    ; Remove cur_bk, set/get_bk: handled by chunk.o via liszt
+    ; call_ext_com: read 24bits regs in c,d,e to match liszt expectation
+
+; v4: API for st128 /track_append_clip/...
+    ; track_draw: Divide time by 64 to show outline.
+
+; v3: Boulet! It's not track that has color, but each clip
+
+; v2: Implement /draw_track/
+    ; + /min/ modifier
+    ; + /call_ext_to_words/
+    ; eval_operand_and_store: must return
+
+; v1: Implement /track_get_event_at/ -> Yeah.
+    ; Restrict AUM registers to 24 bits (see /reg32/)
+       ; - That fits our needs (time, epnt - extended pointeurs)
+       ; - More wouldn't help
+    ; We still align every 4 bytes though, for debugging purpose
+; v0: 4 tests aum ok.
+
+;Note: Using liszt can be error-prone (stateful iteration prevents
+     ; some concurrent use if not careful). Yet we try to use as 
+     ; much orgams code as possible:
+         ; - Exercise the code intensively
+         ; - Not reinventing the wheel
 
 scr_set_border = &BC38
 
@@ -459,12 +660,13 @@ eval
 ; Main entry point.
 ;IN: hl = bytecode
 ;OUT: ahl = (out0) for convenience.
-    ; ARGL!!! why not CDE like the others?
+    ; !!!ARGL!!! why not CDE like the others?
     ; How costly it would be to uniformize?
       IF todo
 ; Lift flags as well?
       END
 
+          push de
 ; Init frame 0
           call eval_init
           call eval_loop
@@ -473,6 +675,7 @@ eval
 ; pass back ahl = out0
           ld hl,(aum_regs + out0*4)
           ld a,(aum_regs + out0*4 + 2)
+          pop de
           ret
 
 eval_init
@@ -1705,7 +1908,7 @@ aum_prepend_event
 tmp   = r0
 void  = r1
 pnt0_link = r2
-          FUN2(set_event_hook_at,track,t)
+          FUN2(set_hook_at,track,t)
           LD3(pnt0_link,out0 + add,lit + idsz + evt0_link)
 ; tmp = hook.evt0_link  (copy reg_size = 3 bytes, nevermind)
           LD3(tmp,pnt0_link + ind,lit + 0)
@@ -1725,16 +1928,16 @@ pnt0_link = r2
       END
 
           SIGN(2,3,FLAG_Z)
-set_event_hook_at
-;----------------             
-; Add event_hook if not already present.
+set_hook_at
+;----------             
+; Add hook if not already present.
 ; in0: track   (pnt in tracks)
 ; in1: t: target time    
 ; out0: existing or new hook
 
 ; Get hook at t0 <= t 
 dur   = r0
-          FUN2(get_event_hook_at,track,t)
+          FUN2(get_hook_at,track,t)
 ;t0= start of current hook (or 0 if none)
           LD3(dur,t + sub,t0)
           RET_Z()       ; Nothing to do if already event here
@@ -1744,9 +1947,9 @@ dur   = r0
           JP_Z(.ok)
 ;Recursive call.
 ;Note: not worth if to make a special macro for additional operands
-          FUN2(set_event_hook_at,track,t0 + add):BYTE lit20:WORD &FFFF
+          FUN2(set_hook_at,track,t0 + add):BYTE lit20:WORD &FFFF
 ;retry (quadratic behaviour, nevermind)
-          JP(set_event_hook_at)
+          JP(set_hook_at)
 
 .ok
 ; hook.dur = t-t0
@@ -1757,17 +1960,17 @@ dur   = r0
           RET0()
 
           SIGN(2,3,FLAG_Z)
-get_event_hook_at
-;----------------
-; Given t, return NZ, event spanning from t0..t1 such than t0 <= t < t1
+get_hook_at
+;----------
+; Given t, return NZ, hook spanning from t0..t1 such than t0 <= t < t1
 ; (or t0 <= t for last clip)
 ; Note: necessarily such a clip 
 
 ; in0: track   (pnt in tracks)
 ; in1: t: target time    
 ; out0: evt0 node
-; out1: t0 (start of event)  
-; out2: t1 (start of following event)  
+; out1: t0 (time start of hook)  
+; out2: t1 (time start of following hook)  
 track = in0
 t     = in1
 tgcaclip = out0
@@ -1886,7 +2089,7 @@ Song_select_new_track
           cp MAX_TRACKS:call nc,mess
           ld (current_track),a
 
-          call get_track_pnt
+          call get_track_header
 ; --- Init list: dummy hook at t=0    
           ld a,idsz + evt0_size
           call New_node_x
@@ -1986,9 +2189,9 @@ set_event
           call connect_bk_track
           push de:push af
           call setup_track_t
-          ld hl,set_event_hook_at
+          ld hl,set_hook_at
           call eval
- ; here hl= hook structure
+ ; here hl= start hook structure
           idsz + evt0_link ** inc hl
           pop af:push af
           call goto_event
@@ -2042,7 +2245,7 @@ prepend_event
           call eval
 !! cleanup. It's rotting
       ELSE
-          ld hl,set_event_hook_at
+          ld hl,set_hook_at
           call eval
  ; here hl= hook structure
           idsz + evt0_link ** inc hl
@@ -2112,6 +2315,49 @@ track_get_event_hook_at
           ld hl,get_event_hook_at
           jp eval
 
+Clip_set_duration
+;----------------                
+; Needed by chipn
+; Usually a clip duration is set when adding a new 
+; That doesn't work for last clip
+; In; hl = pnt to clip timestamp
+    ; de = duration (0 for 65536) 
+          call track_get_hook_at
+          idsz ** inc hl
+          ld (hl),e:inc hl
+          ld (hl),d
+          ret
+
+Set_track_loop
+;-------------
+; Set loop 
+;!!! if no hook at expected timestamp (hl), will point to
+   ; first hook before that
+; In; hl = pnt to loop timestamp
+
+          call track_get_hook_at
+          push hl
+          call track_get_last_hook
+          pop de
+          ld (hl),e:inc hl
+          set 7,d
+          ld (hl),d
+          ret
+
+track_get_last_hook
+;------------------
+          ld hl,time_inf
+;enchaine
+track_get_hook_at
+;----------------
+ ;In: hl = pnt to t
+;Out: hl = hook structure
+          call connect_bk_track
+          call setup_track_t
+          ld hl,get_hook_at
+          call eval
+          ret
+
 setup_track_t
 ;------------
 ; Setup aum registers:
@@ -2119,18 +2365,66 @@ setup_track_t
   ; in1=t
 ; In: hl = pnt to t 
 ;Out: aum.in0 and in1
-          push af
+          push af:push de
           ld de,aum_regs + in1*4
           ld bc,reg_size
           ldir
-          call get_current_track_pnt
+          call get_current_track_header
       IF reg_size-3
  !! review that
       END
           ld (aum_regs + in0*4),hl
           ld a,BK_TRACK
           ld (aum_regs + in0*4 + 2),a
-          pop af
+          pop de:pop af
+          ret
+
+goto_event
+;---------
+;Goto to specified event.
+ ; If no such event, return last and before last link pnts
+ ; (for append and insert before last event, respectively)
+;in: hl= link to next event (typical evt field in evt0)
+       ; Assume H<>0
+   ;  a= event type (LSB routine)
+;out: If found, NZ, HL points evt type, 
+                  ; DE=param for convenience.
+    ; otherwise  Z. HL points to last link (0000),
+                  ; DE points to prev link (can be = HL when no node) 
+
+    ; A preserved in any case
+          push hl:pop de ; de = previous link
+.find
+          push hl
+          push de
+          call Next_node
+          pop de
+          jr z,.last
+          pop de        ; de = previous link
+          idsz ** inc hl
+      IF evt_type
+ !!! review that
+      END
+          cp (hl)
+          jr z,.found
+          idsz ** dec hl
+          jr .find
+
+.last
+          pop hl
+          ret
+
+.found
+      IF evt_param - 1
+ !!! review that
+      END
+          inc hl:ld e,(hl)
+          inc hl:ld d,(hl) ; For convenience
+          2 ** dec hl
+          inc h:dec h   ; NZ 
+      IF dev_checks
+          call z,fail
+      END
           ret
 
 goto_event
@@ -2182,12 +2476,12 @@ goto_event
           ret
 
 
-get_current_track_pnt
-;--------------------
+get_current_track_header
+;-----------------------
 ;out: hl: track pnt
           ld a,(current_track)
-get_track_pnt
-;------------
+get_track_header
+;---------------
 ;in : a : track #
 ;out: hl: track pnt* 
     ; a : preserved
@@ -2237,6 +2531,11 @@ Reset_tracks
           call connect_bk_track
           ld hl,replay_50_08Hz
           call set_replay_period
+
+          ld hl,tracks
+          ld b,MAX_TRACKS * tf_struct_size
+;00 is needed to mark if track is used or not
+.fill     ld (hl),0:inc hl:djnz .fill
 
           ld hl,tracks
           ld b,MAX_TRACKS * tf_struct_size
@@ -2345,6 +2644,7 @@ Song_add_map
           call .onetranspose
           call .onetranspose
           call .onetranspose
+
           ret
 
 .onechannel
@@ -2357,11 +2657,15 @@ Song_add_map
           add hl,de
           ld a,(hl)
           push af
-          cp &28:call nc,mess ; What is that?
+         ;  cp &28:call nc,&BE00
           ld hl,timestamp
+          push hl
+          ld de,previous_timestamp
+          ld bc,3:ldir
+          pop hl
           call Set_phrase_at_t
 
-; time += phrase duration (chipnsfx and madmax behavior)
+; -- time += phrase duration (chipnsfx and madmax behavior)
       IF todo
 ; Starkos: how to do respect "phrase height"?
 ; -> answer dedicated table 
@@ -2373,6 +2677,19 @@ Song_add_map
           pop de
           pop bc
           djnz .lpc
+
+; -- Set last phrase duration
+; For other phrase this is done automatically when next phrase is hooked
+          call phrase_get_duration ; was selected by .advancetime
+      IF dev_checks
+          inc c:dec c:call nz,mess ; must be < &10000
+      END
+          ld hl,previous_timestamp
+          call Clip_set_duration
+
+;Set loop to 0 (good default)
+          ld hl,time_zero
+          call Set_track_loop
 
           pop hl:pop bc:pop af
           inc a
@@ -2422,55 +2739,9 @@ Song_add_map
           ld hl,timestamp
           ld a,e:add (hl):ld (hl),a:inc hl
           ld a,d:adc (hl):ld (hl),a:inc hl
-          ld a,c:add (hl):ld (hl),a
+          ld a,c:adc (hl):ld (hl),a
           ret
 
-
-      IF 0
-!!! replaced by Set_phrase_at_t
-; 
-
-track_append_current_phrase
-;--------------------------
-;In: track and phrase selected
-;Out: like /track_append_clip/
-          call song_get_phrase_id
-          ld a,l:ld (_cliplink+2),a ; bk
-          ld l,chunk_start ; point sur phrase header
-          ld (_cliplink),hl
-          ld hl,_clip
-;Enchaine
-track_append_clip
-;----------------
-;in: HL: pnt to clip structure
-   ; - Use (current_track)
-   ; - Assume track.clips list not reseted
-       ; (since append = 'insert at current point')
-
-!!! a revoir
-          push hl
-          call get_current_track_pnt
-;ID list (pointer to head)
-          ld e,(hl):inc l
-          ld d,(hl):inc l
-          ld c,(hl):inc l
-          ld a,clip_struct_size+3
-          call list_insert
-      IF dev_checks
-          call check_hl_in_bank
-      END
-          ex de,hl
-          pop hl
-          ld bc,clip_struct_size
-          ldir
-          ret
-
-_clip
-HACK_DURATION = 64 * 6  ; Todo: use phrase duration
-          DURATION(HACK_DURATION)
-_cliplink SKIP 3
-
-      END
 
           SIGN(1,0,NO_FLAGS)
 ext_cursor_locate
@@ -2667,29 +2938,6 @@ last_duration = &DDDD   ; "grepable"
           pop de
           ret
 
-      IF 0
-!!! use Insert_new_node
-
-          SIGN(0,1,NO_FLAGS)
-ext_new_event_node
-;----------------- 
-; IN: N/A
-; OUT: If ok, DE = pnt node
-     ; HL preserved (useful when called in non-aum context)
-; Can also be call as-is
-
-; Ensure node is allocated in proper bank
-          call connect_bk_track
-; Just reserve the right size
-      IF todo
-; when freeing those nodes, they most by collected by free_list6
-; (or should we do generic nodes knowing their own size?)
-      END
-          ld a,idsz + evt_size
-          call New_node_x
-          call nc,mess  ; TODO: handle memory full via assertion
-          ret
-      END
 
           SIGN(1,1,FLAG_Z)
 ext_next_node
@@ -2732,7 +2980,7 @@ ext_get_track
           ld a,(used_tracks)
           inc e:cp e:jr c,.outofbond
           dec e
-          ld a,e:call get_track_pnt
+          ld a,e:call get_track_header
           ex de,hl
           or d          ; force NZ
           call z,mess   ; check NZ
@@ -2741,6 +2989,8 @@ ext_get_track
           cp a          ; Z
           ret
       END
+
+time_inf FILL 3,&FF
 
 end_of_code
 
@@ -2766,11 +3016,13 @@ zero
 used_tracks BYTE 
 current_track BYTE 
 current_subsong BYTE 
+time_zero SKIP 3
 zero_ = $-zero
 
 subsong_pool_pnt BYTE 
       FILL 3,0          ; padding for dbg purpose
 timestamp SKIP 3        ; tmp variable
+previous_timestamp SKIP 3
 
 ;---- Keep this order for /goto_pos/
 time_cursor TIME(0)     ; Position in sequencer
@@ -2816,7 +3068,8 @@ tmp_ext_args SKIP MAX_EXT_PARAMETERS * 2
 
           ALIGN(&0100)
 tracks
-;-----                                
+tracks_index            ; desambiguate
+;-----------                                
 ; Directly struct: less indirection, less max memory (when all used)
                  ; easier to debug.
 ;TODO: move in bank

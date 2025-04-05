@@ -198,9 +198,6 @@ VARIABLE_SIZE = -1      ; For rows
 
           SIGN(type_instr_null,0,0)
 instr_null
-;Required in both in-tool and compiled,
-; as ply inconditionaly jump to instr routine.
-;When no current instr, come here
           pop hl        ; consume param
           pop hl        ; consume regs+vol
 ;Actually instr_mute:
@@ -212,22 +209,21 @@ instr_null
 ; iter &101 (i.e tick +1 from 2nd "pattern")
 ; Instead, we rely on regs 8,9,10 being 0 at init time
 ;          ld (hl),0                      
+          pop hl        ; consume regs+vol            
           RET_ROUT(9)
 
-    IF use_instr_end
 instr_end
 ; After final row: mustn't touch anything.
    ; - Time efficient for buzzs
    ; - Needed for future: track mix
 ; Routine placed here to be reachable by jr
-; Note it differs from instr_null by the total TM used
 tm1_  = 8               ; from .exec to jr instr_end (taken)
           pop hl        ; consume regs+vol
           pop hl        ; consume regs+mask            
           RET_ROUT(tm1_+6)
-end
 
-      IF use_instr_default ; Not used to compile minimala.chp
+      IF ayane
+; Not used to compile minimala.chp
           SIGN(type_instr_default,0,VARIABLE_SIZE)
 instr_default
 ; Same API than /.exec/
@@ -266,20 +262,18 @@ instr_default
       ; DE = accumulated pitch
       ; SP = Points on: - instr parameter
                       ; - Pnt to volume register (eg regs+8)
-                      ; - Regs + channel masked (eg %110110 for A)  
-      ;  A = TM
+                      ; - Regs + channel masked (eg %110110 for A)
+      IF todo
+; Check if af' here
+      END
           pop hl        ; Instr table
-     IF use_instr_end
-          inc h:dec h:jr z,instr_end
-     END
-tm1   = tm1_-1 + 66     ; Until jr ok_noise (taken)
+      IF may_optim
+; For chipnsfx version: no need to save and use B
+      END
 ; Follow next link.
 ; Handling that first allows to skip optional field at the end for free
                           ; and use L or H to read last 
-      IF ayane
-          EX_AF'()
           ld a,c        ; free C
-          EX_AF'()
       IF use_volume
           ld ixl,b      ; Free B
       END
@@ -288,43 +282,19 @@ tm1   = tm1_-1 + 66     ; Until jr ok_noise (taken)
       IF ayane
           res loop_bit,b
       END
-; Must be done before push
-; Might trigger timer early,
-; it's still better than delaying it for too long
-          SUB_TM_CALL(tm1)
           push bc       ; for next time
           pop bc        ; skip
-      ELSE
-;For compiled version, relative link (confined in &100)
-          ld a,(hl)
-          add l
-      IF use_phrase_pitch
-!! todo, cannot use de
-      END
-          ld e,a
-          ld d,h
-          push de
-          pop de        ; skip
-          inc l
-      END
 
 ; Start by arpeggio and pitch, since we must do that anyway
-; Except if absolute value in instr, but:
+; Except if absolute value, but:
    ; - We don't handle those anyway :)
-          EX_AF'()
-      IF default_use_arp
-      IF 1 - ayane
-  ; compiled version didn't copy c in a
-          ld a,c
-      END
           add (hl):inc hl
 ; Compute period now:
    ; - optimised since we read pitch anyway
    ; - allow to free C
           ld c,a
           ld b,periods/&0100
-; Keep in DE for subsequent fx
-; (also, we delay poking it in period registers)  
+; Keep in DE for subsequent fx  
       IF use_phrase_pitch
 ; DE= pitch set by fx
           ld a,(bc):add e:jr nc,$+3:inc d
@@ -338,34 +308,20 @@ tm1   = tm1_-1 + 66     ; Until jr ok_noise (taken)
           ld a,(bc):adc (hl):inc hl:ld d,a
       END
 
-; r7
-BRK
-          pop de        ; Mask channel / noise for current channel
-
       IF use_flag_channel
 ; Flags channel/noise (copied in each channel)
-          ld a,(hl)
-          or e
-          ex de,hl
-          ld l,7
-          and (hl)
-          ld (hl),a
-          ex de,hl
-          bit 3,(hl):inc hl ; any bit 3,4,5 would work
+          ld c,(hl):inc hl
+; Note: we must test to prevent changing R6 from tracks
+      ; that don't emit noise
+          bit 3,c       ; any bit 3,4,5 would work
           jr nz,.ok_noise
-
-;---- Noise register: don't set if 0 (piloted from elsewhere)
-          dec e         ; reg 6
-          ld a,(de)     ; current value
-          ld e,(hl)
-          inc e:dec e:jr z,$+3:ld a,e
-          ld (r6),a
-          SUB_TM''(14-1) ; -1 for tm not taken
-;enchaine
+          ld a,(hl)
+          ld (psg_regs+6),a
+      IF todo
+ ; update tm or compensate branch.
+      END
       ELSE
 ; Infer noise flag from noise value 
-BRK
-; Fixme, flag not set in r7
           ld c,&3F
           ld a,(hl)
           or a
@@ -377,98 +333,30 @@ BRK
           inc hl
 
 ; Volume, or env_hard:
-    ;  xxxx0 -> vol xxxx (F=max volume)
-    ; 1yyyy1 -> env hard            
-          ld a,(hl):inc hl
-      IF use_hard_env AND default_use_arp
-tm2   = 10              ; until jr no_hard_env (taken)
+    ; xxxx0 -> vol xxxx (F=max volume)
+    ; yyyy1 -> env hard            
+          ld a,(hl)
+      IF use_hard_env
           rrca
-          jr nc,.no_hard_env
+          jr c,.hard_env
+      END
+      IF use_volume
+          sub ixl:jr nc,$+3:xor a ; a= clipped volume
+      END
 
-;env_type (bit 4 set for retrig)
-tm_hard = 17            ; until jr abs_hard (taken)
-          ld a,(hl):inc hl
-          ld (r13),a
-;arp
-          ld a,(hl):inc hl
-          cp ARP_ESC_SET
-          jr z,.abs_hard
+ ; volume register
+          pop hl
+          ld (hl),a
 
-; Applicate arp+pitch to base note
-; !!! Don't touch BC:   
-    ; hasn't been poked yet
-    ; it's still the base to use (well, unused feature now)
-; Maybe we could use C for base note, since that's the most important
-          add ixl
-          ld e,a
-          ld d,periods/&0100
-; /16 (nops to psg) /16 (psg to env hard) -> /256
-          ld a,(de):add (hl):inc hl ; Just for carry and bit 7 below
-          ex de,hl
-          inc l
-          ld l,(hl):jr nc,$+3:inc l
-; rounding to closest
-          add a         ; if bit7
-          ld a,(de):inc de:adc l:ld l,a
-          ld h,0
-          ld (r11_12),hl
-          ld a,&10
-          EX_AF'()
-          SUB_TM(tm_hard+37-1) ; -1 jr abs_hard not taken
-          jr .ok_vol
-
-.abs_hard
-; Absolute periode, don't change current period in BC
-          ld e,(hl):inc hl
-          ld d,(hl):inc hl
-          ld (r11_12),de
-          ld a,&10
-          EX_AF'()
-          SUB_TM(tm_hard+20)
-          jr .ok_vol
-
-      ELSE
+ ; period register
+          ld a,l:sub 8:add a:ld l,a
+      IF increased_precision
  !!! todo
       END
-.no_hard_env
-      IF use_volume
-tm2'  = 15
-BRK 
-; !! Fix me
-          sub ixh:jr nc,$+3:xor a ; a= clipped volume
-      ELSE
-tm2'  = 10
-      END
-      if ayane or use_hard_env
-BRK
-; !! Fixme
-          fx0_type - instr_hard_type ** inc hl ; skip hard env params
-          ex de,hl
-          EX_AF'()
-          SUB_TM(tm2')
-.ok_vol
-tm3   = 16              ; until SUB_CALL_TM
-          pop hl        ; last word popped
-          EX_AF'()
-          ld (hl),a
- if ayane
-          ld (ret_sp),sp
-          ld sp,trash+2 ; to use SUB_TM_CALL
-          EX_AF'()
-          SUB_TM_CALL(tm2+tm3)
- end
-tm3'  = 14              ; until RET_ROUT'
-          EX_AF'()
- ; period register. Vol 8->0  9->2  10->4
- ; Note: if !! Full 16 bits precisions. Converted on the fly,
-     ; Since it's cumbersome to do it here (must preserve hl,de,bc)
-          ld a,l:sub 8:add a:ld l,a
           ld (hl),e:inc l
           ld (hl),d
 
- ; r7 
-BRK
-; Check me, and harmonize.                    
+ ; r7                     
           pop hl
           ld a,c
           or l
@@ -476,134 +364,19 @@ BRK
           and (hl)
           ld (hl),a
 
- if ayane
-.special_fx
-; Use SP:
-   ; - Faster (e.g. sync buzzer 36 nops instead of 54)
-   ; - Needed to interupt with timer
-     ; Since whole instr routine might take more than 256 nops.
-;Note: We could use sp for previous field. Not done for now:
-     ; - Don't want to rewrite code (must rewrite ply as well to
-         ; pass mask and volume before hand in one go)
-     ; - Constraints might change (e.g. custom table for some fields)
-     ; - YAGNI
-          ex de,hl
-          ld sp,hl
-          RET_ROUT'(tm3') ; fx_end or sync_buzzer
-ELSE
-!!! todo
+      IF todo
+; handle tm
+      END
           ret
-END
 
-     ELSE
- !!! todo
+      IF use_hard_env
+.hard_env
+          inc hl
+      BRK
+  ; todo
+; TODO: flags retrig. YAGNI YET
       END
-
-; --------------------------------------------------------
-
-      MACRO CHIP_STATE_PRELUDE exec
-          ld hl,exec:push hl:pop hl ; for next iter
-          pop hl        ; instr data
-      IF ayane
-      IF use_phrase_pitch
- !!! todo                      
-; Cannot use de anymore
-      ELSE
-; we can use de
-          ld e,(hl):inc hl
-          ld d,(hl):inc hl
       END
-      ELSE
-; Compiled version: no indirection, rows follow volume parameter
-      END
-      ENDM
-
-      MACRO CONSTANT_NOISE
-;!! Hack: we know it is constant for the duration of the instrument 
-;!!!! **AND** that other instruments doesn't touch r6.
-          ld a,(hl):inc hl
-          ld (psg_regs+6),a
-      ENDM
-
-      MACRO CHIP_STATE_POSTLUDE
-      IF use_phrase_pitch
- !!! todo                      
-; Cannot use de anymore
-      END
-      IF ayane
-          ld b,(hl):inc hl ;step
-          ld a,(hl)     ;initial volume
-      ELSE
-          ld b,(hl):inc l ;step
-          ld a,(hl):inc l ;initial volume
-          ex de,hl      ; DE points to table
-      END
-; state needs 2 words, so we deroute in fresh allocation 
-          ld hl,(instr_state_pnt)
-          2 ** inc l
-          push hl       ; update param
-          pop hl
-          ld (hl),b:inc l
-          ld (hl),a:inc l
-          ld (instr_state_pnt),hl
-      ENDM
-
-; --------------------------------------------------------
-paramsize_vol = 2       ; step, start
-paramsize_vol_noise = 3 ; noise, step, start
-
-      IF use_instr_chip_down_vib
-          SIGN(3,paramsize_vol,2)
-instr_chip_down_vib
-; Very ad-hoc instrument that matchs mimimala.chp needs
-; Same input as inst_default
-          CHECK_CONFINE()
-
-          CHIP_STATE_PRELUDE(icdv_exec)
-          CHIP_STATE_POSTLUDE()
-          jp icdv_entry
-      END
-
-      IF use_instr_chip_down_arp
-          SIGN(4,paramsize_vol,1)
-instr_chip_down_arp
-; Very ad-hoc instrument that matchs 4k08.chp need
-   ; Instr 4, 5 7 with arp without noise 
-; Same input as inst_default
-          CHECK_CONFINE()
-          CHIP_STATE_PRELUDE(icda_exec)
-          CHIP_STATE_POSTLUDE()
-          jp icda_entry
-      END
-
-      IF use_instr_chip_down_vib_noise
-          SIGN(5,paramsize_vol_noise,2)
-instr_chip_down_vib_noise
-; Very ad-hoc instrument that matchs 4k08.chp needs
-; Same input as inst_default
-          CHECK_CONFINE()
-
-          CHIP_STATE_PRELUDE(icdvn_exec)
-          CONSTANT_NOISE()
-          CHIP_STATE_POSTLUDE()
-          jp icdvn_entry
-      END
-
-      IF use_instr_chip_down_arp_noise
-          SIGN(6,paramsize_vol_noise,1)
-instr_chip_down_arp_noise
-; Very ad-hoc instrument that matchs mimimala.chp needs:
-   ; Instr 4, 5 7 with arp + constant noise (might be 0)
-; Same input as inst_default
-          CHECK_CONFINE()
-
-          CHIP_STATE_PRELUDE(icdan_exec)
-          CONSTANT_NOISE()
-          CHIP_STATE_POSTLUDE()
-          jp icdan_entry
-      END
-
-; ------ Core code -------
 
       MACRO CHIP_VOL_AND_PNT
 ; Update volume and get table pnt
@@ -676,39 +449,40 @@ instr_chip_down_arp_noise
       END
       ENDM
 
-      MACRO CHIP_R7
-; -- set r7 
-          pop hl
-      IF hack_minimala
-; Nothing to do (must still consume HL to advance in stack)
-; All channel open by default
+
+
+instr_chip_down_vib
+; Very ad-hoc instrument that matchs mimimala.chp needs
+; Same input as inst_default
+
+          ld hl,icdv_exec:push hl:pop hl ; for next iter
+          pop hl        ; instr data
+      IF ayane
+      IF use_phrase_pitch
+ !!! todo 
       ELSE
-          ld a,&38      ; close noise
-          or l
-          ld l,7
-          and (hl)
-          ld (hl),a
+; we can use de
+          ld e,(hl):inc hl
+          ld d,(hl):inc hl
+          ld b,(hl):inc hl ;step
+          ld a,(hl)     ;initial volume
       END
-      ENDM
-
-
-      MACRO CHIP_R7_WHEN_NOISE
-; -- set r7
-; Open channel and optionnally noise.
+      ELSE
+; Compiled version: no indirection, rows follow volum parameter
+          ld b,(hl):inc l ;step
+          ld a,(hl):inc l ;initial volume
+          ex de,hl      ; DE points to table
+      END
+; state needs 2 words, so we deroute in fresh allocation 
+instr_state_pnt ld hl,instr_state
+          2 ** inc l
+          push hl       ; update param
           pop hl
-          ld a,(psg_regs+6)
-          or a
-          ld a,&38      ; noise close
-          jr z,$+3:xor a ; noise open if r6 <> 0
-          or l
-          ld l,7
-          and (hl)
-          ld (hl),a
-      ENDM
+          ld (hl),b:inc l
+          ld (hl),a:inc l
+          ld (instr_state_pnt+1),hl
+          jr icdv_entry
 
-
-
-      IF use_instr_chip_down_vib
 icdv_exec
           CHIP_VOL_AND_PNT()
 icdv_entry
@@ -730,59 +504,52 @@ icdv_entry
           ld a,(bc):adc (hl):ld (de),a
 
 ; r7
-          CHIP_R7()
-          ret
-      END
-
-      IF use_instr_chip_down_arp
-icda_exec
-          CHIP_VOL_AND_PNT()
-icda_entry
-; Here a= vol, c= note
-     ; hl: field in state: link to table
-     ; de: pnt table 
-          CHIP_UPDATE_PNT()
-
- ; -- set volume register
+; Open channel. 
           pop hl
-          4 ** rrca:and &0F
+      IF hack_minimala
+; Nothing to do (must still consume HL to advance in stack)
+      ELSE
+          ld a,&38      ; close noise
+          or l
+          ld l,7
+          and (hl)
           ld (hl),a
- ; -- set period register
-          ld a,l:sub 8:add a:ld l,a
-;!!! doesn't keep de=period like instr_default
-          ld a,(de):add c:ld c,a ; arp
-          ld b,periods/&0100
-          ld a,(bc):ld (hl),a:inc l
-          inc c
-          ld a,(bc):ld (hl),a
-
-          CHIP_R7()
-          ret
       END
+          ret
 
-      IF use_instr_chip_down_vib_noise
-icdvn_exec
-          CHIP_VOL_AND_PNT()
-icdvn_entry
-; Here: like icdan_entry
-          CHIP_UPDATE_PNT()
+      MACRO CONSTANT_NOISE
+;!! Hack: we know it is constant for the duration of the instrument 
+;!!!! **AND** that other instruments doesn't touch r6.
+          ld a,(hl):inc hl
+          ld (psg_regs+6),a
+      ENDM
 
- ; volume register
+instr_chip_down_arp_noise
+; Very ad-hoc instrument that matchs mimimala.chp needs:
+   ; Instr 4, 5 7 with arp + constant noise (might be 0)
+; Same input as inst_default
+
+          ld hl,icdan_exec:push hl:pop hl ; for next iter
+; state needs 2 words, so we deroute in fresh allocation 
+
+      IF use_phrase_pitch
+!! todo 
+; cannot use de anymore
+      ELSE
           pop hl
-          4 ** rrca:and &0F
-          ld (hl),a
-
- ; period register
-          ld a,l:sub 8:add a:ld l,a
-;!!! doesn't keep6 de=period like instr_default
+; we can use de since no pitch FX coming for phrase
+      IF ayane
+          ld e,(hl):inc hl
+          ld d,(hl):inc hl
+          CONSTANT_NOISE()
+          ld b,(hl):inc hl ;step
+          ld a,(hl)     ;initial volume
+      ELSE
+; Compiled version: no indirection, rows follow volume parameters
+          CONSTANT_NOISE()
+          ld b,(hl):inc l ;step
+          ld a,(hl):inc l ;initial volume
           ex de,hl
-          ld b,periods/&0100
-          ld a,(bc):add (hl):inc hl:ld (de),a:inc e
-          inc c
-          ld a,(bc):adc (hl):ld (de),a
-
-          CHIP_R7_WHEN_NOISE()
-          ret
       END
       END
           ld hl,(instr_state_pnt+1)
@@ -794,7 +561,6 @@ icdvn_entry
           ld (instr_state_pnt+1),hl
           jr icdan_entry
 
-      IF use_instr_chip_down_arp_noise
 icdan_exec
           CHIP_VOL_AND_PNT()
 icdan_entry
@@ -818,103 +584,22 @@ icdan_entry
 
 ; -- set r7
 ; Open channel and optionnally noise.
-          CHIP_R7_WHEN_NOISE()
+          pop hl
+          ld a,(psg_regs+6)
+          or a
+          ld a,&38      ; noise close
+          jr z,$+3:xor a ; noise open if r6 <> 0
+          or l
+          ld l,7
+          and (hl)
+          ld (hl),a
           ret
-      END
 
 
 hi
       IF instr_chip_down_vib/&0100 - instr_code/&0100
   !!! error confine 
       END
-
-; ------------ Helpers ------------
-
-      IF ayane
-
-      IF 1-sfx
- !!! sfx expected to be on in ayane
-  ; we use JP HL' here!
-      END
-
-fail  = &BE00
-
-      MACRO CHECK_DI
-      IF dev_checks
-          call _check_di
-      END
-      ENDM
-
-instr_setup
-;----------
-; For piano and instrnrt
-; IN: L = instr number > 0
-      IF instr_head_size-8
- !! review this
-      END
-      IF instr_idx AND &07FF
- !! review this
-      END
-          ld h,instr_idx / &0800
-          3 ** add hl,hl
-
-          ld bc,&7F00+BK_INSTR:out (c),c
-
-          ld de,instr_code_pnt
-          ldi
-          ex de,hl
-; Force MSB in case instr.o change it (post-amorce routine might be
-; elsewhere);
-          ld (hl),instr_code/&0100:inc hl
-          ld (hl),e:inc hl
-          ld (hl),d
-          ret
-
-MAX_TM = &80
-
-instr_play
-;---------
-; For piano and instrnrt
-; In: !! DI, instr_setup has been called
-    ; A = note (e.g. 12 = C0)
-    ; A' = TM
-    ;HL' = timer routine
-;Out: A = TM updated
-
-;Note: cannot use ret_sp since it will be overwritten 
-     ; from instr to timer.
-          add a         ; instr expect note *2 (offset in periods table)
-          ld e,a        ; note 
-          ld ixh,0      ; volume (substracted)
-          ld bc,0       ; shift
-          ld a,&3F:ld (r7),a
-; Mimic ply.o pre-loop (for fx management)
-; For now, don't inline, to trigger timer at RET point.
-          ex af,af
-          call preplay_init
-          ld (save_sp+1),sp
-          ld sp,instr_code_pnt
- ; jump to instr code and then back at play_return
-          RET_ROUT(29+6) ;+6: ld sp,n:jp n
-play_return
-save_sp   ld sp,0
-; Mimic ply.o post-loop (for fx management)
-; For now, don't inline, for symetry.
-          jp postplay
-
-      IF dev_checks
-_check_di
-          SUB_TM''(8+13)
-          push af
-          ld a,i:call pe,fail
-          pop af
-          ret
-      END
-
-      END
-; ---------------------------------
-
-instr_state_pnt WORD instr_state
 
       IF ayane
       FILL -$ AND &FF,&F7
@@ -923,4 +608,3 @@ instr_state
       ELSE
 instr_state = compiled_instr_buf
       END
-

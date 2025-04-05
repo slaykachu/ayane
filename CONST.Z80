@@ -124,7 +124,8 @@ instr_pitch WORD
 instr_flags BYTE        ; channel / noise 
 ; Note: flags are dispatched on 3 channels for fast masking
 ; This means only bit 7 and 6 are free.
-; !!! NO !!! We could use noise=0 to flag absence of noise instead,
+
+; !!! NO (see below) !!! We could use noise=0 to flag absence of noise instead,
 ; but that's not needed now and would be a bit slower.
 ; (well, that's another story when channel is always open,
   ;in which case we can get rid of this flag byte entirely,

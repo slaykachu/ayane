@@ -1,11 +1,15 @@
 ; tests chipnsfx convertion
 do_play = 1             ; 0: check  1: play tune
-is_minimala = 1         ;0: 4k08 (40 years md)
+is_minimala = 0         ;0: --4k08-- kim9 (40 years md)
 
 ; /////// 2025 ////////
+; ---- v0.0ac ----                            
+  ; Mar
+    ; 17: Dump regs in /dbg/
 ; ---- v0.0ab ----                            
  ; Feb
    ; 27 Fix hl'=timer_noop when sfx=1 (was in hL)
+
 
       ORG &0100
       ENT tests
@@ -29,7 +33,7 @@ test_convert_minimal
           call conv_chipn
 ;-- play it
           call Song_get_first_track
-          call get_track_pnt
+          call get_track_header
           ld a,3
           call Amorce_song
       IF 1-do_play
@@ -64,6 +68,13 @@ tick_cpt  ld hl,-1      ; matches ply.tick
           exx
           ld bc,&7F10:out (c),c:ld c,&5F:out (c),c
           call play
+
+dbg_pnt   ld de,dbg
+          ld hl,psg_regs
+          ld b,11
+.cp       ld a,(hl):inc hl:ld (de),a:inc e:djnz .cp
+          ld (dbg_pnt+1),de
+
       IF do_play
           ld bc,&7F10:out (c),c:ld c,&40:out (c),c
           call psg_nrt
@@ -92,6 +103,11 @@ tick_cpt  ld hl,-1      ; matches ply.tick
 end_of_tune
 ; success!
           ret
+
+      FILL -$ AND &FF,0
+dbg   SKIP &0100
+
+      IF 1-do_play
 
       IF is_minimala
 chip_player = &5000
@@ -131,7 +147,6 @@ psg_ref SKIP 14
 
 BK_REF = &C6
 
-
       BANK BK_REF
       IF is_minimala
       ORG chip_player:LOAD "chipnsfx.out"
@@ -143,13 +158,12 @@ BK_REF = &C6
       BANK BK_IO
       ORG &4000
 chp_module
-      IF 0
       IF is_minimala
       LOAD "ums:music/tj/minimala.chq" ; with header
       ELSE
-      LOAD "4k08.chq"   ; with header
-      END
-      ELSE
-;      LOAD "ums:chp/squaroot.chp" ; with header
-      LOAD "ums:chp/vampire1.chq" ; with header
+;      LOAD "4k08.chq"   ; with header
+;      LOAD ":40y/kim9.chq" ; binary version
+;      LOAD ":40y/kima.chq" ; binary version
+;      LOAD ":40y/kim0.chp"
+      LOAD ":40y/kimc.chp"
       END

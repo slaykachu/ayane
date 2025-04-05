@@ -16,8 +16,11 @@ chunk_offset = &40      ;MSB in bank
 ; Instr creation ------
     ; New_instr
     ; New_instr_ayane
-
-; ------
+    ; New_instr_ayane
+    ; New_instr_chp_down_vib
+    ; New_instr_chp_down_vib_noise
+    ; New_instr_chp_down_arp
+    ; New_instr_chp_down_arp_noise
     ; Song_select_instr
     ; Song_get_instr
     ; Setup_row_r7
@@ -63,7 +66,6 @@ column_type_ramp = 5    ; not used (future: mimick chipnsfx)
       IMPORT "chunk.o"  ; new_chunk 
       IMPORT "memcpc.o"
 
-
 bk_connected = &3C      ; hack: avoid "ambiguous label"
 
 ; !!!! TODO? [Optim]: to save bk connection for fx signature,
@@ -78,7 +80,7 @@ bk_connected = &3C      ; hack: avoid "ambiguous label"
 ;               -> how can we know?
 
       IF nb_fx:ELSE
-!!! We must have at least 1 fx
+!!! We must have at least 1 fx (set ayane=1)
   ; to be able to handle fx_set_phrase
   ; Needed for 'goto next chunk' and 'goto start of phrase'
 ; For compile, it needs to be dynamic anyway.
@@ -87,6 +89,204 @@ bk_connected = &3C      ; hack: avoid "ambiguous label"
   ; dynamically.
       END
 
+
+hist
+; TODO: see what's up with firmware, since we use EXX.
+
+; //// 2025 /////////////////
+; ------ For v0l2 -------
+; Mar   
+  ; 20 Remove check instr_null (which has been removed as useless)
+  ; 18 Use use_instr_chip_down_vib_noise
+
+; //// 2024 /////////////////
+; ------ For v0l -------
+; Jun    
+  ; 21 Add getters/setters for salo
+           ; instr_set_rows#
+           ; set_flags
+           ; get_flags
+           ; set_vols...
+  ; 20 Song_select_instr: return instr param numbers 
+  ; 17 Add New_instr
+     ; New_instr*: take ID
+     ; Remove get_instrs#: can be infered from index
+
+  ; 12 Add instr_get_rows# 
+; May
+; ------ For v0k -------
+    ; Add New_instr_chp_down_vib_noise for 4k08.chp
+    ; Add New_instr_chp_down_arp
+    ; Fix New_instr_chp_down_vib? Vol step must be placed first
+
+; ------ For v0h -------
+; Apr
+    ; 29 Reset instr_idx (so compile can skip non-existing instr)
+       ; Add New_instr_chp_down_arp_noise
+       ; Discriminate: instr_chip_append_rows_byte
+                     ; instr_chip_append_rows_word
+; ------ For v0g -------
+    ; 26 instr_get_loop: save hl, de
+    ; 23 Song_select_instr: adapt to new structure                    
+       ; Remove va_instr_pnt (was defined in memmap.i)
+    ; 13 New_instr_*: reset instr_head_rows
+    ; 11 instr_append_row: fix typo! Z vs NZ
+
+; ------ For v0f -------
+; Apr 
+    ;  1 Fix $ at end of source (save_pc)
+; Mar             
+    ; 31 New_instr_chp_down_vib: setup params in instr header.
+    ; 29  ; add Setup_row_r7
+          ; Same pool for tables and instr
+          ; instr_idx: Contain full header
+          ; replace song_select_new_instr by
+              ; New_instr_ayane  
+          ; add New_instr_chp_down_vib  !!WIP!!
+          ; remove register_table, _new_table etc... :
+              ; - was storing tables raw in bank for persistance
+              ; - now we store them only once with linked rows
+          ; row_set_instr: poke id instr (instead of id*2),
+                           ; as instr_idx is now an &200 table.
+    ; 25 vac: add phrase_get_duration
+    ; 24 vab: Re-enable create_arpeggio_0xy and co (for st128)
+            ; phrase_select_new_row: pass duration
+            ; add row_add_duration
+    ; 14 vaa: Follow new instr encoding: only one table (cf instr.o)
+                 ; - Discard instr_set_table_com_ and co 
+                 ; - Introduce instr_append_rows
+    ; 11 vz: Expose Get_phrase (for track.Set_phrase_as_t)
+; Feb
+    ; 25 vy: No more va_jp_set_phrase etc: directly use fx_set_phrase
+                ; -> to next chunk when needed
+                ; -> and to first chunk for automatic loop
+           ; s/clip/phrase (harmonize, phrase is more telling)
+              ; That was a mistake doing it!
+                  ; - neither urgent nor important 
+                  ; - urgl oups, what if other clip types?
+           ; Use new_heap_chunk for table. See rationale in ayane_init
+    ; 21 vx: Use local chunk and memcpc
+
+; //// 2023 /////////////////
+; Nov
+    ; 28 vw: remove spurious end
+; May                   
+    ;  9 vv: song_select_new_phrase: add header info:
+           ; Type, idx, name (null for now), color (idx+1 for now) 
+        ; Duration of 'row' in phrase: use byte instead of word.
+             ; -> Natural for event 'agenda' table
+             ; More optimised (time and space)
+             ; For long duration, needs 24 bits anyway.
+        ; Use new_chunk from chunk.o (consolidation)
+        ; Cleanup chunk_to_idx (not needed, or should be in chunk.o)
+        ; use "memcpc.o"
+        ; Fix: bk_base must be reconnected after append_raw_in_chunk
+             ; (wasn't detected because before: new_chunk was
+               ;in c7. Now they are in c4 since reuse
+               ;orgams's "source chunk", which is another issue 
+               ;altogether but actually nice to reveal such bugs).
+        ; Introduce SKIP_RESERVED
+        ; Switch back to just 1 byte for duration
+
+type_phrase = 1
+
+; Apr
+    ; 13 vu: Reprise!!!!! Mem version.
+
+; //// 2021 /////////////////
+
+; Jan 01 vt: Limit @ e500
+           ; Add /fx_append_byte/fx_append_word/fx_append_table/ 
+           ; Refonte gestion instr: /irow_set_type_vol/
+
+; //// 2020 /////////////////
+
+    ; 16 vs: Export/Import.
+           ; Expose register_table.
+; Dec 14 vr: Reprise /register_table/ + refactor /st_make_table/ & co.
+; Oct  5 vq: WIP register_table. Doesn't assemble
+           ; . Shift table type enum. See /type_table_byte/
+           ;    + Introduce empty type
+           ;    . More sensical (1 for byte, 2 for word).
+           ; . Change table header to: type, size in bytes, loop len.
+           ;    + Allow more generic handling
+
+; Sep 27 vp: Add/expose routines for salo
+           ; . chunk_to_idx
+           ; + get_instr#   TODO: must reconnect bank? 
+
+    ; 17 vo: Fix st_make_table (Wasn't covered by test: SP mismatch
+           ; led to early exit). 
+           ; Do not use EXX anymore.
+    ; 13 vn: Export/Import.
+     ; 9 vm: st_make_table/st_make_table_word: 
+             ; Store a persistent version. Needed for... persistence!
+               ; Also ease save (no need to recover loop and length).
+               ; Future-proof (table meta data will also be in bank).
+           ; Move @ d800 (demands new ply, plybc expected chunks at
+                         ;certain places).
+
+     ; 8 vl: st_make_table/st_make_table_word: copy out of bank,
+             ; to facilitate incoming persistent storage.
+             ; That removes dependency to st_bk.
+     ; 7 vj: chunk_to_idx: now returns idx in 16 bit (HL)
+       ; vi: Smarter 'new chunk' management.
+              ; - Detect max chunks
+              ; - Distinguish /chunks_in_base_bk/ and /chunks_per_bk/ 
+           ;  !! copy-pasted  from chunkt.o
+       ; vh: Introduce /append_in_chunk/
+           ; NRT: remove calls to /connect_chunk_from_index/
+       ; vg: Import /st_make_table/ & /st_make_table_word/ (from plybb)
+       ; vf: Introduce /insert_in_chunk/ 
+
+       ; ve: phrases_idx: store directly id.
+           ; new_chunk: Now returns chunk id:
+                      ;    - harmonization with orgams.
+                      ;    - future proof.
+    ;  4 vd: Interface change!
+             ; Old: song_get_phrase_idx -> return chunk idx
+             ; New: song_get_phrase_id  -> return chunk id
+           ; phrases_idx table: make room for 16 bits chunk_id.
+; May  1 vc: new_table: change interface (fix /test_compile/)
+; Apr 23 vb: Put table id at beginning of table. See /new_table/
+             ; -> Ease save.
+
+; Jan 14 va: Leave room (word) for duration
+
+
+; -----------------------------------------------
+chunk_offset = &40      ;MSB in bank
+
+
+; \/\/ 2018 \/\/\/\/\/\/\/\/\/\
+
+        ; comp_instr: fix idx*2 -> idx (already fine)
+; v8 10/7 New order for data: instr (must fit &100), table, phrase, map
+
+;    22/3 Compile: Store proper phrase idx (buffer offset)
+;    21/3 Compile: Save A when flushing!          
+        ; Burn @db00
+        ; Don't burn nrts in ROM
+; v7  8/2 Compile: fix when fx in another bank
+
+        ; !! Interface change: sign expanded instead of size !!
+        ;      --> impact instr_get_table_com
+        ; Fix: return NC if invalid phrase or row 
+        ; Better naming: song_select_row -> phrase_select_row
+; v6  3/2 Compile: still WIP, nrt ok but fail if fx in another bank
+
+   ; 24/1 !!! BREAKING change: encode instr idx instead of addr
+             ; cf plyaf for rational.
+; v5 23/1 export/import
+
+; !!!! 05/01/2018 !!!! Interface change for fx_ (signature param)
+              ; ---> Impact skip_one_fx
+              ; ---> Impact instr_get_table_com
+; v4 30/12 WIP.  Compile: table+ins copy, with corrections
+
+; v3 17/12       Base bk passed at init,
+                 ;  so no inconsistency possible with PLY.O
+; v2 16/12/2017  Expose ayane_init, _prelude
 
 bk_nrt = &C7            ; !! must match bk_ayane
 bk_compile = &C4
@@ -332,6 +532,79 @@ _select_new_instr
 .raz      ld (hl),0:inc hl:djnz .raz
           jp _select_instr
 
+      IF use_instr_chip_down_vib
+;Temp hack to fit all instr in &100
+      IF todo
+;Anyway: should just have one version with noise
+       ; -> pick/build the right routine at compile time 
+          ; if noise never used
+      END
+New_instr_chp_down_vib
+;---------------------
+; Create ad-hoc instr reproducing chipnsfx intsrument with
+    ; - Volume going down
+    ; - No noise
+    ; - Vibrato
+; In  A = ID
+   ;  b = initial volume (8 bits)
+   ;  c = step volume to be substracted (8 bits) 
+          ld e,instr_chip_down_vib AND &FF
+_new_instr_chp
+; use generic routine to gain space
+          ld d,c:ld c,b
+          ld b,0        ; 3rd param: unused 
+          jr New_instr_chp
+      END
+
+New_instr_chp_down_arp
+;---------------------
+; Create ad-hoc instr reproducing chipnsfx intsrument with
+    ; - Volume going down
+    ; - No noise
+    ; - Arpegio
+; In  a = ID
+   ;  b = initial volume (8 bits)
+   ;  c = step volume to be substracted (8 bits) 
+          ld e,instr_chip_down_arp AND &FF
+          jr _new_instr_chp
+
+
+      IF use_instr_chip_down_vib_noise
+New_instr_chp_down_vib_noise
+;---------------------------
+; Create ad-hoc instr reproducing chipnsfx intsrument with
+    ; - Volume going down
+    ; - Constant noise (can be off = 0)
+    ; - Vibrato
+; In  a = ID
+   ;  b = initial volume (8 bits)
+   ;  c = step volume to be substracted (8 bits) 
+   ;  d = noise (set first)
+          ld e,instr_chip_down_vib_noise AND &FF
+          jr New_instr_chp
+      END
+
+      IF use_instr_chip_down_arp_noise
+New_instr_chp_down_arp_noise
+;---------------------------
+; Create ad-hoc instr reproducing chipnsfx intsrument with
+    ; - Volume going down
+    ; - Constant noise (can be off = 0)
+    ; - Arpegio
+; In  a = id
+   ;  b = initial volume (8 bits)
+   ;  c = step volume to be substracted (8 bits) 
+   ;  d = noise (set first)
+          ld e,instr_chip_down_arp_noise AND &FF
+      END
+New_instr_chp
+          call _select_new_instr
+          call get_instr_pnt
+          instr_head_ext ** inc hl
+          ld (hl),d:inc hl
+          ld (hl),c:inc hl
+          ld (hl),b
+          ret
 
 instr_ayane_append_rows
 ;----------------------
@@ -481,7 +754,7 @@ instr_get_loop
 ; (for ui, salo, compile)
 ; IN:  Instrument selected
 ;OUT:  If loop, Carry  b: dest row 
-    ;  Otherwis, NC, b trashed
+    ;  Otherwise, NC, b trashed
     ;  HL, DE preserved
 
           push de:push hl
@@ -603,9 +876,19 @@ instr_set_rows#
           pop bc
       END
 .rowlp
-          call instr_append_empty_row
+ IF TODO
+; why not call instr_append_empty_row
+ END
+          ld hl,row_null
+          ld a,instr_row_size_max
+          call instr_append_row
           djnz .rowlp
           jp _postlude
+
+row_null
+; Flags=0 (e.g. noise and channel open).
+; Nevermind as it is immediatly fixed in salo via set_flags.
+      FILL instr_row_size_max,0
 
 instr_goto_last_row
 instr_get_rows#         ; same routine

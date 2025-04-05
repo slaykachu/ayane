@@ -10,6 +10,12 @@
 
       IMPORT "plyconf.i"
 
+dev_checks = ayane
+
+      IF dev_checks
+      IMPORT "instr.o"
+      END
+
 fx_code
 
 fx_noFx
@@ -17,4 +23,11 @@ fx_noFx
       IF sfx
           sub 6+2 /2    ; +2: Sub itself
       END
+;todo: tm 
+      IF dev_checks
+          pop hl
+          ld a,h:cp instr_code/&0100:call nz,&BE00
+          jp hl
+      ELSE
           ret
+      END

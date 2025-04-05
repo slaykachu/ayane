@@ -1,6 +1,12 @@
 ; Periodic table of notes!
 ; Note (ah!): table building done in ply.o
 
+; 2025
+; ----- v0l2 -----
+ ; Mar 19
+    ; Don't pad, for correct binary size when assembling ply
+
+
       IMPORT "plyconf.i"
 
       FILL -$ AND &FF,0
@@ -31,6 +37,10 @@ B     = &7E8C
 
 c0
       WORD C,C#,D,D#,E,F,F#,G,G#,A,A#,B
+;      WORD &0EEE,&0E18,&0D4D,&0C8E ; C   C#  D   D#
+;      WORD &0BDA,&0B2F,&0A8F,&09F7 ; E   F   F#  G
+;      WORD &0968,&08E1,&0861,&07E9 ; G#  A   A#  B
 c1
-      FILL -$ AND &FF,0
+    ; Don't pad, for correct binary size when assembling ply
+    ;  FILL -$ AND &FF,0
 

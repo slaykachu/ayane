@@ -16,6 +16,64 @@ need_room = 1
 
  ; See /track_stack/
 
+; \/\/\/ 2024 \/\/\/\/\
+; ----- Ayane v0h -----
+  ; May 
+   ;14 When /hack_minimala/, open channels by default
+     ; Optimise /tick/ (and return it in HL)
+  ; Apr
+   ;24 For compiled minimala:
+     ; - Version use_flags = 0 
+; ----- Ayane v0g -----
+  ; Apr                            
+   ;22 Don't handle volume if use_volume = 0
+   ;21 track_loop: connect BK_TRACK  
+   ;15 Fix init_periods
+   ;11 evt_set_transpose: add check
+     ; read_instr: use instr header
+
+   ; 8 s/regs/psg_regs to avoid mixing up with aum_regs
+
+; ----- Ayane v0f -----
+  ; Mar
+   ; 31 Simplify init: we don't need empty phrase.
+       ; instead tool we'll make sure a phrase will be set at RDV 0
+   ; 14 Adapt evt_set_transpose to new code.
+
+; ----- Ayane v0d -----
+  ; Feb
+   ; 29 Amorce_song: adapt to real track index (track.tracks)
+; ----- Ayane v0c -----
+    ; 21 s/chunk_start/phrase_start (must skip clip_header_size)
+       ; Rewrite!!! See rationale in journal.o
+           ; - Same code for each channel 
+           ; - No delay (duration encoded with note/row)     
+           ; - No init fx, instead copy address routine and 1 word param
+                         ; systematically 
+                ; Pro:
+                    ; - faster
+                    ; - simpler
+                    ; - vibrato TM peak is smoothed:
+                           ; Before: both init and 1st iter
+                           ; Now: first iter do init (replace itself)
+                                ; but doesn't change pitch. 
+                ; Con:
+                    ; Plus gourmand a stocker dans phrase
+                       ; (use 1 word even for 1 byte param fx)
+                    ; -> nevermind, can be mitigated with custom players
+           ; - Don't jump to read_fx read_ins etc via stack!
+                   ; Did i do that for Sample code interleaving!?
+                   ; (aka ADD n:RET m:jp IY)
+                   ; Well, JP m,next  works as well!
+      ;OH FUCK NO that's not enough to jump back where we are
+      ;TODO: Make the stuff work without sfx
+
+         ; Oh no I see: was needed to jump back after random fx init
+         ; -> so, simplification made possible by previous point
+       ; Don't rewrite everything!!!
+           ; - Don't fix what isn't broken
+           ; - Some reasons of doing stuff i might have forgotten
+           ; - Takes too much time for nothing
 
       IMPORT "plyconf.i"
 
@@ -27,7 +85,11 @@ dev_checks = 1 AND ayane
       IMPORT "memmap.i"
       IMPORT "const.i"
       IMPORT "instr.o"
-      IMPORT "periods.o"
+check_pc
+      IMPORT "periods.o" ; skipped, just for c0/c1 labels
+      IF check_pc - $
+ !!! periods must be imported at the right location by instr.o
+      END
       IF ayane
       IMPORT "memcpc.o" ; connect_bk_track
       ELSE
@@ -50,15 +112,16 @@ fx_set_phrase
      ; - go to next chunk
      ; - auto-loop phrase 
      ; - /empty_phrase/
-      BRK
- ; is it still used?
- ; if yes, set TM
-
+ BRK
+      IF todo
+;!!! bug:must reset SP
+;!!! bug:must reset BC
+; Must set TM
+      END
 ; For now we know it's the same bank.
       IF phrases_across_banks
  !! review connection
       END
-
           pop hl
           jp read_row
 
@@ -86,6 +149,84 @@ fx_set_phrase
  ; ---------------------------------------
 
 hist
+; \/\/\/ 2025 \/\/\/\/\
+; ----- Ayane v0l2 -----
+  ; Mar
+; Mar 24: Handle constant /pattern_size/ 
+   ;21 Handle loop for compiled version  
+      IF todo
+         ; (in-tool use link, check if it's done properly)
+      END
+   ;19 De-unroll psg routine
+     ; Don't reset de if use_phrase_pitch=0
+     ; Remove stop when ayane=0
+     ; Add checks adr fx and instr
+     ; kim= empty row encoded by instr lsb=0
+          ; (before: was replaced by instr null which stopped the instr:
+                   ; but note from last instr was still set)
+; \/\/\/ 2024 \/\/\/\/\
+; ----- Ayane v0l -----
+  ; Jun     
+   ;17 Add type_evt_loop
+   ;12 Add SIGN_EVT for serialisation in salo.o
+
+; ----- Ayane v0h -----
+  ; May 
+   ;14 When /hack_minimala/, open channels by default
+     ; Optimise /tick/ (and return it in HL)
+  ; Apr
+   ;24 For compiled minimala:
+     ; - Version use_flags = 0 
+; ----- Ayane v0g -----
+  ; Apr                            
+   ;22 Don't handle volume if use_volume = 0
+   ;21 track_loop: connect BK_TRACK  
+   ;15 Fix init_periods
+   ;11 evt_set_transpose: add check
+     ; read_instr: use instr header
+
+   ; 8 s/regs/psg_regs to avoid mixing up with aum_regs
+
+; ----- Ayane v0f -----
+  ; Mar
+   ; 31 Simplify init: we don't need empty phrase.
+       ; instead tool we'll make sure a phrase will be set at RDV 0
+   ; 14 Adapt evt_set_transpose to new code.
+
+; ----- Ayane v0d -----
+  ; Feb
+   ; 29 Amorce_song: adapt to real track index (track.tracks)
+; ----- Ayane v0c -----
+    ; 21 s/chunk_start/phrase_start (must skip clip_header_size)
+       ; Rewrite!!! See rationale in journal.o
+           ; - Same code for each channel 
+           ; - No delay (duration encoded with note/row)     
+           ; - No init fx, instead copy address routine and 1 word param
+                         ; systematically 
+                ; Pro:
+                    ; - faster
+                    ; - simpler
+                    ; - vibrato TM peak is smoothed:
+                           ; Before: both init and 1st iter
+                           ; Now: first iter do init (replace itself)
+                                ; but doesn't change pitch. 
+                ; Con:
+                    ; Plus gourmand a stocker dans phrase
+                       ; (use 1 word even for 1 byte param fx)
+                    ; -> nevermind, can be mitigated with custom players
+           ; - Don't jump to read_fx read_ins etc via stack!
+                   ; Did i do that for Sample code interleaving!?
+                   ; (aka ADD n:RET m:jp IY)
+                   ; Well, JP m,next  works as well!
+      ;OH FUCK NO that's not enough to jump back where we are
+      ;TODO: Make the stuff work without sfx
+
+         ; Oh no I see: was needed to jump back after random fx init
+         ; -> so, simplification made possible by previous point
+       ; Don't rewrite everything!!!
+           ; - Don't fix what isn't broken
+           ; - Some reasons of doing stuff i might have forgotten
+           ; - Takes too much time for nothing
  ;---- In 2020 \/
  ; vav 03/02 [st] Fix stfx_vibrato smartass resolution. 
            ; More lenient test: accept up to diff 3 for period
@@ -107,9 +248,6 @@ hist
 
 ; -----------------------------
 n     = 20              ;a changer par TM correct au cas par cas
-
-; ins_size_max = 20       ;10 effets avec 1 parametre, ou 6 avec 2...
-; fx_ext_size = 4         ;nbr max d'extra parametre
 
 r7    = psg_regs+7
       IF use_hard_env
@@ -147,16 +285,49 @@ set_transpose_tm = 12
 
 
       MACRO CHANGE_PHRASE
+      IF is_compiled_phrase_indexed AND [1-ayane]
+      IF 0
+dd        ld a,1
+          dec a
+          call z,&BE00
+          ld (dd+1),a
+      END
+          ld a,(de):inc de
+;Special case: since no link for track hooks, we use
+;escape code 00 to flag track loop, as it cannot a valid LSB for phrase
+          or a
+          jr nz,.okphrase
+          ld a,(de):inc de:ld l,a
+          ld a,(de):ld h,a
+          jr track_reset
+.okphrase
+; We expect index in first &100 segment
+; This is enforce
+          ld l,a
+          ld h,compiled_data/&0100
+          ld a,(hl):inc l
+          ld h,(hl):ld l,a
+      ELSE
+
           ld a,(de):inc de:ld l,a
           ld a,(de)
       IF ayane
 change_phrase_tm = 14
           ld h,a
       ELSE
-change_phrase_tm = 23
+if sfx
+change_phrase_tm = !! TODO
+END
 ; update track pnt for next time
           inc de
+;Special case: since no link for track hooks, we reuse
+; phrase link to flag track loop  
+          rlca:srl a    ; Bit 7 in carry and cleared in A
           ld h,a
+          jr c,track_reset
+      END
+      END
+; update track pnt for next time
           push de
           pop de
       END
@@ -165,7 +336,7 @@ change_phrase_tm = 23
       ENDM
 
 
-      MACRO UPDATE_INSTR flags_in_b
+      MACRO UPDATE_INSTR flags_in_b,phrase_in_de
 ;Indirection. Rational from vAF:
  ;  Don't hardcode instr adr in phrase, but use its number
                ; - take less space
@@ -174,6 +345,9 @@ change_phrase_tm = 23
                                      ; e.g. "alternate instr"
 
       IF is_instr_indexed
+      IF phrase_in_de
+  !! review this
+      END
 ;Done preemptively, as we must do it before push
 ;Timer might be triggered a bit too soon, nevermind
       IF ayane AND sfx
@@ -223,16 +397,19 @@ update_instr_tm = 61
       IF sfx
  !! todo
       END
-          ld c,(hl):INC_HL()
+      IF 1-phrase_in_de
+  !! error
+      END
+          ld a,(de):inc de
+; 0 only used for empty row: no instr to install and no note to read
+          or a:jr z,_no_note
+          ld c,a
           ld b,compiled_data / &0100 ; instr data MSB
           ld a,(bc):inc c ; type -> lsb routine
-          ld (de),a:inc e
-          ld a,instr_code / &0100
-          ld (de),a:inc e
-          ld a,c        ; params
-          ld (de),a:inc e
-          ld a,b
-          ld (de),a
+          ld (hl),a:inc l
+          ld (hl),instr_code / &0100:inc l
+          ld (hl),c:inc l ; pnt params
+          ld (hl),b
       END
 
       IF ayane
@@ -242,29 +419,45 @@ update_instr_tm = 61
       END
       ENDM
 
-      MACRO UPDATE_NOTE
-update_note_tm = 15
-          pop de
-; e: note+transpose (aka current note)
-; d: transpose
-          ld a,(hl):INC_HL()
+      MACRO UPDATE_NOTE phrase_in_de
+      IF phrase_in_de
+; l: note+transpose (aka current note)
+; h: transpose
+          ld a,(de):INC_DE()
 ; Periods in word, so we multiply*2 before storing.
   ; - More optimised (don't have to redo it for next ticks)
   ; - Trigger flags for future uses (and checks right now).
           add a
+      IF sfx
+!! todo
+      END
       IF dev_checks
 ; 0: reserved (different than 'no note')
    ; Can be used for e.g. restart instrument.
           call z,mess
 ; >= 128: reserved
           call c,mess
+      END
+          pop hl
+          add h:ld l,a
+          push hl
+      ELSE
+update_note_tm = 15
+;same but de,hl exchanged
+          ld a,(hl):INC_HL()
+          add a
+      IF dev_checks
+          call z,mess
+          call c,mess
           SUB_TM''(6)
       END
+          pop de
           add d:ld e,a
           EX_AF'()
           SUB_TM_CALL(update_note_tm-1) ; -1 jr not taken
           EX_AF'()
           push de
+
       ENDM
 
       MACRO NOT_REACHED
@@ -380,10 +573,10 @@ tm0   = 1+15            ; until track_loop
 ; ! don't use A (= TM)
       IF hack_minimala
 ; Channel always open
-          ld (hl),&38
+          ld a,&38:ld (r7),a
       ELSE
-;We only open voice/noise (with AND), so start from all closed.
-          ld (hl),&3F
+;We only open voice/noise, so start from all closed.
+          ld a,&3F:ld (r7),a
       END
 ;r13 : keep value from previous iter to detect if retrig needed
 ;r14 : sentinelle set in instr.o
@@ -414,6 +607,9 @@ tick      ld bc,0       ; Nb tick (1st iter:0)
           jr nz,play_phrase
 
 ; -- Next RDV
+      IF may_optim
+; use "inc l" if each track is confined
+      END
       IF ayane
 tm2   = 14+27-1         ; until evt_handle_loop ; -1: jr not taken
           inc h:dec h:jr z,stop ; cannot use A(')
@@ -421,10 +617,24 @@ tm2   = 14+27-1         ; until evt_handle_loop ; -1: jr not taken
           ld e,(hl):inc hl
           ld d,(hl):inc hl
           res 7,d       ; Clear loop flag
+; no link. we'll update pointer once we've processed events
+; The pushed DE is dummy value so we can update RDV
+      END
+track_reset
+; For compiled: no link. 
+; We'll update pointer once we've processed events (see CHANGE_PHRASE)
+; The pushed DE is dummy value so we can update RDV
+          push de
+; +duration for next RDV 
+;!!! oh bug: numeric AND between &60 & 1
+;      IF pattern_size AND [1-ayane] ; ayane: always dynamic
+      IF [1-ayane]      ; ayane: always dynamic
+;Constant: must read
+          ld d,b
+          ld a,c:add pattern_size:ld e,a:jr nc,$+3:inc d
       ELSE
 tm2   = 0+27
 ; no link. we'll update pointer once we've processed events
-!!! looping must be handled by special events?
 ; for now write dummy value so we can update RDV
       END
           SUB_TM_CALL(tm2) ; before push!
@@ -433,6 +643,7 @@ tm2   = 0+27
 ; +duration for next RDV
           ld a,(hl):inc hl:add c:ld e,a
           ld a,(hl):inc hl:adc b:ld d,a
+      END
           push de
           pop de        ; skip rdv
           pop de        ; skip pnt
@@ -473,11 +684,22 @@ evt_handle_loop
           ld a,(de):inc de
           ld l,a
       END
+
           ld h,events/&0100
           jp hl
 
+      ELSE
+; For compiled chp: always transpose and set phrase
+          ex de,hl      ; need hl has work variable
+          SET_TRANSPOSE()
+          CHANGE_PHRASE()
+          jr read_row
+      END
+
+      IF ayane
 stop
           call to_be_implemented
+      END
 ; Set flag not to call the player again.
 ; And/or put address of null row in stack. 
 ; Better: just jump to play_tick, so we continue play instr/fx.
@@ -512,7 +734,10 @@ play_phrase
           pop hl
           or a:sbc hl,bc
           pop hl        ; Next row position
+   IF SFX
           jp nz,play_tick ; JP: stable TM
+   END
+          jr nz,play_tick
 
 read_row
 ;------- 
@@ -558,9 +783,12 @@ tm_read_row = 1 + 43    ; until read_fx
 ; and continue at .ok_phrase
           ld hl,track_fx - track_phrase_pnt
           add hl,sp
+      IF ayane
           ex de,hl
           pop hl        ; restore phrase pnt
-
+      ELSE
+          pop de
+      END
 ;-----------------------------------------
       IF use_flags
           ld b,(hl)     ; flags   
@@ -616,19 +844,19 @@ read_instr
 ; Instr before note and vol to free DE.
 tm_read_instr = 5       ; when no instr
           bit bit_instr-nb_fx,b ; (compense RR b)
-          jr z,_okinstr ; no need to skip if no instr: de discarded
-          UPDATE_INSTR(1)
-_okinstr
+          jr z,.okinstr ; no need to skip if no instr: de discarded
+          UPDATE_INSTR(1,0)
+.okinstr
 
 read_note
 ;--------            
 tm_read_note = 5
           bit bit_note-nb_fx,b:jr z,.oknote
-          UPDATE_NOTE()
+          UPDATE_NOTE(0)
 .oknote
 
 read_vol
-;-------
+;-------                 
       IF use_volume
 tm_read_vol = 11 + 17   ; when .okvol taken
           pop de        ;skip note
@@ -661,8 +889,10 @@ tm_read_vol = 11 + 17   ; when .okvol taken
       IF nb_fx
  !! todo 
       END
-          UPDATE_INSTR(0)
-          UPDATE_NOTE()
+          UPDATE_INSTR(0,1)
+          UPDATE_NOTE(1)
+_no_note
+          ex de,hl
       IF use_volume
  !! todo
       END
@@ -674,11 +904,12 @@ tottm = tm_read_fx0+tm_read_instr+tm_read_note
           SUB_TM_CALL(tottm+tm_read_vol) ; before push!
           push hl       ; Update phrase pnt
           pop hl        ; just skip
-
+;Enchaine
 play_tick
 ;--------         
 ;Here A= TM  (A') 
 ; Play current row
+
       IF ayane
 ;For header and tables
           ld bc,&7F00+BK_INSTR:out (c),c
@@ -686,20 +917,37 @@ play_tick_tm = 6+7
       ELSE
 play_tick_tm = 6
       END
-          pop de        ; E=note with current transpose
+          pop bc        ; c=note with current transpose
       IF use_volume
-          pop ix        ; ixh = current vol
+          pop de
+          ld b,d        ; b=current vol
       END
-          ld bc,0       ; Reset pitch shift
+      IF use_phrase_pitch
+          ld de,0       ; Reset pitch shift
+      END
+; Jump to fx_0, fx_1, instr, and then track_loop  
+      IF dev_checks
+          pop hl
+          push hl
+          ld a,l:cp fx_noFx AND &FF:jr z,.okfx
+          cp fx_set_phrase AND &FF:call nz,mess
+.okfx
+          ld a,h:cp fx_noFx/&0100:call nz,mess
+;!!! There is a bug in fx_set_phrase, which doesn't reset SP
+      END
 ; Jump to fx_0, fx_1, instr, and then track_loop   
       IF use_volume
           RET_ROUT(play_tick_tm + 4)
       ELSE
           RET_ROUT(play_tick_tm)
       END
-;-------------------- Jump to installed instr --------------
 
-;------- events ---------
+      IF nb_fx
+_nofx0
+          4 ** inc e
+          jr _okfx0
+      END
+
       MACRO SIGN_EVT type
       IF ayane
       BYTE type
@@ -745,7 +993,7 @@ nxt_event_pnt ld hl,0
       END
           jp evt_handle_loop
 
-          SIGN_EVT(type_evt_change_phrase)
+ SIGN_EVT(type_evt_change_phrase)
 evt_change_phrase
 ; Necessarily end of list
       IF evt_change_phrase/&0100 - events/&0100
@@ -761,14 +1009,28 @@ evt_change_phrase
           SUB_TM(tm1+tm_evt_iter+change_phrase_tm+4)
 d         jp read_row
 
-      ELSE
-; For compiled minimala: always transpose and set phrase
-          ex de,hl      ; need hl has work variable
+
+
+events
+          SIGN_EVT(type_evt_transpose)
+evt_set_transpose
           SET_TRANSPOSE()
+      IF ayane
+nxt_event_pnt ld hl,0
+      IF dev_checks
+          ld a,l:or h:call z,fail
+      END
+      END
+          jr evt_handle_loop
+
+          SIGN_EVT(type_evt_change_phrase)
+evt_change_phrase
+; Necessarily end of list
+      IF evt_change_phrase/&0100 - events/&0100
+ !!! error confine
+      END
           CHANGE_PHRASE()
           jr read_row
-      END
-
 track_end
 ;All tracks have been handled
       IF sfx
@@ -801,6 +1063,45 @@ savesp    ld sp,&3131
           RET_ROUT(track_end_tm)
 
 ;-------------------------------------
+      IF 1-ayane
+; For ayane: handled in timer.o
+psg
+          ld hl,psg_regs
+          ld b,&F4
+          xor a
+          exx
+          ld bc,&F680
+          ld d,&C0
+.psglp
+          out (c),d
+          exx
+          out (c),a
+          exx:out (c),0:exx
+          inc b:outi
+          exx:out (c),c
+          inc a
+      IF use_hard_env
+          cp 13
+      ELSE
+          cp 11
+      END
+          jr c,.psglp
+
+      IF use_hard_env
+          out (c),d
+          exx
+          ld d,a        ;13
+          ld a,(hl)
+          inc a:jr nz,$+3:inc d ;14: /dev/null
+          out (c),d
+          exx:out (c),0:exx
+          dec a:out (c),a
+          exx:out (c),c:out (c),0
+      ELSE
+          out (c),0     ; ?? needed ??
+      END
+          ret
+END
 
 ;-------
 Amorce_song
@@ -901,7 +1202,9 @@ Amorce_song
           dec hl:ld (hl),track_end / &0100
           dec hl:ld (hl),track_end AND &FF
 
+ IF ayane
           ld hl,0:ld (tick+1),hl
+ END
 
 ;Enchaine (save a call)
 Init_periods
@@ -1080,5 +1383,4 @@ track_stack_
       IF 1-ayane
       ORG save_org
       END
-
 
