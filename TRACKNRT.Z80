@@ -540,7 +540,7 @@ test_init_track_module
 ; otherwise, mem full or inconsistant state
           call nrt_init
           call Song_get_first_track
-          call get_track_pnt
+          call get_track_header
           ld b,3
 .lp
       IF tf_clips
@@ -1046,7 +1046,7 @@ test_get_event_hook_at
 ; must be returned
           ld hl,.t0
           call setup_track_t
-          ld hl,get_event_hook_at
+          ld hl,get_hook_at
           call eval
           call check_hook_address
           push hl
@@ -1054,7 +1054,7 @@ test_get_event_hook_at
 ; Asking hook "past" last must return the same hook.
           ld hl,.t1
           call setup_track_t
-          ld hl,get_event_hook_at
+          ld hl,get_hook_at
           call eval
           pop de
           or a:sbc hl,de:add hl,de:call nz,fail
@@ -1092,7 +1092,7 @@ test_set_event_hook_at
 .test
 ;out: hl=address hook
           call setup_track_t
-          ld hl,set_event_hook_at
+          ld hl,set_hook_at
           call eval
           call check_hook_address
           ret
@@ -1370,7 +1370,7 @@ _outputchan = 2
       END
 
 nrt_load_current_track
-          call get_current_track_pnt
+          call get_current_track_header
 ; -- Should be a link to empty list (but link itself not null)
 ;TODO: less brittle test about that explictly?
           ld a,(hl):or a:call z,nrtfail

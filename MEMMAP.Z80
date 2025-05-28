@@ -58,9 +58,10 @@ track_events
       ORG &5000
 track_events_
 tables                  ; might lower it. check hb4: which place would
-
+instr_pool
       ORG &7000         ; simplify instr pnt computation for ply
 tables_
+instr_pool_
 instr_idx SKIP instr_head_size*&0100 ; chung, ply
 instr_idx_
       IF $ AND &FF
@@ -119,7 +120,8 @@ disc_buffer             ; In central RAM for easier loading in banks
 bandaya SKIP &0300      ; Code: out of page 0 and bank (since under int)
 ; -> could be mitigated: int hook saving and connecting bank.
 psg_regs SKIP &0100     ;  Room for pseudo registers and ??? 
-workzone SKIP &0300     ; Sharable. Used by st128
+workzone SKIP &0600     ; Sharable. Used by st128
+workzone_size = $ - workzone
 buf_chung SKIP &0200
 buf_chung_
 free_ram_for_nrt = buf_chung_
@@ -146,3 +148,4 @@ ramlimit' = &A000
   ;    SKIP &9E00 - $    ; Reusable buffer (status.o)
 
       ORG savepc,saveobj
+

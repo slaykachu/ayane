@@ -164,6 +164,11 @@ check_player
 dt    = playcomp - compiled_player ; offset at storage area
           ld a,(dt+compiled_instr_null):cp &E1:call nz,fail
           ld a,(dt+compiled_instr_default):cp &E1:call nz,fail
+      IF 0
+; !!! must review that, dependent on:
+  ; - the loaded player at /playcomp/
+  ; - the compiled addresses (moving)
+;Todo: put addresses in the generated player header, and use thoses
       IF use_instr_chip_down_vib
           ld a,(dt+compiled_instr_chip_down_vib):cp &21:call nz,fail
       END
@@ -177,6 +182,7 @@ dt    = playcomp - compiled_player ; offset at storage area
       IF use_instr_chip_down_arp_noise
           ld a,(dt+compiled_instr_chip_down_arp_noise):cp &21
           call nz,fail
+      END
       END
           ld a,(dt+compiled_play):cp &ED:call nz,fail
           ld a,(dt+compiled_psg):cp &21:call nz,fail
@@ -251,3 +257,4 @@ monitor
 ;
       ORG compiled_stack
 ; ply stack
+

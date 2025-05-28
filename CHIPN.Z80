@@ -1,20 +1,20 @@
-	hack_minimala = 0       ; also used for 4k08
-	hack_4k08 = 0
-	hack_kim9 = 1
-	hack  = 1
-	 ; Convertion for chip'n'sfx
+hack_minimala = 0       ; also used for 4k08
+hack_4k08 = 0
+hack_kim9 = 1
+hack  = 1
+         ; Convertion for chip'n'sfx
 
-	; TOC:  
-	  ; - song_map
-	  ; - patterns
-	  ; - instruments
+        ; TOC:  
+          ; - song_map
+          ; - patterns
+          ; - instruments
 
-	; 2025
-	; ----- v0j2 -----
-	  ; Mar
-	   ; 20 Fix pitch pokage in workzone
-	   ; 17 Skip loop pnt "*" (at 0 anyway in kim9.chp)    
-	      ; Skip break "===" in patterns
+        ; 2025
+        ; ----- v0j2 -----
+          ; Mar
+           ; 20 Fix pitch pokage in workzone
+           ; 17 Skip loop pnt "*" (at 0 anyway in kim9.chp)    
+              ; Skip break "===" in patterns
              ; One was in a blank pattern
              ; The other makes no big difference
       ; Handle slow portemento down
@@ -288,15 +288,18 @@ instruments
           ld (cur_instr),a
           call consume_space
 
-;Clear workzone (512 bytes)
+;Clear workzone 
 ;No longer instrument will be generated: if vol decrease too slowly,
 ; we switch to chipnsfx like instr. 
 ;Well, some corner cases not handled (noise decreasing too slowly)
-max_rows = 512 / instr_row_size_max
+
+;max_rows = workzone_size / instr_row_size_max
+max_rows = &20          ; hack to avoid memfull when registering instr
+
           push hl
           ld hl,workzone
           ld de,workzone+1
-          ld bc,511
+          ld bc,workzone_size
       IF workzone AND &FF
  !!! ld (hl),0  instead
       END
@@ -495,7 +498,10 @@ create_instr
   ; (well, not anymore for chung perspective)
   ; but then must reserve & init &100 * instr_row_size_max for workzone
           ld bc,(volume)
+      IF 0
+; No need to check anymore, as we clip to /max_rows/
           ld a,c:cp &FD:call nc,to_be_implemented
+      END
 
           ld a,b
           ld b,0        ; count nb rows 
@@ -505,11 +511,18 @@ create_instr
 ; Encode XXXX0 to be flagged as volume.
           3 ** rrca:and &1E
           ld (hl),a
+          inc b
+          ld a,b
+          cp max_rows
+          jr c,.okvol
+          pop af
+          jr .donevol
+.okvol
           pop af
           add hl,de
-          inc b
           add c
           jr c,.lpvol
+.donevol
 ;Last volume could be > 0, nevermind
           push bc       ; b= nb row
 
@@ -978,3 +991,4 @@ XY    WORD
 fx_rows# BYTE 
 arp_loop BYTE 
 cur_instr BYTE 
+

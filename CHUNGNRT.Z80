@@ -1,17 +1,19 @@
 ; >>>>>>>>>> Test instr routines  <<<<<<<<<<<
 ; See todonrt for chunk related routines
 
+;2025
+ ; Apr
+; ---- Ayane 0.ac ----
+  ;24 test_instr_ayane_append_rows
 ;2024
-;  Feb
-; ---- 0.0ab ----
  ; Oct
-; ---- 0.0y ----
+; ---- Ayane 0.0y ----
   ;19 Add /test_delete_row/
     ; Add /test_insert_row/
-; ---- 0.0v ----
+; ---- Ayane 0.0v ----
   ; 4 Fix /test_instr_edit/ itself: set_row expect fx routine
     ; Add test_get_row
-; ---- 0.0u ----
+; ---- Ayane 0.0u ----
 ; Sep
   ; 24 Remove chipnsfx related test
 has_chipnsfx = 0
@@ -32,6 +34,7 @@ has_chipnsfx = 0
 tests
           call nrt_init
       IF 1
+          call test_instr_ayane_append_rows
           call test_get_row
           call test_loop
           call test_loop_past_end
@@ -41,6 +44,7 @@ tests
           call test_delete_row
           call test_delete_row_adjust_loop
           call test_insert_row
+          call test_instr_ayane_append_rows
       END
           call test_insert_row_adjust_loop
       IF has_chipnsfx
@@ -265,6 +269,12 @@ check_row
 ;in: a= row#
    ;hl= ref           
           push hl
+
+;-clear first to detect copy issue
+          ld hl,destnrt
+          ld b,instr_row_size_max
+.fill     ld (hl),&F7:inc hl:djnz .fill
+
           call select_row
           ld de,destnrt
           call get_row
@@ -336,6 +346,28 @@ test_insert_row
           ld a,3:ld hl,row2:call check_row
           ret
 
+test_instr_ayane_append_rows
+;---------------------------
+; Check fx_null is set in the instrument, 
+; even from chipn.o (where we pass 0)
+          call nrt_init
+          ld a,1        ; id (0 is reserved)
+          ld c,0        ; nb params
+          call New_instr_ayane
+          ld b,2
+          ld hl,null_rows
+          call instr_ayane_append_rows
+          ld a,0:ld hl,ref_null_row:call check_row
+          ld a,1:ld hl,ref_null_row:call check_row
+          ret
+
+ref_null_row
+      FILL fx0_type,0
+      WORD fx_null:FILL instr_fx_size-2,0
+      WORD fx_null:FILL instr_fx_size-2,0
+      WORD fx_end
+null_rows FILL instr_row_size_max * 2,0
+
 test_insert_row_adjust_loop
 ;--------------------------
 ;Prerequisite: test_dummy_instr, test_insert_row
@@ -369,6 +401,5 @@ compare
           djnz compare
           ret
 
-      SKIP -$ AND &FF
 destnrt
       SKIP ramlimit-$

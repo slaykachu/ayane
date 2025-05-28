@@ -1,61 +1,30 @@
-donrt = 1               ; 0: test st_convert via manual play
-test_with_raster = 0
-todo
-  ; test_empty_phrase:
-               ; WTF now? with tm0=39 (bad value)
-                                  ; Returned: &217
-                                  ; Prof:     &218 
-               ; WTF now? with tm0=40
-                                  ; Returned: &2a7
-                                  ; Prof:     &2a8
-            ; Why would it take &90 more?
+; Tests ply.o
+; v0.0ac 05 Mar 25           
+do_test_tm = 0          ; 0: just test output 1: verify returned TM
+
+; TODO!!!!
+   ; fix test_sync_buzzer (hang)
+   ; fix timing
 
       IMPORT "const.i"
       IMPORT "memmap.i"
       IMPORT "plyconf.i"
 
       ORG code_start
-      IF donrt
       ENT tests
-      ELSE
-      IMPORT "st128.o"
-      ENT test_playing
-      END
 
-      IMPORT "ppi.o"
-      IMPORT "chung.o"
-      IMPORT "fx-api.o" ; for instr_set_vol_table and co
-      IMPORT "ply.o"
       IMPORT "track.o"  ; for Init_track_module and tracks
       IMPORT "phrase.o"
+      IMPORT "chung.o"
+      IMPORT "ply.o"
       IMPORT "timer.o"  ; for fx_end
+      IMPORT "fx-api.o" ; for instr_set_vol_table and co
+      IMPORT "testlib.o"
+      IMPORT "ppi.o"
 ; No more room before < &4000
-
 
 track1 = tracks+4       ; track 0 empty (reserved)
 
-
-; /\/\/\/ 2025 \/\/\/\/\/
-  ; Mar
-    ;1  Use :orgrel/prof.o (rather than ums:)
-      ; Fix test_empty_song_tm:
-                              ; Returned: &1f7
-                              ; Prof:     &20f 
-
-; /\/\/\/ 2024 \/\/\/\/\/
-   ; ----- Ayane v0.0.0u ------
-  ; Sep 
-    ;17 Start at track1 to amorce song (0 is reserved/empty)
-   ; ----- Ayane v0.0.0p ------
-    ; 8  Fix compilation. !!! MOST TESTS STILL DEACTIVATED !!!
-                          ;;; -> must update fx-api
-       ; !!!! test failing.!!!!
-   ; ----- Ayane v0.0.0e ------
-  ; Mar
-    ; 10 Adapt to new structure (multi-events)
-  ; Feb           
-   ; ----- Ayane v0.0.0b ------
-    ; 26  v2 Adapt to new ply!
 
 ; ------------------------------------------------
       MACRO VOL n
@@ -118,22 +87,18 @@ track1 = tracks+4       ; track 0 empty (reserved)
 
 
 fail  = &BE00
-nrtfail = &BE00
 
-      IF donrt
 tests
-          call test_note_instr
-
+  ;        call test_empty_song_no_hook_tm
+      IF do_test_tm
           call test_profiling
           call test_timer_nop
-        ;  call test_empty_song
-        ;  call test_empty_song_tm
-          call test_empty_phrase
-          call test_note_instr
-      IF 0
-          call test_song_instr_get_noise_table
-          call test_vibrato
       END
+          call test_empty_song
+          call test_empty_song_no_hook_tm
+          call test_empty_song_tm
+          call test_empty_phrase
+          call test_sync_buzzer
           ret
 
 nrt_init
@@ -150,11 +115,12 @@ nrt_init
 ;-----------------------------------------------
       MACRO CHECK_HL_EQ n
           push de
-          ld de,n:or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ld de,n:or a:sbc hl,de:add hl,de:call nz,fail
           pop de
       ENDM
 
 ;-----------------------------------------------
+      IF do_test_tm
 test_profiling
 ; Check test frameword itself
           call nrt_init
@@ -164,7 +130,6 @@ test_profiling
 .noops
           SUB_TM_CALL(0)
           RET_ROUT(0)
-
 
 test_timer_nop
 ; Check test frameword itself (with call to /timer_nop/)
@@ -180,12 +145,11 @@ test_timer_nop
 
           RET_ROUT(2-1) ; -1 for last djnz
 
+      END
+
 test_empty_song
 ; After ayane_init.
           call nrt_init
-          ld hl,track1
-          ld a,3
-          call Amorce_song
 ; Test 256 times                   
 ; Enough to check for spurious RDV (track event mustn't be reached)
 ; Not too long either
@@ -203,6 +167,14 @@ test_empty_song
           djnz .lp
           ret
 
+test_empty_song_no_hook_tm
+; Check TM once phrase has been set
+; -> shorter codepath to verify in case of TM discrepancy
+
+          call nrt_init
+          call nrt_play ; 1st to install phrase
+          call tm_play_
+          ret
 
 test_empty_song_tm
 ; This version check TM
@@ -245,88 +217,46 @@ test_note_instr
           call compare_sized
           ret
 
+untouched = &DD
+
 .ref  WORD &EEE4+pitch
       FILL 5,untouched
       BYTE &3E
       BYTE 15
       FILL 2,untouched
 
-      IF 0
-
-
-test_song_instr_get_noise_table
+test_sync_buzzer
+;---------------
+; Only check TM counting
           call nrt_init
-          call song_reset
-          call song_select_new_instr ; to set instr#
-
-          ld bc,voltable_tata
-          call instr_set_vol_table
-          ld bc,noisetable_pouet
-          call instr_set_noise_table
-          call instr_append_note2tone
-
-          xor a:call song_select_instr ; TODO: why is it necessary?
-          call instr_get_noise_table
-          ld de,noisetable_pouet
-          or a:sbc hl,de:add hl,de:call nz,&BE00
-          ret
-
-
-
-test_vibrato
-          call nrt_init
+          call dummy_instr_sync
           call nrt_dummy_song
-          di
-
-;       ld   b,6:call nrt_ff  Not needed since vibrato on 1st row 
-          ld hl,vib_ref
-          ld b,vib_ref_
-tv_
+;repeat test to detect spurious desync
+          ld b,20
+.lp
           push bc
-          push hl
-          ld iy,testsample
-          call nrt_play
-          pop hl
-          ld a,(psg_regs):cp (hl):call nz,&BE00
-          inc hl
-          ld a,(psg_regs+1):and &0F:cp (hl):call nz,&BE00
-          inc hl
+          call tm_play
           pop bc
-          djnz tv_
+          jr nz,.lp
           ret
 
-
-vib_ref
-; Base is &2cc, so vib is slightly decentered.
-; Starting down. The decenter is actually more exact.
-          2 ** WORD &02CB,&02CB,&02CC,&02CD,&02CE,&02CE,&02CD,&02CC
-vib_ref_ = $-vib_ref /2
-
-nrt_ff
-;fast forward 
-          push bc
-          ld iy,testsample
-          call nrt_play
-          pop bc
-          djnz nrt_ff
-          ret
-
-
-      END
 
 nrt_dummy_song
-; --- dummy instr
+; --- dummy instr (TODO? Move in testlib which already have instrs)
+                  ;-> YAGNI. It's fine as this
           ld a,1:call New_instr_ayane
-          xor a:call insert_empty_row
-          xor a:call select_row
-          ld de,row0:call set_row
+          xor a
+          ld de,row0
+          call helper_setrow
+;enchaine
+nrt_dummy_phrase
 ; --- dummy phrase
           xor a:call song_select_new_phrase
           call phrase_select_new_row:call nc,fail
           ld a,12:call row_set_note
           ld a,1:call row_set_instr
-; --- dummy track
 ;enchaine
+; --- dummy track
 nrt_phrase0_in_track1
           ld a,1:call Song_select_track
           xor a
@@ -440,236 +370,19 @@ cr_nono
 
           ret
 
-      ELSE
 
-test_playing
-
-          call nrt_init
- ;          call song_reset  ; shouldn't be needed after init
-
-          call st_convert
-          call st_check
-
-; To play
-          ld hl,stSong
-          xor a
-          call amorce_song
-          jp testcom
-
-
-st_check
-
-; in case module128 use EI, and because regs' aren't properly saved
-          ld hl,&C9FB:ld (&38),hl
-
-;compare            
-          ld bc,&7F00+bk_base:out (c),c
-
-;unused chan aren't updated, must clean          
-          ld hl,tabreg
-          ld b,14
-nrt_clr   ld (hl),0:inc hl:djnz nrt_clr
-          ld hl,dbg
-.fill     ld (hl),0:inc l:jr nz,.fill
-
-          ld hl,stSong
-          xor a
-          call amorce_song
-stcomp_bk = &C5
-          ld bc,&7F00+stcomp_bk:out (c),c
-          call init128
-
-nrt_cp128
-          ld bc,&7F00+stcomp_bk:out (c),c
-          call play128
-          ret nc
-
-          ld bc,&7F54:out (c),c
-          ld (curcolor+1),bc
-          di
-          ld bc,&7F00+bk_base:out (c),c
-          xor a
-          ld iy,testsample
-          call nrt_play
-          ei
-
-          ld hl,tabreg
-;          call compare_regs
-
-      IF 0
-          ld hl,(nrt_it+1)
-          ld bc,&0756
-          or a:sbc hl,bc
-          call z,&BE00
-;          ret  z
-      END
-
-          ld hl,(toto+1)
-          dec h
-          dec h
-          ld a,(channel3+&80+xperiod)
-          ld (hl),a
-
-          ld hl,(toto+1)
-          dec h
-          ld a,(regs+7)
-          ld (hl),a
-
-          ld a,(tabreg+7)
-toto      ld hl,dbg
-          ld (hl),a
-          inc l
-          ld (toto+1),hl
-nrt_it    ld hl,0:inc hl:ld (nrt_it+1),hl
-
-          ld bc,&0180*shortcut
-    ;      ld bc,&0280
-    ;      or a:sbc hl,bc
-    ;      call z,&BE00
-          ret z
-
-          ld a,(&9004)
-          ld a,(&9794)
-dbgpnt    ld hl,dbg'
-          ld (hl),a:inc l:ld (dbgpnt+1),hl
-          jr nrt_cp128
-
-
-testcom
-          ld hl,&C9FB:ld (&38),hl
-          ei
-
-testloop
-          call vsync
-          djnz $
-          halt
-          halt
-
-          ld b,&7F:out (c),0
-          ld bc,&7F5F:out (c),c
-          ld (curcolor+1),bc
-          ld iy,testsample
-          xor a
-          di
-          call nrt_play
-          ei
-          ld bc,&7F54:out (c),c
-          halt
-          ld bc,&7F5D:out (c),c
-          ld (curcolor+1),bc
-          call psg
-          ld bc,&7F54:out (c),c
-          ld (curcolor+1),bc
-
-          ld a,&45
-          call testkey
-          rla
-          jr c,testloop
-
-      RESTORE
-
-
-; get regs from compiled st128
-;-----------------------------
-
-ad128 = &4000
-
-init128
-          ld a,stcomp_bk
-islp
-          push af
-          ld b,&7F
-          out (c),a
-
-; sanity check: module is loaded
-          ld a,(&4000):cp &C3:call nz,&BE00
-          ld a,(&4003):cp &C3:call nz,&BE00
-          ld a,(&4006):cp &C3:call nz,&BE00
-
-          ld hl,patch
-          ld de,ad128+&04A5
-          ld bc,patch_
-          ldir
-          ld hl,endptch ;end detection. !!! Forbid loop.
-          ld de,ad128+&0104
-          ld bc,endptch_
-          ldir
-
-          pop af
-          inc a
-; initially for hb4
-;          cp   &C7
-;          jr   nz,islp
-
-          call ad128    ;init zik
-
-          xor a
-          ld (endflag),a
-          ret
-
-
-patch
-; recupere donnees
-; (remplace routine PSG)
-; !! longueur <= #20 pour ST128
-
-          ld b,a
-          ld a,c
-          ld c,b
-          ld b,tabreg/&0100
-          ld (bc),a
-          ret
-
-patch_ = $-patch
-
-endptch
-; 
-; set flag at module end (!! module can't loop anymore)
-
-          ld a,&FF
-          ld (endflag),a
-          ret
-
-endptch_ = $-endptch
-
-
-play128
-; out: C if ok 
-
-          xor a
-          ld (tabreg+13),a ;reste @ 0 -> flag no change
-          call ad128+3
-
-          ld a,(endflag)
-          or a
-          ret nz
-          scf
-          ret
-
-endflag BYTE            ;set to #ff at end of module
-
-      END
-
-
-testsample
-; no sample here, just raster for testing purpose
-      IF test_with_raster:ELSE
-          ret
-      END
-          exx
-          ld bc,&7F4B:out (c),c
-     ;     4 ** nop
-curcolor  ld bc,&7F58:out (c),c
-          exx
-          add -64+16    ;duree de cette routine (a revoir !)
-          ret
 
 nrt_play
 ;-------
+; Play first tick
+; It doesn't check anything
+
           ld hl,track1
           ld a,3
           call Amorce_song
 
+nrt_play_
+          call reset_psg
           di
 ; Reset for profiling
 ; Cannot be set before since prof.profile do EI + WAIT_VBL
@@ -684,17 +397,15 @@ MAX_TM = &80
           call play
           ret
 
-tm_play
-;------     
-; reset psg regs for accurate check
-          ld hl,psg_regs
-          ld b,14
-untouched = &DD
-.raz      ld (hl),untouched:inc l:djnz .raz
 
+      IF do_test_tm
+tm_play
+;------      
           ld hl,track1
           ld a,3
           call Amorce_song
+tm_play_
+          call reset_psg
 
           ld ix,play
           call check_tm
@@ -727,10 +438,6 @@ MAX_TM = &80
           ld a,h:exx:cp d:call nz,fail:exx
           ret
 
-tmp
-          SUB_TM(3)
-          ret
-
 timer_nop
 ;--------         
           add &80       ; reload
@@ -739,101 +446,24 @@ timer_nop
           exx
           ret
 
-      IF 0
-
-      IF donrt
-!!! review that
-tstSong
-; index table for sub songs
-      WORD map1,map2,map3
-
-map1
-      BYTE 0            ;nxt RDV : dans 256 ticks
-      BYTE mask_phrase
-mplug1 WORD dbg_phrase  ; shall be replaced
-      WORD map1loop
-map1loop
-      BYTE 0
-      BYTE 0            ;no effet
-      WORD map1loop
-
-map2
-      BYTE 2            ;decale de 2 tick
-      BYTE 0            ;nothing yet
-      WORD map1         ;share same map
-
-map3
-      BYTE 4            ;decale de 4 tick
-      BYTE 0
-      WORD map1
-
-pad   FILL -$ AND &FF,0 ; Easy way to ensure tables are confined
-
-dbg_phrase
-      WORD 0            ; duration
-      BYTE mask_fx0
-      WORD &BE00
-
-voltable_tata
-;TODO optim en memoire : virer dummy value (0),
-; et stocker adresse corrigee (-1 sans retenue)
-      BYTE 0
-      BYTE $+1 AND &FF  ; amorce (value don't count)
-      BYTE 12
-      BYTE $+1 AND &FF
-      BYTE 10
-      BYTE $+1 AND &FF
-      BYTE 8
-      BYTE $+1 AND &FF
-      BYTE 6
-      BYTE $+1 AND &FF
-      BYTE 4
-      BYTE $+1 AND &FF
-      BYTE 0
-      BYTE $-1 AND &FF  ; loop sur zero
-      IF $/&0100 - voltable_tata/&0100
- Error NOT SAME MSB
-      END
-
-noisetable_pouet
-      BYTE 0
-      BYTE $+1 AND &FF  ; amorce (value don't count)
-      BYTE 1
-      BYTE $+1 AND &FF
-      BYTE 2
-      BYTE $+1 AND &FF
-      BYTE 0
-      BYTE $-1 AND &FF  ; loop sur zero
-      IF $/&0100 - noisetable_pouet/&0100
- Error NOT SAME MSB
-      END
-
-      SKIP -$ AND &FF
-tabreg SKIP 14          ; cf /patch/
-
       ELSE
-stSong
-      WORD track0,track1,track2
+tm_play = nrt_play
+tm_play_ = nrt_play_
       END
 
-      END
-
-      SKIP -$ AND &FF
-dbg   SKIP &0100
-dbg'  SKIP &0100
+reset_psg
+;--------
+; reset psg regs for accurate check
+          ld hl,psg_regs
+          ld b,14
+.raz      ld (hl),untouched:inc l:djnz .raz
+          ret
 
       SKIP ramlimit - $
 
-      IF 1-donrt
-      BANK st_bk
-      ORG &4000
-      LOAD "ums:music/shap/pcrb3.128"
-      BANK stcomp_bk
-      ORG &4000
-      LOAD "ums:music/shap/pcrb3.bin"
-      END
-
 ; Put at the end to respect ORG order (workaround bug#108)
+; No more room befor ramlimit
       ORG buf_chung_    ; &9300
       IMPORT ":orgrel/prof.o"
+
 

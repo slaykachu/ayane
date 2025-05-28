@@ -1,30 +1,18 @@
 ; ------------- Tests for instr.o ----------------
 
-; !!!! For tests make sure "IF 1" in test lib for correct dummy_instr
-; TODO: use 2 dedicated instruments instead
-
-; /// 2025 ///
-; ----- v0.0ab ------
- ; Mar
-  ; 1 Use :orgrel/prof.o (rather than ums:) 
-    ; ref2code: sync with actual code
-
-; /// 2024 ///
-; ----- v0.0x ------
- ; Oct 
-  ; 4. Extract dummy_instr to testlib (less direct dependencies)
-; ----- v0.0w ------
-  ; 1. Adapt for new instr encoding.
+; v0.0ac 05 Mar 25
+; Changelog in journal.o
 
       ORG &0100
       ENT tests
 
       IMPORT "const.i"
       IMPORT "memmap.i" ; psg_regs
+
+      IMPORT "instr.o"
+      IMPORT "timer.o"  ; set_reg13_insert_and_program/_tm
       IMPORT "testlib.o"
       IMPORT ":orgrel/prof.o"
-      IMPORT "timer.o"  ; set_reg13_insert_and_program/_tm
-      IMPORT "instr.o"
 
       MACRO SUB_TM n
 ; Copy-paste from timer.o                  
@@ -167,3 +155,4 @@ check_fx
 
 row_struct
 ; Period (16 bits) 
+

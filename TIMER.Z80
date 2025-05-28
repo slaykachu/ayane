@@ -197,6 +197,8 @@ init_timer
           djnz .raz
           ret
 
+timer_code              ; for dev checks in instr.o
+
 sync_buzzer_register
 ;-------------------
 ; Called by via instr's column fx.

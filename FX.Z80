@@ -23,11 +23,16 @@ fx_noFx
       IF sfx
           sub 6+2 /2    ; +2: Sub itself
       END
-;todo: tm 
       IF dev_checks
+          sub 17-3 /2
           pop hl
-          ld a,h:cp instr_code/&0100:call nz,&BE00
+          ex af,af
+          ld a,h
+          cp instr_code/&0100:call c,&BE00
+          cp [instr_code_+&FF]/&0100:call nc,&BE00
+          ex af,af
           jp hl
       ELSE
           ret
       END
+

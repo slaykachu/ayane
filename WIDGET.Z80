@@ -1,9 +1,6 @@
 ; --- Building blocks for GUI -----
-; v0.0ac  6 Mar 2025
 dev   = 1
 dev_checks = 1
-; TODO: move CRTC init in track (or trackui)
-      ; move palette in routine
 
 ; \/\/\/ 2023  \/\/\/\/\/\ 
   ; Apr         
@@ -21,14 +18,22 @@ red   = &1C
 blue  = &03
 grey  = &92
 
+mc_set_mode = &BD1C
+
 fail  = &BE00
 
+   ;      IMPORT "memmap.i" ; for rgb? No, keep rgb private here.
       IMPORT ":lib/rgb256.o"
 
 ;---------------------------
       MACRO SANITIZE_OFFSET_HL
           set 7,h
           set 6,h
+      ENDM
+
+      MACRO SET_CRTC reg,val
+          ld bc,&BC00+reg:out (c),c
+          ld bc,&BD00+val:out (c),c
       ENDM
 
       MACRO SIGN in#,out#,flags
@@ -43,9 +48,12 @@ init_widget
 ;----------         
 ; We init palette here, since we are making rgb table
 ; So, let's switch the mode as well
+          xor a:call mc_set_mode
 ; Also, since r1 is defined/used here, format screen here
-      IF 0
-; Move that in routine
+          SET_CRTC(1,r1)
+          SET_CRTC(2,r2)
+          SET_CRTC(3,r3)
+
           ld hl,palette
           xor a
 .palp     ld c,(hl):inc hl
@@ -58,7 +66,7 @@ init_widget
           inc a
           cp 16
           jr nz,.palp
-      END
+
           ld de,rgb
           jp make_grb_trames
 

@@ -3,6 +3,7 @@
 ; hist in journal.o
 dev_checks = 1
 todo  = 1
+todo_later = 1          ; non urgent/critical todo
 makeroom = 1
 st    = 0               ; disabled for now
 type_phrase = 1
@@ -549,13 +550,14 @@ New_instr_chp_down_vib
    ;  b = initial volume (8 bits)
    ;  c = step volume to be substracted (8 bits) 
           ld e,instr_chip_down_vib AND &FF
+      END
 _new_instr_chp
 ; use generic routine to gain space
           ld d,c:ld c,b
           ld b,0        ; 3rd param: unused 
           jr New_instr_chp
-      END
 
+      IF use_instr_chip_down_arp
 New_instr_chp_down_arp
 ;---------------------
 ; Create ad-hoc instr reproducing chipnsfx intsrument with
@@ -567,7 +569,7 @@ New_instr_chp_down_arp
    ;  c = step volume to be substracted (8 bits) 
           ld e,instr_chip_down_arp AND &FF
           jr _new_instr_chp
-
+      END
 
       IF use_instr_chip_down_vib_noise
 New_instr_chp_down_vib_noise
@@ -608,8 +610,49 @@ New_instr_chp
 
 instr_ayane_append_rows
 ;----------------------
-; Ayane's version: full row. Only used by chungnrt as by 26/02/2025
+; Ayane's version: full row.
+; Only used by chipn.
+
+          call _prelude
+.rowlp
           ld a,instr_row_size_max
+          call instr_append_row_
+; --- when 0 is passed as fx, must be replaced by fx_end
+; (as we jump to the address. well there is an assert in instr.o to
+  ;check it is a proper address)
+; !!! for now, fx_null + fx_null + fx_end is expected
+; !!! rather than just fx_end (c.f. CHECK_SFX)
+; !!! Doesn't matter since whole size is allocated anyway
+      IF todo_later
+; just put fx_end if no fx, and fx_null if fx only in 2nd slot
+      END
+          push hl
+          ld hl,fx0_type-instr_row_size_max:add hl,de
+          ld (hl),fx_null AND &FF:inc hl
+          ld (hl),fx_null / &0100
+          ld de,instr_fx_size-1:add hl,de
+          ld (hl),fx_null AND &FF:inc hl
+          ld (hl),fx_null / &0100
+          ld de,instr_fx_size-1:add hl,de
+          ld (hl),fx_end AND &FF:inc hl
+          ld (hl),fx_end / &0100
+          pop hl
+          djnz .rowlp
+
+          jr _postlude
+
+
+instr_chip_append_rows_byte
+;--------------------------
+; chip version: 1 byte per row (e.g. arpegio)
+          ld a,1
+          jr instr_append_rows
+
+instr_chip_append_rows_word
+;--------------------------
+; chip version: 1 word per row (e.g. vibrato)
+          ld a,2
+;enchaine
 instr_append_rows
 ;----------------
 ; Set all rows in bulk (typically when importing from other tracker)
@@ -824,11 +867,18 @@ instr_append_row
 ; In: hl: row data
     ;  a= input row size (without link)
 ; Out: hl: past row source (hl += a)
-    ; de trashed
+     ; de: past row dest (connected)
     ; a, bc preversed
           CHECK_SFX()
 instr_append_row_       ; <- access when partial row input
           call instr_append_empty_row
+      IF dev_checks
+          push af
+          ld a,d
+          cp instr_pool/&0100:call c,mess
+          cp instr_pool_/&0100:call nc,mess
+          pop af
+      END
           row_link ** inc de
           push bc
           ld c,a
@@ -876,12 +926,7 @@ instr_set_rows#
           pop bc
       END
 .rowlp
- IF TODO
-; why not call instr_append_empty_row
- END
-          ld hl,row_null
-          ld a,instr_row_size_max
-          call instr_append_row
+          call instr_append_empty_row
           djnz .rowlp
           jp _postlude
 
@@ -1707,6 +1752,7 @@ buf_tmp SKIP &0100      ; Out of bank exchange buffer
 ; -> ease debugging
 ; -> less re-assembling when we change just one module
       SKIP -$ AND &FF
+
 
 
 

@@ -51,6 +51,9 @@ has_phrase_loop = 1     ; 0: no loop, phrase changed on time
 
 is_instr_indexed = 1
 is_compiled_phrase_indexed = 1
+compile_output_channel = 0 ; 0: don't output "1, 2, 3" in songlist
+
+use_psg_call = 0
 
 use_event_type = 1
 
@@ -58,14 +61,19 @@ use_hard_env = 1
 
 hack_minimala = 0
 
+; --- All those: necessarily 1 in-tool ----
+use_instr_end = 1       ; to cut instr
 use_instr_default = 1
 ;todo: harmonize naming
-default_use_arp = 1     ; Necessary 1 in-tool
+default_use_arp = 1
+default_use_pitch = 1
 default_use_hard_env = 1 ; "
 
-use_instr_chip_down_arp = 1
+; deactivate them for now,
+; as we don't want to support in ayane first version 
+use_instr_chip_down_arp = 0
 use_instr_chip_down_arp_noise = 0
-use_instr_chip_down_vib = 1
+use_instr_chip_down_vib = 0
 use_instr_chip_down_vib_noise = 0
 
       ELSE
@@ -101,14 +109,18 @@ has_phrase_loop = 0     ; 0: no loop, phrase changed on time
 is_instr_indexed = 0    ; 0: direct LSB in first &100 chunk
 is_compiled_phrase_indexed = 1
 
+use_psg_call = 1        ; n/a for in-tool
+
 use_event_type = 0
 
 use_hard_env = 0
 
 hack_minimala = 1       ; adhoc optimisations
 
+use_instr_end = 0       ; to cut instr
 use_instr_default = 1   ; kim uses it
-default_use_arp = 0     ; For kim9: only pitch and noise
+default_use_arp = 1     ; "
+default_use_pitch = 0   ; kimd': no pitch (removed instr 8)
 default_use_hard_env = 0
       IF is_minimala
 ;minimamal
@@ -133,3 +145,4 @@ use_instr_chip_down_vib_noise = 0
 use_volume = use_track_volume OR use_phrase_volume
 use_noise = use_fx_noise OR use_instr_noise
 use_flags = use_instr_flag OR use_note_flag OR has_phrase_loop
+

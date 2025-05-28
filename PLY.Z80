@@ -16,6 +16,10 @@ need_room = 1
 
  ; See /track_stack/
 
+; \/\/\/ 2025 \/\/\/\/\
+  ; Apr
+   ;23 Re-put r7 first, to match instr.o
+
 ; \/\/\/ 2024 \/\/\/\/\
 ; ----- Ayane v0h -----
   ; May 
@@ -112,7 +116,7 @@ fx_set_phrase
      ; - go to next chunk
      ; - auto-loop phrase 
      ; - /empty_phrase/
- BRK
+      BRK
       IF todo
 ;!!! bug:must reset SP
 ;!!! bug:must reset BC
@@ -285,14 +289,20 @@ set_transpose_tm = 12
 
 
       MACRO CHANGE_PHRASE
-      IF is_compiled_phrase_indexed AND [1-ayane]
-      IF 0
-dd        ld a,1
-          dec a
-          call z,&BE00
-          ld (dd+1),a
+; update track pnt for next time
+          ld a,(de):inc de ; LSB or index
+      IF ayane
+change_phrase_tm = 14
+          ld l,a
+          ld a,(de)
+          ld h,a
+      ELSE
+
+      IF sfx
+change_phrase_tm = !! TODO
       END
-          ld a,(de):inc de
+
+      IF is_compiled_phrase_indexed
 ;Special case: since no link for track hooks, we use
 ;escape code 00 to flag track loop, as it cannot a valid LSB for phrase
           or a
@@ -308,29 +318,29 @@ dd        ld a,1
           ld a,(hl):inc l
           ld h,(hl):ld l,a
       ELSE
-
-          ld a,(de):inc de:ld l,a
-          ld a,(de)
-      IF ayane
-change_phrase_tm = 14
-          ld h,a
-      ELSE
-if sfx
-change_phrase_tm = !! TODO
-END
-; update track pnt for next time
           inc de
 ;Special case: since no link for track hooks, we reuse
 ; phrase link to flag track loop  
+      IF compiled_data AND &8000
+      IF compiled_data AND &C000 - &C000
+          rlca:sra a    ; Bit 7 in carry and set in A
+      ELSE
+    !!! todo
+      END
+          ld h,a
+          jr nc,track_reset
+      ELSE
           rlca:srl a    ; Bit 7 in carry and cleared in A
           ld h,a
           jr c,track_reset
       END
       END
-; update track pnt for next time
+; compiled: update track pnt for next time
+; (ayane: was done by link beforehand)
           push de
           pop de
       END
+
           pop de        ; skip row RDV
           pop de        ; skip current row pnt (since new one)
       ENDM
@@ -457,7 +467,7 @@ update_note_tm = 15
           SUB_TM_CALL(update_note_tm-1) ; -1 jr not taken
           EX_AF'()
           push de
-
+      END
       ENDM
 
       MACRO NOT_REACHED
@@ -597,7 +607,9 @@ tm1   = 17
 
 tick      ld bc,0       ; Nb tick (1st iter:0)
 
+; ---------------------------------
 ; -- RDV track event
+; ---------------------------------
 ; See journal.o for rational 16 bits 
           pop hl
 ; Comparaison to mimimize maximum TM
@@ -606,41 +618,44 @@ tick      ld bc,0       ; Nb tick (1st iter:0)
           pop hl        ; Track pnt
           jr nz,play_phrase
 
+; ---------------------------------
 ; -- Next RDV
+; ---------------------------------
       IF may_optim
 ; use "inc l" if each track is confined
       END
       IF ayane
-tm2   = 14+27-1         ; until evt_handle_loop ; -1: jr not taken
+tm2   = 14+5+12+10-1    ; until evt_handle_loop ; -1: jr not taken
           inc h:dec h:jr z,stop ; cannot use A(')
 ; read link next event hook
           ld e,(hl):inc hl
           ld d,(hl):inc hl
           res 7,d       ; Clear loop flag
-; no link. we'll update pointer once we've processed events
-; The pushed DE is dummy value so we can update RDV
-      END
-track_reset
-; For compiled: no link. 
-; We'll update pointer once we've processed events (see CHANGE_PHRASE)
-; The pushed DE is dummy value so we can update RDV
-          push de
-; +duration for next RDV 
-;!!! oh bug: numeric AND between &60 & 1
-;      IF pattern_size AND [1-ayane] ; ayane: always dynamic
-      IF [1-ayane]      ; ayane: always dynamic
-;Constant: must read
-          ld d,b
-          ld a,c:add pattern_size:ld e,a:jr nc,$+3:inc d
-      ELSE
-tm2   = 0+27
-; no link. we'll update pointer once we've processed events
-; for now write dummy value so we can update RDV
-      END
           SUB_TM_CALL(tm2) ; before push!
           EX_AF'()
           push de
-; +duration for next RDV
+      ELSE
+      IF sfx
+!! todo     
+      END
+track_reset
+; For compiled no link. we'll update pointer once we've processed events
+; for now write dummy value so we can update RDV
+          push de
+      END
+; ---------------------------------
+; Add duration for next RDV 
+; ---------------------------------
+;!!! oh bug: numeric AND between &60 & 1
+;      IF pattern_size AND [1-ayane]
+      IF pattern_size * [1-ayane] ; ayane: always dynamic
+;Constant pattern size
+      IF sfx
+!! todo
+      END
+          ld d,b
+          ld a,c:add pattern_size:ld e,a:jr nc,$+3:inc d
+      ELSE
           ld a,(hl):inc hl:add c:ld e,a
           ld a,(hl):inc hl:adc b:ld d,a
       END
@@ -648,7 +663,9 @@ tm2   = 0+27
           pop de        ; skip rdv
           pop de        ; skip pnt
 
+; ---------------------------------
 ; Handle events.
+; ---------------------------------
       IF use_event_type
 ; We have an optional list of setters,
 ; Follow by evt_new_phrase (nothing after that, we jump directly)
@@ -684,13 +701,12 @@ evt_handle_loop
           ld a,(de):inc de
           ld l,a
       END
-
           ld h,events/&0100
           jp hl
 
       ELSE
 ; For compiled chp: always transpose and set phrase
-          ex de,hl      ; need hl has work variable
+          ex de,hl      ; need hl as work variable
           SET_TRANSPOSE()
           CHANGE_PHRASE()
           jr read_row
@@ -734,10 +750,7 @@ play_phrase
           pop hl
           or a:sbc hl,bc
           pop hl        ; Next row position
-   IF SFX
-          jp nz,play_tick ; JP: stable TM
-   END
-          jr nz,play_tick
+          jp nz,play_tick ; JP: stable TM  (out of reach anyway)
 
 read_row
 ;------- 
@@ -912,41 +925,41 @@ play_tick
 
       IF ayane
 ;For header and tables
+play_tick_tm = 3+7
           ld bc,&7F00+BK_INSTR:out (c),c
-play_tick_tm = 6+7
       ELSE
-play_tick_tm = 6
+play_tick_tm = 3
       END
           pop bc        ; c=note with current transpose
       IF use_volume
+tick_vol_tm = 4
           pop de
           ld b,d        ; b=current vol
+      ELSE
+tick_vol_tm = 0
       END
       IF use_phrase_pitch
+tick_pitch_tm = 3
           ld de,0       ; Reset pitch shift
+      ELSE
+tick_pitch_tm = 0
       END
 ; Jump to fx_0, fx_1, instr, and then track_loop  
       IF dev_checks
           pop hl
           push hl
+          EX_AF'()
           ld a,l:cp fx_noFx AND &FF:jr z,.okfx
           cp fx_set_phrase AND &FF:call nz,mess
+          SUB_TM''(5)
 .okfx
           ld a,h:cp fx_noFx/&0100:call nz,mess
-;!!! There is a bug in fx_set_phrase, which doesn't reset SP
+          EX_AF'()
+          SUB_TM(21)
+;!!! If BRK: There is a bug in fx_set_phrase, which doesn't reset SP
       END
 ; Jump to fx_0, fx_1, instr, and then track_loop   
-      IF use_volume
-          RET_ROUT(play_tick_tm + 4)
-      ELSE
-          RET_ROUT(play_tick_tm)
-      END
-
-      IF nb_fx
-_nofx0
-          4 ** inc e
-          jr _okfx0
-      END
+          RET_ROUT(play_tick_tm + tick_vol_tm + tick_pitch_tm)
 
       MACRO SIGN_EVT type
       IF ayane
@@ -993,7 +1006,7 @@ nxt_event_pnt ld hl,0
       END
           jp evt_handle_loop
 
- SIGN_EVT(type_evt_change_phrase)
+          SIGN_EVT(type_evt_change_phrase)
 evt_change_phrase
 ; Necessarily end of list
       IF evt_change_phrase/&0100 - events/&0100
@@ -1007,30 +1020,8 @@ evt_change_phrase
 ; What if evt_set_transpose and then null link!?!
       END
           SUB_TM(tm1+tm_evt_iter+change_phrase_tm+4)
-d         jp read_row
+          jp read_row
 
-
-
-events
-          SIGN_EVT(type_evt_transpose)
-evt_set_transpose
-          SET_TRANSPOSE()
-      IF ayane
-nxt_event_pnt ld hl,0
-      IF dev_checks
-          ld a,l:or h:call z,fail
-      END
-      END
-          jr evt_handle_loop
-
-          SIGN_EVT(type_evt_change_phrase)
-evt_change_phrase
-; Necessarily end of list
-      IF evt_change_phrase/&0100 - events/&0100
- !!! error confine
-      END
-          CHANGE_PHRASE()
-          jr read_row
 track_end
 ;All tracks have been handled
       IF sfx
@@ -1041,17 +1032,21 @@ track_end
 replay_default = replay_50_08Hz * replay_unit
              ; = 312*64  cf const.i
       IF ayane
+track_sfx_tm = 35
           ld bc,(replay_period_in_nops)
       ELSE
+track_sfx_tm = 32
           ld bc,replay_default
       END
       IF dev_checks
-track_end_tm = 47+12
+track_check_tm = 14
 ; Todo [persitence] make sure it is repopulated
-          ld a,c:cp replay_default AND &FF:call z,programming_error
-          ld a,b:cp replay_default / &0100:call z,programming_error
+          EX_AF'()
+          ld a,c:cp replay_default AND &FF:call nz,programming_error
+          ld a,b:cp replay_default / &0100:call nz,programming_error
+          EX_AF'()
       ELSE
-track_end_tm = 47
+track_check_tm = 0
       END
           add hl,bc
           ld (current_clock),hl
@@ -1060,7 +1055,7 @@ track_end_tm = 47
           inc hl
           ld (tick+1),hl
 savesp    ld sp,&3131
-          RET_ROUT(track_end_tm)
+          RET_ROUT(track_sfx_tm + track_check_tm + 15)
 
 ;-------------------------------------
       IF 1-ayane
@@ -1101,7 +1096,7 @@ psg
           out (c),0     ; ?? needed ??
       END
           ret
-END
+      END
 
 ;-------
 Amorce_song
@@ -1109,9 +1104,8 @@ Amorce_song
 ; + init period table
 
 ;in: HL= tracks (determines which sub_song)
-   ;  A= nb tracks (more versatile than using a sentinelle)
-
       IF ayane
+   ;  A= nb tracks (more versatile than using a sentinelle)
           or a:call z,mess ; Prevent misuse
       IF todo
 ; Actually could occur if use delete all tracks
@@ -1123,8 +1117,14 @@ Amorce_song
       END
 
           ld de,track_stack
+      IF ayane
 .tracklp
           push af
+      ELSE
+          lb bc,&336 ; cpt, mask chan A
+.tracklp
+          push bc
+      END
           ld c,(hl):inc hl
           ld b,(hl):inc hl
       IF ayane
@@ -1135,7 +1135,9 @@ Amorce_song
           ld (de),a:inc e
           ld (de),a:inc e
 
+      IF ayane
           ld a,(hl):inc hl ; output channel
+      END
           push hl
 
       IF dev_checks
@@ -1157,20 +1159,32 @@ Amorce_song
           ld bc,track_stack_init_size
           ldir
           ex de,hl
-; A= Channel (1=A, 2=B, 3=C)
+          ld d,psg_regs/&0100
       IF ayane
+; A= Channel (1=A, 2=B, 3=C)
           or a:call z,mess ; "no output channel: not tracked now|
-      END
           ld bc,&0836   ; volume, OR mask channel A
           dec a:jr z,.ok
           ld bc,&092D   ; idem channel B
           dec a:jr z,.ok
           ld bc,&0A1B
 .ok
-          ld d,psg_regs/&0100
-          ld (hl),c:inc hl ; mask
+          ld (hl),c:inc hl
           ld (hl),d:inc hl
-          ld (hl),b:inc hl ; volume
+          ld (hl),b:inc hl ;volume
+      ELSE
+          pop bc
+          ld (hl),c:inc hl
+          ld a,8+3:sub b
+          ld (hl),d:inc hl
+          ld (hl),a:inc hl ;volume
+;update mask
+          sl1 c
+          res 6,c
+;110110
+;101101
+;011011
+      END
           ld (hl),d:inc hl
           ld (hl),track_loop AND &FF:inc hl
           ld (hl),track_loop / &0100:inc hl
@@ -1187,9 +1201,13 @@ Amorce_song
  !! review
       END
       END
+      IF ayane
           pop af
           dec a
           jr nz,.tracklp
+      ELSE
+          djnz .tracklp
+      END
 
 ; Replace jump loop by jump end
       IF dev_checks
@@ -1202,9 +1220,9 @@ Amorce_song
           dec hl:ld (hl),track_end / &0100
           dec hl:ld (hl),track_end AND &FF
 
- IF ayane
+      IF ayane
           ld hl,0:ld (tick+1),hl
- END
+      END
 
 ;Enchaine (save a call)
 Init_periods
@@ -1332,7 +1350,9 @@ track_stack_init_size = $-track_stack_init + 2
       END
 save_org = $
 hi
-      FILL compiled_periods - $,0
+; We can eat into psg_regs: init routine overwritten, nevermind.
+;      FILL compiled_periods - $,0
+      SKIP compiled_periods + &30 - $
       ORG compiled_stack
       END
 
@@ -1383,4 +1403,5 @@ track_stack_
       IF 1-ayane
       ORG save_org
       END
+
 

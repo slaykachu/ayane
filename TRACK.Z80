@@ -2312,7 +2312,7 @@ track_get_event_hook_at
 ;Out: hl = hook structure
           call connect_bk_track
           call setup_track_t
-          ld hl,get_event_hook_at
+          ld hl,get_hook_at
           jp eval
 
 Clip_set_duration
@@ -2405,54 +2405,7 @@ goto_event
       IF evt_type
  !!! review that
       END
-          cp (hl)
-          jr z,.found
-          idsz ** dec hl
-          jr .find
 
-.last
-          pop hl
-          ret
-
-.found
-      IF evt_param - 1
- !!! review that
-      END
-          inc hl:ld e,(hl)
-          inc hl:ld d,(hl) ; For convenience
-          2 ** dec hl
-          inc h:dec h   ; NZ 
-      IF dev_checks
-          call z,fail
-      END
-          ret
-
-goto_event
-;---------
-;Goto to specified event.
- ; If no such event, return last and before last link pnts
- ; (for append and insert before last event, respectively)
-;in: hl= link to next event (typical evt field in evt0)
-       ; Assume H<>0
-   ;  a= event type (LSB routine)
-;out: If found, NZ, HL points evt type, 
-                  ; DE=param for convenience.
-    ; otherwise  Z. HL points to last link (0000),
-                  ; DE points to prev link (can be = HL when no node) 
-
-    ; A preserved in any case
-          push hl:pop de ; de = previous link
-.find
-          push hl
-          push de
-          call Next_node
-          pop de
-          jr z,.last
-          pop de        ; de = previous link
-          idsz ** inc hl
-      IF evt_type
- !!! review that
-      END
           cp (hl)
           jr z,.found
           idsz ** dec hl
@@ -2535,16 +2488,11 @@ Reset_tracks
           ld hl,tracks
           ld b,MAX_TRACKS * tf_struct_size
 ;00 is needed to mark if track is used or not
-.fill     ld (hl),0:inc hl:djnz .fill
-
-          ld hl,tracks
-          ld b,MAX_TRACKS * tf_struct_size
-;00 is needed to mark if track is used or not
-.fill     ld (hl),0:inc hl:djnz .fill
+          xor a
+.fill     ld (hl),a:inc hl:djnz .fill
 
           ld hl,zero
           ld b,zero_
-          xor a
 .raz      ld (hl),a:inc hl:djnz .raz
 
 ;Reset subsongs as well
@@ -2708,10 +2656,6 @@ Song_add_map
           call Set_transpose_at_t
 
 ; time += phrase duration (chipnsfx and madmax behavior)
-      IF todo
-; Starkos: how to do respect "phrase height"?
-; -> answer dedicated table 
-      END
           pop af
           call .advancetime
           pop hl
@@ -3083,6 +3027,7 @@ tracks_index            ; desambiguate
       IF $-1 /&0100 - tracks/&0100
   !! confinement issue
       END
+
 
 
 
