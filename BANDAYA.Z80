@@ -1,53 +1,39 @@
 ; Screen: Raster / Rupt under int for status bar.
         ; Transitions.
 
+; 2025 June 8
+   ; Special ayane: no need r9=0, bandeau 7*8 lignes
+                  ; !!! Not Nop-synchro (so )
+
 raster = 1              ; debug rasters in border
 todo  = 1
 
       IMPORT "memmap.i"
-      IMPORT "memcpc.o"
+      IMPORT "memcpc.o" ; for connect_bk_io
 
       IF BK_IO - &C0
  !!! review that
       END
 connect_bk_screen = connect_bk_io
 
-; 2024
-; --------- v0y ----------
- ; Oct
-   ; 19 Simplify code (remove orgams specific stuff like tr2status)
-      ; Also, no more r9=1. Standard format in page &4000
-      ; Use memcpc.o
-
-; 2023    
-  ; Dec    
-    ; 16 Save AF, BC, HL for each int
-         ; - Takes less RAM
-         ; - Simplify hooks
-         ; - We don't really care about TM, 
-           ; since we call firmware anyway.
-    ; 15 Extracted from ums:lib/bandrupt.o
-       ; Remove orgams specific code
-       ; Add mode changes at ints
-
 mc_set_mode = &BD1C
-kl_rom_select = &B90F
-kl_rom_deselect = &B918
+;kl_rom_select = &B90F
+;kl_rom_deselect = &B918
 
 ink1  = &46             ; in status bar
-r1    = 48
-r2    = 49
+r1    = 40
+r1'   = 48              ; bandeau and sequencer
+r2    = 46              ; default
+r2'   = 50              ; value for bandeau
 r3    = &FC
 r4    = 38
-r4'   = 33
-r4''  = 4               ; status (40 line total)
+r4'   = 31
+r4''  = 6               ; status (56 line total)
 r6    = 25
-r6''  = r4''+1
-r6t   = 32
+r6_sequencer = 21
 r7    = 30
 r7'   = 27
 r7t   = 34
-r9'   = 7
 r12'  = &10             ; Main r12 in /offset/
 
       MACRO ASSERT p
@@ -87,28 +73,79 @@ int0
           CHECK_MSB()
 ; Expect VSYNC. if not: don't change int#
           ld b,&F5:in a,(c):rra
-          jr nc,_int_ret_dbg
+          jp nc,_int_ret_dbg
 ;          jr nc,_int_ret_
 
-          ld hl,int1
-          ld (int_dispatch+1),hl
+; Just in time rupture. Sweet!
+      IF todo
+; Proper r2 transition for OSSC
+      END
+          ld b,8:djnz $
+          ld de,r2*&0100 + r2'
+r2trans0 = $ + 1
+          call r2_transition
+          call set_crtc:BYTE 12,r12',13,0,1,r1',4,r4',-1
+
+     ;     ld b,34:call waitlines
+     ;     ld b,8:djnz $
+     ;     ld bc,&7F45:out (c),0:out (c),c
+
 ; Set mode via firmware
-; otherwise, bc' not update -> flicker at each firmware access
+; otherwise, bc' not update -> flicker at each firmware access 
 mode_top  ld a,1:call mc_set_mode ; af corrupt, all others preserved
 
 ; Int firm while vbl for keyboard handling
           call call_int_firm
 
-; Just in time rupture. Sweet!
-          call set_crtc
-      BYTE 4,r4',12,r12',13,0,-1
+; Set palette, overide firmware colors
+          call set_palette:BYTE &54,&40,&4F,&4B,-1
 
-          halt          ; int 1 stabilized
+; Black so we are not pertubed by flickering (speed ink)
+          INT_RET(&54,int1)
+
+int1
+          CHECK_MSB()
+
+          call set_crtc:BYTE 4,r4'',-1
+
+;hook_int1 call no_op
+
+          ld hl,(offset)
+;15 bytes
+          ld bc,&BC0C:out (c),c
+          inc b:out (c),h
+          dec b:inc c:out (c),c
+          inc b:out (c),l
+
+; -- Go to last char line of bandeau to switch to mode 2
+          ld b,31
+          call waitlines
+          call set_palette:BYTE &54,&4B,-1
+; mc_set_mode take an unspecified time, so we change mode ourselves
+; for proper timing.
+          ld a,&8E:out (c),a
+          ld b,5:call waitlines
+          ld b,9:djnz $
+          ld de,r2'*&0100 + r2
+r2trans1 = $ + 1
+          call r2_transition
+          call set_crtc
+r1trans = $+1
+      BYTE 1,r1,-1
+; Needed for c'
+          ld a,2:call mc_set_mode
 
           INT_RET(&44,int2)
+
 int2
+; Note: Int2 can be 8 lignes late (even with JR $)
+      ; Firmware handling?
 hook_int2 call no_op
-          INT_RET(&55,int3)
+          call set_crtc
+      BYTE 4,r4,-1      ; by default: r4=38. Changed JIT in int0
+          ;INT_RET(&4E,int3)
+; Black so we are not pertubed by flickering (see note above)
+          INT_RET(&54,int3)
 int3
 hook_int3 call no_op
           INT_RET(&5C,int4)
@@ -119,7 +156,7 @@ int5
 hook_int5 call no_op
           INT_RET(&5D,int0_)
 
-int0_     jr int0       ; Just to be able to reuse INT_RET for int5
+int0_     jp int0       ; Just to be able to reuse INT_RET for int5
 
 _int_ret
           pop hl
@@ -146,109 +183,6 @@ _int_ret_dbg
           ld b,&7F:out (c),0:out (c),a
           jr _int_ret_
 
-; ------
-; Raster
-; ------   
-square0'
-; Col Black Col
-          out (c),d:out (c),c:out (c),d
-          jr _line1
-
-square2'
-; Col Black Col
-          out (c),d:out (c),c:out (c),d
-          jr _line3
-int1
-          CHECK_MSB()
-
-          push de
-          ld b,20-3:djnz $:add hl,bc ; -3 for 3 push at /int_prelude/
-
-top_col   ld bc,&7F54
-          ld de,&0100+ink1:out (c),d:out (c),e
-          ld de,&1054:out (c),d:out (c),e
-top_pen   out (c),0     ; to do last!
-          out (c),c
-
-          ld e,l        ; both save and tempo
-          call set_crtc:BYTE 4,r4'',6,r6'',-1
-
-int1_status
-          CHECK_MSB()
-
-          ld b,8:djnz $
-          ld d,&58
-          xor a         ; cpt
-rasterlp_editor
-; end of line % 4 = 0. Squares
-          ld bc,&7F54
-          cp 3:jr nc,square0'
-;square0
-; Black Col Black               
-          nop
-          out (c),c:out (c),d:out (c),c
-          jr _line1     ; same tempo 
-_line1
-; line % 4 = 1.  Alternate color 
-          ld c,&44
-          out (c),c     ;-- 
-          cp 9          ; A Incremented at end of loop
-          jr z,_raster_end
-          ld b,14:djnz $
-; line % 4 = 2. Black, Ssquares shifted down & right
-          ld bc,&7F54
-          out (c),c     ;-- +
-          ld b,8:djnz $:nop ; Shift +2 nop
-          ld b,&7F
-          cp 6:jr nc,square2'
-          nop
-          out (c),c:out (c),d:out (c),c
-          jr _line3
-_line3
-; line % 4 = 3.  Alternate color 
-          ld c,&44
-          out (c),c     ;-- +65
-          ld b,15:djnz $
-; line % 4 = 0 start
-          ld bc,&7F54
-          out (c),c     ;-- +65
-          ld b,6:djnz $
-          inc a
-          jr rasterlp_editor
-
-square0''
-; Col Black Col
-          out (c),d:out (c),c:out (c),d
-          jr _line1
-
-square2''
-; Col Black Col
-          out (c),d:out (c),c:out (c),d
-          jr _line3
-
-_raster_end
-
-          ld b,&06:djnz $
-          ld a,a
-          ld hl,(offset)
-;15 bytes
-          ld bc,&BC0C:out (c),c
-          inc b:out (c),h
-          dec b:inc c:out (c),c
-          inc b:out (c),l
-
-          ld b,&19:djnz $
-          call set_crtc
-      BYTE 7,r7',4,r4,-1
-hook_top  call no_op
-          pop de
-; Musn't jump to _int_ret_:
-; Leads to desynchro for some reason  
-; (double call call_int_firm -> more than 32 lines under DI!?)
-          pop af
-          pop bc
-          pop hl
-no_op     ret           ; Any RET would do!
 
 firm2status
 ; If already installed: no-op.
@@ -278,19 +212,42 @@ firm2shift
           call set_crtc:BYTE 3,r3,4,r7+r4-r7',-1
           3 ** halt
           call set_crtc:BYTE 4,r4,7,r7',-1
-          ret
+no_op     ret           ; Any RET would do!
 
 int_firm = &B941
 int_firm_nc = &B945
 int_firm_carry = &B978
 
+screen_sequencer
+;---------------     
+; Specific to sequencer: R1 = 48 (same as bandeau)
+          ld hl,no_op
+          ld a,r1'
+          ld c,r6_sequencer
+          jr _screen_setup
+
+screen_instrument
+;----------------     
+; Specific to instrument edit: R1 = 40 (same as bandeau)
+          ld hl,r2_transition
+          ld a,r1
+          ld c,r6
+;enchaine
+_screen_setup
+          ld (r2trans0),hl
+          ld (r2trans1),hl
+          ld (r1trans),a
+          ld a,6
+          ld b,&BC:out (c),a
+          inc b:out (c),c
+          ret
 
 status_on
 ;--------
 ; Enable status (from shifted pos screen)
 
-; regs 1 2 3 6 constant, no need to change them via int
-          call set_crtc:BYTE 1,r1,2,r2,3,r3,6,r6,-1
+; Common for everyone
+          call set_crtc:BYTE 3,r3,-1
 
           di
           ld a,&C3:ld (int_firm),a
@@ -347,20 +304,66 @@ flyback
           ld b,0:djnz $
           jp &BD19
 
+r2_transition
+; Proper change of r2 without HSYNC desynchronisation
+; OSSC safe! 
+; Extracted from sd:40y/lib4.o
+; In: Client must ensure C0 in "start/middle" of line
+    ; D = old r2
+    ; E = new r2
+; Out: AF, B trashed
+
+; r0 = 63 + (old_r2 - new_r2) for compensation
+          ld bc,&BC3F:out (c),0
+          ld a,c:add d:sub e
+          inc b:out (c),a
+;Temporisation, a bit more than one line as r0 might be > 63 
+;Note: might be wrong for extreme change, 
+     ; but here we aim at simplicity (size-coding)
+          ld b,13:djnz $
+; restore r0
+          ld b,&BD:out (c),c
+; now we can set r2
+          ld bc,&BC02:out (c),c
+          inc b:out (c),e
+          ret
+
+
 set_crtc
 ; !!! Must be in int_ram2 (cf CALL_ROM)
 ;Stop at &ff
 ;out: b=&bd
           pop hl
-crtclp
+.crtclp
 ;20us /iter
           ld b,&BD:outi
           ld b,&BE:outi
           ld a,(hl)
           inc a
-          jr nz,crtclp
+          jr nz,.crtclp
           inc hl
-          jp hl
+jp_hl     jp hl
+
+set_palette
+;Stop at >= &80 (e.g. -1)
+          pop hl
+          ld bc,&7F00
+.vgalp
+          out (c),c:inc c
+          ld a,(hl):inc hl
+          or a
+          jp m,jp_hl
+          out (c),a
+          jr .vgalp
+
+waitlines
+; Wait B lines + a bit more
+; TODO: use timer's version for FX.
+          push bc
+          ld b,13:djnz $
+          pop bc
+          djnz waitlines
+          ret
 
 int_prelude
           push hl
@@ -371,4 +374,5 @@ int_dispatch jp int0
 offset WORD &3000
 
       SKIP psg_regs - $ ; poor's man LIMIT
+
 

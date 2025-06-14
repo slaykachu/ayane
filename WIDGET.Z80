@@ -2,10 +2,7 @@
 dev   = 1
 dev_checks = 1
 
-; \/\/\/ 2023  \/\/\/\/\/\ 
-  ; Apr         
-    ; 29 v1. Add signature /SIGN/ for call from track.o (AUM)
-    ; 16 v0. First draft.   
+; 2025 Jun 5 init_widget: Remove (again) CRTC/pal setup
 
 screen = &C000
 r1    = 48
@@ -46,27 +43,6 @@ NO_FLAGS = 0
 ;--------------------------- 
 init_widget
 ;----------         
-; We init palette here, since we are making rgb table
-; So, let's switch the mode as well
-          xor a:call mc_set_mode
-; Also, since r1 is defined/used here, format screen here
-          SET_CRTC(1,r1)
-          SET_CRTC(2,r2)
-          SET_CRTC(3,r3)
-
-          ld hl,palette
-          xor a
-.palp     ld c,(hl):inc hl
-          ld b,c
-          push af
-          push hl
-          call &BC32
-          pop hl
-          pop af
-          inc a
-          cp 16
-          jr nz,.palp
-
           ld de,rgb
           jp make_grb_trames
 

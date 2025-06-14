@@ -1,10 +1,5 @@
 ; Tests ply.o
-; v0.0ac 05 Mar 25           
-do_test_tm = 0          ; 0: just test output 1: verify returned TM
-
-; TODO!!!!
-   ; fix test_sync_buzzer (hang)
-   ; fix timing
+; v0.0ac 05 Mar 25
 
       IMPORT "const.i"
       IMPORT "memmap.i"
@@ -89,15 +84,15 @@ track1 = tracks+4       ; track 0 empty (reserved)
 fail  = &BE00
 
 tests
-  ;        call test_empty_song_no_hook_tm
-      IF do_test_tm
+          call test_empty_song_no_hook_tm
+
           call test_profiling
           call test_timer_nop
-      END
           call test_empty_song
           call test_empty_song_no_hook_tm
           call test_empty_song_tm
           call test_empty_phrase
+          call test_note_instr
           call test_sync_buzzer
           ret
 
@@ -120,7 +115,6 @@ nrt_init
       ENDM
 
 ;-----------------------------------------------
-      IF do_test_tm
 test_profiling
 ; Check test frameword itself
           call nrt_init
@@ -130,6 +124,7 @@ test_profiling
 .noops
           SUB_TM_CALL(0)
           RET_ROUT(0)
+
 
 test_timer_nop
 ; Check test frameword itself (with call to /timer_nop/)
@@ -144,8 +139,6 @@ test_timer_nop
           djnz .lp
 
           RET_ROUT(2-1) ; -1 for last djnz
-
-      END
 
 test_empty_song
 ; After ayane_init.
@@ -216,8 +209,6 @@ test_note_instr
           ld b,8
           call compare_sized
           ret
-
-untouched = &DD
 
 .ref  WORD &EEE4+pitch
       FILL 5,untouched
@@ -381,8 +372,6 @@ nrt_play
           ld a,3
           call Amorce_song
 
-nrt_play_
-          call reset_psg
           di
 ; Reset for profiling
 ; Cannot be set before since prof.profile do EI + WAIT_VBL
@@ -397,16 +386,18 @@ MAX_TM = &80
           call play
           ret
 
-
-      IF do_test_tm
 tm_play
-;------      
+;------     
+; reset psg regs for accurate check
+          ld hl,psg_regs
+          ld b,14
+untouched = &DD
+.raz      ld (hl),untouched:inc l:djnz .raz
+
           ld hl,track1
           ld a,3
           call Amorce_song
 tm_play_
-          call reset_psg
-
           ld ix,play
           call check_tm
           ret
@@ -438,25 +429,16 @@ MAX_TM = &80
           ld a,h:exx:cp d:call nz,fail:exx
           ret
 
+tmp
+          SUB_TM(3)
+          ret
+
 timer_nop
 ;--------         
           add &80       ; reload
           SUB_TM(7)
           inc d         ; MSB TM
           exx
-          ret
-
-      ELSE
-tm_play = nrt_play
-tm_play_ = nrt_play_
-      END
-
-reset_psg
-;--------
-; reset psg regs for accurate check
-          ld hl,psg_regs
-          ld b,14
-.raz      ld (hl),untouched:inc l:djnz .raz
           ret
 
       SKIP ramlimit - $

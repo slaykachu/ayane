@@ -6,48 +6,17 @@ todo_wrong_chr = 0
 ; TODO???? refresh_focus in gedeihen_enter?
 
 ; -- 2025 --       
- ; --- Ayane 0ab ----
-; Mar:
-  ; 3: test_focus_multiline_struct_refresh: client must 'enter'
-          ; to restore focus/cursor. TODO? re-add it in routine? 
-; -- 2024 --       
- ; --- Ayane 0aa ----
-; Dec:                               
-  ;25: Add test_set_optional_disabled
-     ; Add test_remove_line (on hold)
-     ; Add test_clipping
-     ; test_double_del: adapt now than w_deci_99_signed auto-validate
-  ;21; Add test_focus_auto_validate
-  ;20; Add test_refresh_all
-     ; !!! On hold: covereded by test_focus_multiline_struct_refresh
- ; --- Ayane 0z ----
-; Nov:
-  ;12: Add test_flow_multiline
-     ; Add test_flow_struct_refresh0
-  ; 1: Add test_focus_multiline_struct_refresh
- ; --- Ayane 0y ----
-; Oct          
-  ;21: [cancelled] test_focus_multiline_keyhandler_struct_refresh0
+ ; --- Ayane 0ae ----
+; Jun:
+  ; 2: Add test_multiline_goto_top
+  ; 1: Add test_multiline_scroll0 and co
 key_under_multiline = 0
-  ;17: Add test_set_hexa_digit'
-  ;13: nrt_place_cursor: switch flag to mimic firmware
-  ;11: Add test_focus_multiline_optional_readwrite_dynamic
-  ;10: Add test_focus_multiline_optional_readwrite
- ; --- Ayane 0x ----
-  ; 4: Add test_focus_optional_deactivated'
- ; --- Ayane 0v ----
-; Sep 25: Add test_disp_toggle_non_zero
- ; --- Ayane 0m ----
-; Jun                    
-  ;  2: Add test_struct_deci      
-  ; 30: Re-enable tests, but disable cursor testing and some tests
 do_test_cursor = 0
 do_test_handler = 0
 do_test_all_fields_refreshed = 0
 do_test_table = 0
 do_test_disp_table = 0  ; Table code to review anyway
 do_test_frame = 0
-  ; 29: Extracted from ay/gedf
 
       ORG &0100
       ENT tests
@@ -55,10 +24,10 @@ do_test_frame = 0
 nrt_width = 16
 nrt_height = 16
 nrt_screen_ = nrt_width * nrt_height
-iotest_cursor_seq = &2C00
-iotest_screen = &3000   ; Represent the screen (1 byte / pos)
-iotest_screen' = &3800  ; Sprites in screen (1 word / pos)
-keys_buffer = &3C00
+iotest_screen = &8000   ; Represent the screen (1 byte / pos)
+iotest_screen' = &8800  ; Sprites in screen (1 word / pos)
+keys_buffer = &8C00
+iotest_cursor_seq = &9000
 
       IMPORT "ged.o"
 
@@ -82,6 +51,22 @@ tests
 ; Otherwise, a BRK is trigerred.
 
           ld a,&F7:ld (0),a
+          call test_focus_struct_ctrl_right
+          call test_focus_struct_ctrl_right'
+          call test_multiline_goto_top
+          call test_multiline_goto_bottom
+          call test_multiline_scroll0
+          call test_multiline_scroll1
+          call test_multiline_scroll2
+          call test_multiline_scroll3
+          call test_multiline_scroll4
+          call test_multiline_scroll5
+          call test_multiline_scroll6
+          call test_multiline_scroll7
+
+     ;     call test_set_multiline_refresh'
+    ;  BRK
+          call test_set_multiline_refresh
           call test_focus_multiline_struct_refresh
           call test_set_optional_disabled
           call test_focus_auto_validate
@@ -206,6 +191,15 @@ tests
           call test_set_multiline_refresh'
           call test_set_multiline_refresh''
           call test_set_multiline_optional
+          call test_multiline_scroll0
+          call test_multiline_scroll0
+          call test_multiline_scroll1
+          call test_multiline_scroll2
+          call test_multiline_scroll3
+          call test_multiline_scroll4
+          call test_multiline_scroll5
+          call test_multiline_scroll6
+          call test_multiline_scroll7
           call test_random_keys
 ; Not handled !!
 ;          call test_set_nested_struct
@@ -230,6 +224,7 @@ tests
           call test_focus_past_optional_readwrite
           call test_autofocus_hexa_digit
           call test_focus_auto_validate
+          call test_focus_struct_ctrl_right
           call test_focus_multiline_refresh
           call test_focus_multiline_optional_readwrite
           call test_focus_multiline_optional_readwrite_dynamic
@@ -666,6 +661,18 @@ test_disp_dependent_disabled
       FILL 3,disabled_char
       BYTE nrtend
 
+ui_struct_3fields
+      BYTE w_struct
+      WORD ui_toggle
+      WORD ui_deci_99
+      WORD ui_hexa_digit
+      WORD 0
+
+ui_struct_many_fields
+      BYTE w_struct
+          ctrl_rgt_nb_fields + 2 ** WORD ui_toggle
+      WORD 0
+
 ui_struct_refresh0
 ; This combination doesn't make much sense, as ui_deci_99 is
 ; already "refreshed". But also to test proper key handling.
@@ -951,6 +958,15 @@ ui_multiline_refresh
       WORD nrt_select_line
       BYTE 2
       BYTE 0
+
+ui_multiline_refresh'   ; Same but 4 lines view
+      BYTE w_multiline
+      WORD ui_struct_refresh_line
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      BYTE 4
+      BYTE 0
+
 
 ui_multiline_refresh_deci
       BYTE w_multiline
@@ -1252,6 +1268,10 @@ test_disp_struct_deci
           call _test_run_focus
       ENDM
 
+      MACRO TEST_MULTILINE_SCROLL test_data
+          ld de,test_data
+          call _check_multiline_scroll
+      ENDM
 
       MACRO END_OF_NRT_SEQUENCE
  ; We use 0 as a sentinelle, as it is not a valid code.
@@ -2096,6 +2116,96 @@ test_set_multiline_optional
           FOCUS("F")
       BYTE nrtend
 
+test_multiline_scroll0
+;---------------------
+; Check _check_multiline_scroll itself: no keys -> both values at 0
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq      END_OF_NRT_SEQUENCE()
+      BYTE 0,0
+
+test_multiline_scroll1
+;---------------------
+; Page down: line at top is 4 (= ui_multiline_refresh' height) 
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq  BYTE kc_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE 4,0
+
+test_multiline_scroll2
+;---------------------
+; Page down + page up: back to 0
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq  BYTE kc_dwn,kc_up
+          END_OF_NRT_SEQUENCE()
+      BYTE 0,0
+
+test_multiline_scroll3
+;---------------------
+; Respect cur_y
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq  BYTE k_dwn,kc_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE 4,1
+
+test_multiline_scroll4
+;---------------------
+; Last page
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq      2 ** BYTE kc_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE 8,0
+
+test_multiline_scroll5
+;---------------------
+; Past page = last line
+; (we might want to change this at some point: stay in last page,
+  ;just change cur_y)
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq      3 ** BYTE kc_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE 9,0
+
+test_multiline_scroll6
+;---------------------
+; Going back to start
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq  BYTE k_dwn,kc_up
+          END_OF_NRT_SEQUENCE()
+      BYTE 0,0
+
+test_multiline_scroll7
+;---------------------
+; Idem from last line
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq      3 ** BYTE k_dwn:BYTE kc_up
+          END_OF_NRT_SEQUENCE()
+      BYTE 0,0
+
+test_multiline_goto_top
+;----------------------
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq  BYTE k_dwn,kc_f0
+          END_OF_NRT_SEQUENCE()
+      BYTE 0,0
+
+test_multiline_goto_bottom
+;--------------------------
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq  BYTE k_dwn,kc_fdot
+          END_OF_NRT_SEQUENCE()
+      BYTE 8,1
+
+
 test_toggle
 ;----------
           xor a:ld (dummy_byte),a
@@ -2452,6 +2562,30 @@ test_focus_auto_validate
       BYTE 0            ; check no overrun
       BYTE nrtend
 
+test_focus_struct_ctrl_right
+;---------------------------
+          xor a:ld (dummy_byte),a ; toggle off
+          ld a,28:ld (nrt_deci_byte),a
+          ld a,&0B:ld (nrt_hexa_digit),a
+          TEST_RUN_FOCUS(ui_struct_3fields,.seq)
+          ret
+.seq  BYTE kc_rgt
+          END_OF_NRT_SEQUENCE()
+      BYTE ". +28 "
+          FOCUS("B")
+      BYTE nrtend
+
+test_focus_struct_ctrl_right'
+;---------------------------
+;CTRL+rgt just skip a certain # of fields
+          xor a:ld (dummy_byte),a ; toggle off
+          TEST_RUN_FOCUS(ui_struct_many_fields,.seq)
+          ret
+.seq  BYTE kc_rgt
+          END_OF_NRT_SEQUENCE()
+          ctrl_rgt_nb_fields ** BYTE ". "
+          FOCUS(".")
+      BYTE nrtend
 
 test_focus_multiline_refresh
 ;---------------------------
@@ -2861,6 +2995,44 @@ _test_run_focus
       END
           ret
 
+_check_multiline_scroll
+; Like /_test_run/ but check widget's line_at_top and cur_y
+          ld (nrt_sequence_pnt),de
+
+; Pretend models has 10 lines
+          ld a,10:ld (nrt_lines#),a
+
+;We won't check that, but must be sensible pnt
+          ld de,iotest_cursor_seq
+          ld (iotest_drawncursor_p),de
+
+          ld hl,ui_multiline_refresh'
+          push hl
+          call gedeihen_init
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+          pop hl
+
+; TODO: see if calling init again is necessary and desirable.
+; -> It is if we didn't exit from top state.
+          call gedeihen_init
+; We must 'reset' to put focus on the right widget
+; (e.g. first cell of table)
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+          call setup_widget
+          call nrt_enter
+
+          call nrt_gedeihen_loop
+
+          ld hl,(nrt_sequence_pnt) ; expected value
+          ld a,(state_stack + line_at_top)
+          cp (hl):call nz,fail
+          inc hl
+          ld a,(state_stack + cur_y)
+          cp (hl):call nz,fail
+          ret
 
 nrt_gedeihen_loop
           call nrt_read_key ;Always return a key.
@@ -3128,7 +3300,7 @@ nrt_set_cursor
           ld a,h:or a:call z,fail
           cp 80:call nc,fail
           ld a,l:or a:call z,fail
-          cp 4:call nc,fail ; For now tests only use 3 lines max
+          cp 5:call nc,fail ; For now tests only use 4 lines max
           ld (iotest_cursor),hl
           ld hl,&CACA   ; mimic firmware trashing hl
           scf
@@ -3317,5 +3489,6 @@ nrt_enabled SKIP 2      ; for multiline
 selected_line BYTE 
 nrt_sequence_pnt WORD 
 
-      SKIP iotest_cursor_seq - $
+hi
+      SKIP &4000 - $
 

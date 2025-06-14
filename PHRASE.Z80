@@ -18,6 +18,7 @@ makeroom = 1
   ; song_reset
   ; song_select_new_phrase
   ; song_select_phrase
+  ; Get_phrase
   ; song_get_current_phrase
   ; song_get_phrases#
 
@@ -32,12 +33,14 @@ makeroom = 1
   ; phrase_get_rows#
   ; phrase_get_row_position
   ; phrase_get_row_at
-  ; Get_phrase
+  ; phrase_get_duration
+  ; --phrase_select_next_row-- in track.o (since might change phrase)
 
 ; -------------------------------------------------------------
 ; --- Row handling ----
 ; All those routines expect a row to be currently selected
 ; -------------------------------------------------------------
+  ; row_add_duration
   ; row_set_note  
   ; row_get_note  
   ; row_set_vol
@@ -995,7 +998,7 @@ connect_current_row
      ; - Useful for chipn.o: we only create rows when notes
           ; - If first row is "...:..", we want a blank row to set delai
      ; - It's better to do a sensible thing rather can assert.
-         ; - maybe not better: it it was silently adding rows when
+         ; - maybe not better: it was silently adding rows when
            ; re-selecting phrase + e.G. add_row-duration.
 ;Out: HL= start
     ; AF, BC, DE, DE unchanged

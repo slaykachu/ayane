@@ -1,0 +1,14 @@
+## Key shortcuts
+Enter: Insert row       Cursor keys: navigate +CTRL to navigate faster.
+CTRL+f0/f.: first/last row   CTRL+I: Select instrument
+
+## Fields
+Loop / Tone flag + Arp + Pitch / Noise flag + value /
+Hard Env + Arp + Pitch / Sync Buzzer flag + Env + Arp + Pitch / Sync buzzer 2
+
+## Instr..uctions 
+- Press "piano key" to test the instrument
+- Each arp and pitch are re-computed from the base note. E.g. to apply the same
+vibrato on psg tone and sync buzzer you have to copy/paste the column
+- Without loop, the note will be kept playing. See rationale in main doc
+If you want to cut the instrument, please add a dedicated row

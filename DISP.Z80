@@ -1,20 +1,22 @@
 ; Disp: Routines d'affichage text. Tirees de Orgams.
+   ; Difference: status_*: same API than disp_* (e.g. BC for text)
 
-dev_checks = 1
+; 2025 Jun 9
+  ; Adapt status_set_cursor and co to new bandeau (page &4000, r9=7)
+
 todo  = 1
+dev_checks = 1
+
+screen' = &4000         ; for status
+r1'   = 48
 
       IF todo
 ; !!!! remove is_ei
+; Harmonize naming (e.g. status_char_at takes de=cursor
+                   ; but disp_char_at   takes de=offset)
       END
 
-; \/\/\/ 2024 \/\/\/\/\/
-; Jun
-  ; 19: Add jump table and "memmap.i"
-      ; Reenable code (as size isn't a constraint)
 enable = 1
-; \/\/\/ 2023 \/\/\/\/\/
-; Dec
-  ; 22: Extract from :lib/disp.o (25 Nov)
 
       IMPORT "memmap.i"
 
@@ -97,9 +99,9 @@ fonte
           jp dump_hexa_shaded
 
           jp str_pad_at
-m         jp str_pad_at_ei
+          jp str_pad_at_ei
 
-          jp status_set_cursor
+m         jp status_set_cursor
 
           jp status_char_at
           jp status_str_at
@@ -240,219 +242,6 @@ spae_next
 
 mess  = &BE00
 
-_status_cursor
-;In: d=x (0 based) e=y (0 based) <= 4
-;Out: HL= Scr pos.
-          push af
-r1'   = 48
-      IF dev_checks
-          ld a,d:cp r1'*2:call nc,mess
-          ld a,e:cp 5:call nc,mess
-      ELSE
-          ld a,e
-      END
-;one text line is 4*2*r1' (&180)
-          add a:add e   ; <= 12
-          rrca
-          ld l,a        ; line# <= 6
-          and 7
-          ld h,a:set 7,h
-          xor l:add d:ld l,a
-          pop af
-          ret
-
-status_get_pos
-          ld de,(vo_statuspos)
-      IF dev_checks
-; Trash B, since saved beforehand, and used afterhand!
-          ld b,a        ; backup
-          ld a,d
-          cp &80:call c,mess
-          cp &86:jr c,.ok
-          call nz,mess
-          ld a,e
-          cp &60:call nc,mess
-.ok
-          ld a,b
-      END
-          ret
-
-
-status_char_at
-;In: de=x,y (logicial 0-based) 
-   ; A trashed
-          call status_set_cursor
-status_char
-          call status_prelude
-          call _status_char
-_status_ret
-          ld (vo_statuspos),de
-_status_ret_
-          pop de:pop bc:pop ix
-          ret
-
-status_prelude
-; save ix, bc, de
-          ex (sp),ix
-          push bc:push de
-          call status_get_pos
-          jp ix         ; ret. Ix can be used by routines, yeah!
-
-status_str_at
-          call status_set_cursor
-status_str
-          call status_prelude
-.lp
-          ld a,(hl):or a:jr z,_status_ret
-          call _status_char
-          inc hl
-          jr .lp
-
-      IF enable
-status_str_shaded_at
-          call status_set_cursor
-status_str_shaded
-          call status_prelude
-.lp
-          ld a,(hl):or a:jr z,_status_ret
-          call _status_char_shaded
-          inc hl
-          jr .lp
-      END
-
-status_pad_at
-; Similar to str_pad_at but for status.
-;In: hl= nt string
-   ; de= pos cursor
-   ;  b= len (clipping OR padding may occur)
-          call status_set_cursor
-status_pad
-          call status_prelude
-
-; NB: when coming from status_pad_at with b=0,
-; we must update vo_statuspos so client can chain with no _at_ routines
-          inc b:dec b:jr z,_status_ret
-
-          ld iyl,b
-stapae_lp
-          ld a,(hl)
-          or a:jr z,$+3:inc hl ; Stay at same place
-
-          call _status_char
-          dec iyl
-          jr nz,stapae_lp
-
-          jr _status_ret
-
-_status_char_shaded
-          ld b,fonte_gris/&0400
-          jr _status_char_
-_status_char
-          ld b,fonte/&0400
-_status_char_
-;in: A = chr     
-   ; B = fonte/&400 
-   ; DE= pos
-
-;0 to &20 treated as space.
-;No special routine (not worth it)
-          cp &20
-          jr nc,$+4:ld a,&20
-
-          ld ixl,0      ; default: no inverse video
-          add a:jr nc,$+4:dec ixl
-      2 ** [add a:rl b]
-          ld c,a
-
-; Assert to detect problem init.
-; De: pos in &8000 - &8fff  
-          ld a,d:and &F0:cp &80:call nz,&BE00
-
-   ;0-1 
-          ld a,(bc):xor ixl:ld (de),a
-          set 3,d
-          inc c:ld a,(bc):xor ixl:ld (de),a
-   ;3-2                   
-          ld a,e:add r1'*2:ld e,a:jr nc,$+3:inc d
-          inc c:ld a,(bc):xor ixl:ld (de),a
-          res 3,d
-          inc c:ld a,(bc):xor ixl:ld (de),a
-   ;6-7
-          ld a,e:add r1'*4:ld e,a:jr nc,$+3:inc d
-          inc c:ld a,(bc):xor ixl:ld (de),a
-          set 3,d
-          inc c:ld a,(bc):xor ixl:ld (de),a
-   ;5-4
-          ld a,e:sub r1'*2:ld e,a:jr nc,$+3:dec d
-          inc c:ld a,(bc):xor ixl:ld (de),a
-          res 3,d
-          inc c:ld a,(bc):xor ixl:ld (de),a
-
-          ld a,e:sub r1'*4 - 1:ld e,a:jr nc,$+3:dec d
-          ld a,d:and &F8:cp &80:call nz,&BE00
-          ld a,d
-          and &07
-          or &80        ; sanity: reboucle page
-          ld d,a
-          ret
-
-      IF enable
-status_clear_line_at
-          call status_set_cursor
-          call status_prelude
-          call .clr1
-          set 3,d
-          call .clr1
-          jp _status_ret_
-
-.clr1
-          push de
-          xor a
-          ld b,4*r1'    ; Words so that < &100
-.lp
-          ld (de),a:inc de
-          ld (de),a:inc de
-          djnz .lp
-          pop de
-          ret
-
-status_deci_a_at
-          call status_set_cursor
-status_deci_a
-          push ix:ld ix,put_deci_a
-          jr _status_num
-
-status_deci_hl_at
-          call status_set_cursor
-status_deci_hl
-          push ix:ld ix,put_deci_hl
-          jr _status_num
-
-
-status_hexa_a_at
-          call status_set_cursor
-status_hexa_a
-          push ix:ld ix,put_hexa_a
-          jr _status_num
-
-
-status_hexa_hl_at
-          call status_set_cursor
-status_hexa_hl
-          push ix:ld ix,put_hexa_hl
-_status_num
-          push de:push hl
-          ld de,vo_tmp
-          push de
-          call jp_ix
-          pop hl
-          call status_str
-          pop hl:pop de
-          pop ix
-          ret
-      END
-
-
 init_disp
 ;in A = Reg1
 
@@ -508,6 +297,9 @@ cls_lp
           ret
 
       IF enable
+disp_chr_at_
+          ld h,fonte/&0400 + &80
+          jr _disp_chr
 disp_chr
           ld de,(vo_scrpos)
 disp_chr_at
@@ -1119,6 +911,199 @@ vo_ei     ret:ret       ; might be replace by ei:ret above
 
       END
 
+
+; -----------------------------
+
+vo_scrpos0 WORD &C000
+vo_scrpos WORD &C000
+vo_tmp SKIP 6
+vo_reg1 BYTE 40
+vo_savesp WORD 
+
+; -----------------------------
+; !!! Status routines (and var)
+; -> Reached in BK C1 to be able to write in page &4000
+; -----------------------------
+
+      ORG $+&8000,$$
+
+      MACRO CALL_FROM_C1 adr
+      IF $ AND &8000:ELSE
+   !! error caller
+      END
+      IF adr AND &8000
+   !! error callee
+      END
+          call adr + &8000
+      ENDM
+
+      MACRO JP_FROM_C1 adr
+      IF $ AND &8000:ELSE
+   !! error caller
+      END
+      IF adr AND &8000
+   !! error callee
+      END
+          jp adr + &8000
+      ENDM
+
+_status_cursor
+;In: d=x (0 based) e=y (0 based) <= 4
+;Out: HL= Scr pos.
+          push af
+      IF dev_checks
+          ld a,d:cp r1'*2:call nc,mess
+          ld a,e:cp 7:call nc,mess
+      ELSE
+          ld a,e
+      END
+;one text line is 2*r1' (&60)
+          add a:add e   ; <= 21
+          3 ** add a    ; <= 168
+          ld l,a
+          ld h,screen'/&0400
+          2 ** add hl,hl
+          ld a,l:add d
+          ld l,a:jr nc,$+3:inc h
+          pop af
+          ret
+
+status_get_pos
+          ld de,(vo_status_pos)
+      IF dev_checks
+          push af
+          ld a,d
+          cp &40:call c,mess
+          cp &44:call nc,mess
+          pop af
+      END
+          ret
+
+
+status_char_at
+;In: de=x,y (logicial 0-based) 
+   ; A trashed
+          call status_set_cursor
+status_char
+          call status_prelude
+          call status_chr_at
+_status_ret
+          ld (vo_status_pos),de
+_status_ret_
+          pop hl:pop de:pop ix
+          ret
+
+status_prelude
+; save ix, hl, de
+          ex (sp),ix
+          push de:push hl
+          call status_get_pos
+          jp ix         ; ret. Ix can be used by routines, yeah!
+
+status_str_at
+          call status_set_cursor
+status_str
+          call status_prelude
+.lp
+          ld a,(bc):inc bc:or a:jr z,_status_ret
+          call status_chr_at
+          jr .lp
+
+      IF enable
+status_str_shaded_at
+          call status_set_cursor
+status_str_shaded
+          call status_prelude
+.lp
+          ld a,(hl):or a:jr z,_status_ret
+          call status_chr_shaded_at
+          inc hl
+          jr .lp
+      END
+
+status_pad_at
+; Similar to str_pad_at but for status.
+;In: hl= nt string
+   ; de= pos cursor
+   ;  b= len (clipping OR padding may occur)
+          call status_set_cursor
+status_pad
+          call status_prelude
+
+; NB: when coming from status_pad_at with b=0,
+; we must update vo_statuspos so client can chain with no _at_ routines
+          inc b:dec b:jr z,_status_ret
+
+          ld iyl,b
+stapae_lp
+          ld a,(hl)
+          or a:jr z,$+3:inc hl ; Stay at same place
+
+          call status_chr_at
+          dec iyl
+          jr nz,stapae_lp
+
+          jr _status_ret
+
+
+      IF enable
+status_clear_line_at
+      BRK
+; TODO : adapt to new bandeau
+          call status_set_cursor
+          call status_prelude
+          call .clr1
+          set 3,d
+          call .clr1
+          jp _status_ret_
+
+.clr1
+          push de
+          xor a
+          ld b,4*r1'    ; Words so that < &100
+.lp
+          ld (de),a:inc de
+          ld (de),a:inc de
+          djnz .lp
+          pop de
+          ret
+
+status_deci_a_at
+          call status_set_cursor
+status_deci_a
+          push ix:ld ix,put_deci_a
+          jr _status_num
+
+status_deci_hl_at
+          call status_set_cursor
+status_deci_hl
+          push ix:ld ix,put_deci_hl
+          jr _status_num
+
+
+status_hexa_a_at
+          call status_set_cursor
+status_hexa_a
+          push ix:ld ix,put_hexa_a
+          jr _status_num
+
+
+status_hexa_hl_at
+          call status_set_cursor
+status_hexa_hl
+          push ix:ld ix,put_hexa_hl
+_status_num
+          push de:push hl
+          ld de,vo_status_tmp
+          push de
+          call jp_ix
+          pop hl
+          call status_str
+          pop hl:pop de
+          pop ix
+          ret
+      END
+
 status_inv_cursor_at
 ; NB: doesn't change internal cursor position
           push bc:push hl
@@ -1141,15 +1126,37 @@ status_set_cursor
 ;In: d=x (0 based) e=y (0 based) <= 4
           push hl
           call _status_cursor
-          ld (vo_statuspos),hl
+          ld (vo_status_pos),hl
           pop hl
           ret
 
-; -----------------------------
+status_chr_shaded_at
+          ld h,fonte_gris+&8000 /&0400
+          jr _status_chr
 
-vo_scrpos0 WORD &C000
-vo_scrpos WORD &C000
-vo_tmp SKIP 6
-vo_reg1 BYTE 40
-vo_savesp WORD 
-vo_statuspos WORD 
+status_chr_at
+;in: a=chr (bit 7 for video inverse)
+   ;de=screen dest
+;out:de=new pos
+    ;hl trashed
+          ld h,fonte+&8000 /&0400
+_status_chr
+          di
+          ld (vo_status_savesp),sp
+          ld iy,status_ret
+          JP_FROM_C1(disp_chr_internal_)
+
+status_ret
+          ld de,1-&2000
+          add hl,de
+          res 3,h
+          ld (vo_status_pos),hl
+          ex de,hl
+          ld sp,(vo_status_savesp)
+          ret
+
+vo_status_savesp WORD 
+vo_status_tmp WORD 
+vo_status_pos WORD 0    ; 0 for proper bin length
+; Otherwise variables would overlap with what's loaded/imported next.
+

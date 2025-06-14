@@ -1,0 +1,258 @@
+; Jump bloc for disp
+  ; -> Faster to assemble
+  ; -> Less work memory used by orgams
+
+; To be completed, too lazy for now
+
+; 2025 Jun 6: jp_disp: allow reentrency
+
+devchecks = 1
+
+      IMPORT "memmap.i"
+      IMPORT "memcpc.o"
+
+      MACRO JP_DISP adr
+          call jp_disp:WORD adr
+;note: doesn't return here, but at caller's level
+      ENDM
+
+      MACRO JP_STATUS adr
+          call jp_status:WORD adr + &8000
+;note: doesn't return here, but at caller's level
+      ENDM
+
+
+disp  = &4800
+init_disp_adr = disp    ; used for checks in call_disp
+
+init_disp JP_DISP(disp)
+cls       JP_DISP(disp+3) ;!!To be called before disp_* (not _at)
+disp_locate_scr JP_DISP(disp+6) ;de:pos in screen (e.g.) &c000 
+
+; todo!!!        
+disp_locate_x           ;a:x  Change pos to "line start + x"
+disp_locate_inc
+;5*3
+disp_chr                ;a:chr, de:dest
+disp_chr_at
+disp_chr_shaded
+disp_chr_shaded_at
+;9*3
+disp_text JP_DISP(disp+&1B) ;bc:nt string
+disp_text_at            ;" de:dest
+disp_text_shaded
+disp_text_shaded_at
+disp_text_inv
+disp_text_inv_at        ;" video inversion
+disp_text_nl JP_DISP(disp+&2D)
+  ;        JP   disp_text_nl_at !! weird behavior, and no more room
+
+str_pad
+str_pad_ei
+
+disp_inline             ;call x, "text", 0
+disp_inline_at          ;"  de: dest
+disp_inline_nl
+     ;        JP   disp_inline_nl_at ;!! weird behavior
+          3 ** BRK
+disp_nl
+     ;         JP   disp_nl_at !! weird behavior and no more room
+
+str_pad_shaded_ei
+
+;18*3
+disp_deci_a
+disp_deci_a_inv
+disp_deci_a_shaded
+disp_deci_hl
+disp_deci_hl_inv
+disp_deci_hl_shaded
+disp_hexa_a
+disp_hexa_a_inv
+disp_hexa_a_shaded
+disp_hexa_hl
+disp_hexa_hl_inv
+disp_hexa_hl_shaded
+
+put_deci_a
+put_deci_hl
+put_hexa_a
+put_hexa_hl
+
+dump_ascii
+dump_ascii_shaded
+dump_hexa
+dump_hexa_shaded
+
+str_pad_at
+str_pad_at_ei
+
+status_set_cursor JP_STATUS(disp+&8A)
+
+status_char_at JP_STATUS(disp+&8D)
+status_str_at JP_STATUS(disp+&90)
+status_pad_at
+status_deci_a_at
+status_deci_hl_at
+status_hexa_a_at
+status_hexa_hl_at
+
+status_char JP_STATUS(disp+&A2)
+status_str JP_STATUS(disp+&A5)
+status_pad
+status_deci_a
+status_deci_hl
+status_hexa_a
+status_hexa_hl
+status_inv_cursor_at
+status_clear_line_at
+status_str_shaded_at
+status_str_shaded
+      BRK
+
+fail  = &BE00
+
+call_disp
+;--------     
+; Connect bk_disk, and connect back connected bk
+;Usage: call call_disp:word adr  
+
+; Get adr
+          ex (sp),hl
+          push af
+          ld a,(hl):inc hl
+          ld (.hook+1),a
+          ld a,(hl):inc hl
+          ld (.hook+2),a
+          pop af
+          ex (sp),hl    ; put back Ret address
+
+          push hl
+          push af
+          call get_bk_connected
+          ld l,a
+          ld a,BK_DISP
+          call connect_a
+      IF dev_checks
+; verify code has been loaded
+          ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
+          ld a,(init_disp_adr+3):cp &C3:call nz,fail
+      END
+          pop af
+          ex (sp),hl
+
+.hook     call 0
+
+          ex (sp),hl
+          call connect_l
+          pop hl
+          ret
+
+      IF 0
+call_status
+;----------     
+; Connect &c1, call routine, and connect back connected bk
+;Usage: call call_disp:word adr  
+
+          ex (sp),hl
+          push af
+          ld a,(hl):inc hl
+          ld (.hook+1),a
+          ld a,(hl):inc hl
+          ld (.hook+2),a
+          pop af
+          ex (sp),hl    ; put back Ret address
+
+          push hl
+          push af
+          call get_bk_connected
+          ld l,a
+      IF BK_DISP-&C7
+ !! review                 
+      END
+          ld a,&C1
+          call connect_a
+      IF dev_checks
+; verify code has been loaded
+          ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
+          ld a,(init_disp_adr+3):cp &C3:call nz,fail
+      END
+          pop af
+          ex (sp),hl
+
+.hook     call 0
+
+          ex (sp),hl
+          call connect_l
+          pop hl
+          ret
+      END
+
+
+jp_disp
+;--------     
+; !!!JP!!! to address in disp bk.
+;Usage: call jp_disp:word adr   
+      ; (act as jp)
+
+; Get adr
+          ex (sp),hl    ; !! RET address will be discarded !!
+          push af
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          ld (.hook+1),hl
+
+          call get_bk_connected
+          ld l,a
+          ld a,BK_DISP
+          call connect_a
+      IF dev_checks
+; verify code has been loaded
+          ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
+          ld a,(init_disp_adr+3):cp &C3:call nz,fail
+      END
+          pop af
+          ex (sp),hl
+
+.hook     call 0
+
+          ex (sp),hl
+          call connect_l
+          pop hl
+          ret
+
+jp_status
+;--------     
+; Like jp_disp, but bank &c1
+;Usage: call jp_disp:word adr   
+      ; (act as jp)
+
+; Get adr
+          ex (sp),hl    ; !! RET address will be discarded !!
+          push af
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          ld (.hook+1),hl
+
+          call get_bk_connected
+          ld l,a
+      IF BK_DISP - &C7
+  !! review
+      END
+          ld a,&C1
+          call connect_a
+      IF dev_checks
+; verify code has been loaded
+          ld a,(init_disp_adr+&8000):cp &C3:call nz,fail ; jp
+          ld a,(init_disp_adr+&8003):cp &C3:call nz,fail
+      END
+          pop af
+          ex (sp),hl
+
+.hook     call 0
+
+          ex (sp),hl
+          call connect_l
+          pop hl
+          ret
+

@@ -2,32 +2,15 @@
 ; Ayane main entry point / ui
 ; ---------------------------
 
-; 2025
-  ; Feb
-    ; 28: Replace :lib imports by local version
-; 2024
-  ; Jun
-    ; 19: Use "disp-jp.o"
-; 2023
-  ; Dec      
-    ; 22: Use local disp, status
-    ; 21: Setup multimode at /sequencer/   
-        ; Import from ":lib" (no need usb key anymore)
-    ; 16: Move display_help and string routines in help.o
-
-  ; Nov 
-    ; 28; question: use bandeau like orgam, scr-lo doesn't handle r1=48
-    ; 27: question: try fix cursor issues
-    ; 26: Fix display_help (set mode and ink 1)
-        ; scan_key: take C = code, not A
-        ; open: fix question handling
-        ; skip_nt: was bugged
+; 2025 Jun 6  Use disp-jp instead of disp
 
 dev_checks = 1
 todo  = 1
 need_room = 1
 
 client_ayane = 1
+r2    = 46              ; defaut
+r2'   = 50              ; sequence
 
       ENT start
 
@@ -46,7 +29,6 @@ CRTC_R2_IO = 46
       ORG code_start
 
       IMPORT "init.o"
-      IMPORT "memcpc.o"
       IMPORT "track.o"
  ;     IMPORT "st128.o"
 ; --- More imports at /disp_import/
@@ -58,16 +40,26 @@ CRTC_R2_IO = 46
       IMPORT "field.o"
       IMPORT "scan-key.o"
       IMPORT "shortcut.o"
+      IMPORT "memcpc.o"
+disp_jp_start
+      IMPORT "disp-jp.o"
+disp_jp_end
 ;      IMPORT "scr-lo.o"    !! not meant for r1=48 (use firmware)
 
 ; ---------------------------------------------
 
-call_disp
-      BRK
-;!!! todo
-          ret
-
       MACRO CALL_DISP adr
+;Just informative. BK Selection done in disp-jp.jp_disp
+      IF dev_checks
+          push af
+          ld a,adr/&0100
+          call _check_disp_call
+          pop af
+      END
+          call adr
+      ENDM
+
+      MACRO CALL_DISP_BK adr
           call call_disp:WORD adr
       ENDM
 
@@ -107,19 +99,7 @@ err_too_big = 2
 start
 ;---------
           call full_init
- ;         call setup_keys      Done in full_init
-          CALL_DISP(init_disp_bk)
-          ld hl,text_welcome
-          push hl
-          ld de,text_welcome
-          CALL_DISP(conv_protext)
-;Must be done after conversion!
-          pop hl
-          CALL_DISP(help_init) ; Move in full_init? Doesn't matter!
-          call display_init
-;Welcome message / help: same thing for now 
-          call help
-
+          CALL_DISP_BK(start_disp_bk)
 ;---------
 ui_loop
 ;---------
@@ -137,7 +117,8 @@ ui_loop
 ; Erase previous status (e.g. 'DOS ERROR') 
           push hl
 clear_status = ClearQuestion
-          CALL_DISP(clear_status)
+      BRK
+          CALL_DISP_BK(clear_status)
           pop hl
           call jp_hl
 
@@ -152,11 +133,17 @@ jp_hl     jp hl
 ;-----------------------------------------------
 
 ;---------------------
+instr
+;---------------------
+          call screen_instrument
+          ret
+
+;---------------------
 open
 ;---------------------
           ld hl,_txt_open
           ld de,name_file
-          CALL_DISP(question)
+          CALL_DISP_BK(question)
           ret nc
 
 ;Sync   
@@ -164,10 +151,10 @@ open
 
 ; ---- Load file  
           ld hl,TMP_BUF
-          CALL_DISP(get_len)
+          CALL_DISP_BK(get_len)
           ld b,a
           ld de,disc_buffer
-          CALL_DISP(disc_in_open) ; since file_name in c7
+          CALL_DISP_BK(disc_in_open) ; since file_name in c7
           jr nc,_error
       IF todo
 ; Check file type (ayane vs starkos vs...)
@@ -211,7 +198,7 @@ io_error
       IF need_room
 ; move that in disp bk, so no need to use CALL_DISP for each call
       END
-          CALL_DISP(disp_err_message)
+          CALL_DISP_BK(disp_err_message)
           call &BB06
 ;enchaine
 io_postlude
@@ -221,6 +208,10 @@ io_postlude
          ; SET_CRTC(1,CRTC_R1)
           ld a,CRTC_R1
           CALL_DISP(init_disp)
+          call flyback
+          ld de,r2*&0100 + r2'
+          call r2_transition
+          call screen_sequencer
           jp status_on
 
 display_init
@@ -240,17 +231,40 @@ io_prelude
 
 _txt_open BYTE "Open:",0
 
+start_disp_bk
+          call init_disp_bk
+          ld hl,text_welcome
+          push hl
+          ld de,text_welcome
+          call conv_protext
+;Must be done after conversion!
+          pop hl
+          call help_init ; Move in full_init? Doesn't matter!
+          call display_init
+;Welcome message / help: same thing for now 
+;enchaine
 ;---------------------
 help
 ;---------------------
+          CALL_DISP_BK(.help_)
+          ret
+.help_
           ld a,2:call mc_set_mode
           xor a:ld b,a:ld c,a:call scr_ink_set
           ld a,1:ld bc,&1A1A:call scr_ink_set
-          CALL_DISP(cls)
+          call cls
 ;Welcome message / help: same thing
           ld bc,text_welcome
-          CALL_DISP(display_page)
+          call display_page
           ret
+
+      IF dev_checks
+_check_disp_call
+; check adr in disp_jp  
+          cp disp_jp_start/&0100:call c,mess
+          cp disp_jp_end/&0100 + 1:call nc,mess
+          ret
+      END
 
 
 ;-----------------------------------------------
@@ -258,6 +272,7 @@ help
 ;-----------------------------------------------
 
 shortcuts
+      BYTE "I"-&40:WORD instr
       BYTE "o":WORD open
       BYTE "h":WORD help
       BYTE 0
@@ -281,7 +296,7 @@ name_file_dbg BYTE ":music/shap/pcrb3.128",0
       END
 
 disp_import
-      IMPORT "disp.o"
+      LOAD "disp.bin"
 
 ; 'status' is calling disp directly, putting it here ensure 
 ;  proper bank is connected

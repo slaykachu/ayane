@@ -1,5 +1,10 @@
  ; Help module (generic, except constants specific Ayane doc)
+; 2025 Jun 10
+    ; Use disp-jp
+
 dev_checks = 1
+
+mess  = &BE00
 
 MAX_NB_LINES = 21
 screen = &C000
@@ -13,8 +18,7 @@ NB_SECTIONS = 2
       END
 
       IMPORT "memmap.i"
-
-      IMPORT "disp.o"
+      IMPORT "disp-jp.o"
     ; Bandaya imported at end of source
 
 help_init
@@ -77,14 +81,12 @@ _set_help_com
           ld (nb_lines),a
           ld (text_offset),hl
           ld hl,no_op
-          ld (hook_top+1),hl
           ld (hook_int2+1),hl
-          ld (hook_int2+1),hl
-          ld (hook_int2+1),hl
-          ld (hook_int2+1),hl
-          ld (hook_int2+1),hl
+          ld (hook_int3+1),hl
+          ld (hook_int4+1),hl
+          ld (hook_int5+1),hl
           ld hl,mode_help
-          ei
+  ;        ei
           ret
 
 
@@ -107,7 +109,7 @@ display_section
 ; Enchaine
 display_page
 ;-----------
-; BC: text  
+; BC: text (0 = nl, -1 = eof)
 
 ; Setup help windoz
           ld de,(text_offset)

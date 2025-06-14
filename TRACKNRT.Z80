@@ -2,10 +2,14 @@
 todo  = 1
 do_brittle = 0
 
+; ----- 2025 ----------
+; -- v0ae --
+ ; May
+     ; 29 test_get_phrase_implicit_repeat
 ; ----- 2024 ----------
-; -- For ayane v0l --
+; -- v0l --
  ; Jun 14 Add test_set_phrase_after
-; -- For ayane v0g --
+; -- v0g --
  ; Apr
      ; 10; More tests
      ;  9: Fix tests themselve.
@@ -104,6 +108,7 @@ tests
           call test_set_transpose
           call test_set_phrase_after
           call test_set_phrase_far
+          call test_get_phrase_implicit_repeat
           ret
 
 nrt_init
@@ -1280,7 +1285,46 @@ test_set_phrase_far
           call check_phrase
           ret
 
-time0 FILL 3,0
+test_get_phrase_implicit_repeat
+;------------------------------
+; Check we get same phrase after its end (implicit repeat) 
+
+          call nrt_init
+
+          xor a:call song_select_new_phrase
+dummy_dur = 7
+          ld a,dummy_dur:call phrase_select_new_row
+ ; Sanity check
+          call phrase_get_duration
+          ld a,c:or a:call nz,nrtfail
+          ld a,d:or a:call nz,nrtfail
+          ld a,e:cp dummy_dur:call nz,nrtfail
+
+          xor a
+          ld hl,time0
+          call Set_phrase_at_t
+
+; Put other phrase at 14
+          ld a,1:call song_select_new_phrase
+          ld a,1
+          ld hl,time14
+          call Set_phrase_at_t
+
+;Sanity checks
+          xor a:ld hl,time0:call check_phrase
+          xor a:ld hl,time6:call check_phrase
+          ld a,1:ld hl,time14:call check_phrase
+;Real checks
+          xor a:ld hl,time7:call check_phrase
+          xor a:ld hl,time13:call check_phrase
+          ret
+
+
+time0     TIME(0)
+time6     TIME(6)
+time7     TIME(7)
+time13    TIME(13)
+time14    TIME(14)
 time_far WORD &CAFE:BYTE 2 ; > &10000
 
 check_transpose
@@ -1311,6 +1355,8 @@ check_
 ;hl= pnt timestamp
 ;de= execpted value
 ; a= event type 
+
+; Note: some copy/paste of track_get_phrase_at, with additional test
           push de
           push af
           call track_get_event_hook_at

@@ -1,38 +1,39 @@
 ; Display routine in status bar (AYANE VERSION)
 
 dev_checks = 1
+need_room = 1
 
-; 2023
-  ; Dec
-    ; Reapatrie de :lib/ (Dedicated to ayane)
+; 2025 jun 9
+  ; use disp-jp. adapt for new bandeau (page 4000, r9=7)
 
-      IMPORT "disp.o"
-
-BUF_TMP = &9100         ; Buffer de r{serve (reuse ass' compute params)
-                        ; !!Shared with ed!!
-;single_use = &9E00
-;BUF_INFO = single_use + &20 ; why +&20
+      IMPORT "disp-jp.o" ; !!! disp.bin loaded by client
 
 fail  = &BE00
 ; -------------------------------
 
       MACRO CALL_BRIC rout
+   ; Dispatch is done in disp-jp
           call rout
       ENDM
 
 ; ------------------------------------------------
 disp_infos_com
-; IN/OUT: as disp_infos, with HL already out of rom.
+; IN:  DE: cursor
+    ;  HL: nt str
+;OUT:  D (X) updated
+    ;  HL: post str
+    ; hl trashed
+
           push af
-          push ix:push iy ; Needed?
-          push de
-          push hl
+          push iy       ; Needed?
+          ld c,l
+          ld b,h
           CALL_BRIC(status_str_at)
-          pop bc
-          scf:sbc hl,bc ;longueur chaine
-          pop de
-          ld a,d:add l:ld d,a
-          pop iy:pop ix
+          ld a,c:scf:sbc l ;longueur chaine
+          ld l,c
+          ld h,b
+          add d:ld d,a
+          pop iy
           pop af
           ret
 
@@ -56,9 +57,13 @@ txt_free' BYTE "00 ("
 ClearQuestion
 ; Efface ligne question.             
 ; Out: de trashed, all other registers saved
+      IF need_room
+; Factorize with disp.clear_line (or whatever it is called)
+      END
+
           push af       ; Save answer and flags
-          push bc       ; Needed for C_EXP
-          push de       ; Needed for C_LABEL / C_FIND_TEXT
+          push bc       ; needed?
+          push de       ; needed?
           ld de,0 + status_line_question
           CALL_BRIC(status_set_cursor)
 
@@ -96,6 +101,9 @@ field_refresh
 ; dans bar status, avec cursor.
 ; A utiliser conjointement avec field editor.
 ; NB: utilise pour saisie question.
+      IF need_room
+; Factorize with status_text_pad
+      END
 
 ; In:
 ; HL : adr du champ (NT string)
@@ -201,11 +209,7 @@ nget_path BYTE "PATH"+&80,0 ; &80 for rsx search, 0 for copy_nt
 
 ; ----- Constantes -----
 
-status_line_main = 0
-status_line_path = 2
-status_line_question = 3
-status_line_completion = 4
-status_line_debug = 4
+status_line_question = 6
 
 ASTERIX = "*"
 
@@ -214,8 +218,6 @@ ASTERIX = "*"
 X_TAB# = 2              ; "f1:"
 X_MODIFIED = X_TAB#+3
 X_FILENAME = X_MODIFIED+1
-X_CUR_LINE = 37
-X_TOT_LINES = X_CUR_LINE+5
 X_FREE = 73
 ; line 2          
 X_DRIVE = 2

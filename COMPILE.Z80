@@ -3,11 +3,6 @@ hack_minimala = 1
 todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
-;2025 
-; Apr 14  Allow compiled_data in C000 (switch loop handling)
-       ; Dont put output channel # in songlist (crunchability)
-            ; -> must be revisited for multitrack per channel
-!!! todo. see if other modifs where reported (is_pattern_indexed etc)
 ; 2024  
 ; ----- v0i ------
   ; Jun
@@ -398,8 +393,9 @@ phrases
           ld hl,phrases_map ; L = phrase #
 phrases_lp
       IF dev_checks
-;Dest still in page 4000 (or C000)
-          bit 6,d:call z,mess
+;Dest still in bank
+          ld a,d:cp &40:call c,mess
+          cp &80:call nc,mess
       END
           push hl
 ; Store instrument pnt in compiled file
@@ -555,21 +551,17 @@ tracks
           ld a,1        ; channel
 track_lp
       IF dev_checks
-;Dest still in page 4000 (or C000)
-          bit 6,d:call z,mess
-;Check index and track in same page. 
-;Not an actual constraint, but for now help detect bugs.
+;Dest still in bank
           push af
-          ld a,d:xor h:and &C0:call nz,mess
+          ld a,d:cp &40:call c,mess
+          cp &80:call nc,mess
           pop af
       END
-          push hl
           call connect_bk_compile
           ld (hl),e:inc hl
           ld (hl),d:inc hl
-      IF compile_output_channel
           ld (hl),a:inc hl
-      END
+          push hl
           push af
           dec a
           call get_track_pnt
@@ -632,41 +624,9 @@ track_lp
 
           call poke_flush
           ld de,(dest_pnt)
-; Encode loop via fake event
+
           pop af
-          pop hl        ;songlist
-          push af
-          call connect_bk_compile
-          xor a
-      IF pattern_size
-          ld (de),a:inc de ;no transpose
-      ELSE
-      3 ** [ld (de),a:inc de] ; no duration, no transpose
-      END
-      IF is_compiled_phrase_indexed
-; Escape code 00, which cannot be a valid phrase idx
-          xor a:ld (de),a:inc de
-          ldi
-          ldi
-      ELSE
-; Link with bit 15 flipped: track reset instead of phrase link
-          ldi
-          ld a,(hl):inc hl
-      IF compiled_data AND &8000
-      IF dev_checks
-          bit 7,a:call z,fail
-      END
-          res 7,a
-      ELSE
-      IF dev-checks
-          bit 7,a:call nz,fail
-      END
-          set 7,a
-      END
-          ld (de),a:inc de
-      END
-          inc hl        ; skip output in songlist
-          pop af
+          pop hl
           inc a
           cp 4
           jr c,track_lp

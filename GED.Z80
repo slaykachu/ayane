@@ -1,5 +1,7 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  OvL!
-; v0.ac  6 Mar 2025
+; v0.ae 14 Jun wv_tmp_buffer: reserve 80.
+     ;  3 Jun s/CALL_STATE/call_state_on_exit and co
+
 dev_checks = 1
 dev_checks_display = 0  ; 0: let display fails, easier to see problem
 export = 0              ; 0: to be imported. 1: make lib (wip)
@@ -106,6 +108,7 @@ fail  = &BE00
 
 ev_child_exit = &80     ; Warning might conflict with shortcuts
 ev_refresh = &81
+;Note: they are defined in shortcut.o but we don't import that!
 k_esc = &FC
 k_up  = &F0
 k_dwn = &F1
@@ -113,6 +116,12 @@ k_lft = &F2
 k_rgt = &F3
 k_del = &7F
 k_clr = &10
+kc_up = &F8
+kc_dwn = &F9
+kc_lft = &FA
+kc_rgt = &FB
+kc_f0 = 150
+kc_fdot = &8A
 
 break = &BE00
 
@@ -298,7 +307,7 @@ handler_table WORD
       MACRO ENTER_COMMON
           call clean_edit_buffer
           call setup_field_editor
-          CALL_STATE(on_enter)
+          call call_state_on_enter
           call nc,fail  ; Case not handled.
       ENDM
 
@@ -390,6 +399,48 @@ _hl_state_pnt
           pop bc
           ret
 
+call_state_on_enter
+          ld c,on_enter
+          jr _call_state
+call_state_get_width
+          ld c,get_width
+          jr _call_state
+call_state_on_exit
+          ld c,on_exit
+          jr _call_state
+call_state_get_line#
+      IF get_line# - param2
+ !!! review
+      END
+          ld c,param2
+          jr _call_state
+call_state_select_line
+      IF select_line - param3
+ !!! review
+      END
+          ld c,param3
+          jr _call_state
+
+_call_state
+          push hl
+          ld hl,(state_sp)
+          ld b,0
+          add hl,bc
+_jp_hl_pop
+          ld c,(hl):inc hl
+          ld b,(hl)
+          pop hl
+jp_bc
+          ld (dbg_call),bc
+          CHECK_ADDRESS()
+jp_bc_ext               ; Don't check address for external hook.
+          ld (dbg_call'),bc
+          push bc
+          ret
+
+          pop hl:inc hl:push hl ; ret address
+      BRK
+
       MACRO DE_STATE_PNT field
       IF field/&0100
 !! error
@@ -410,7 +461,7 @@ _de_state_pnt
 
 
       MACRO SET_STATE field
-; All registers preserved but F
+; All registers preserved
 ; TODO late  IF inline:call _set_state:byte field
           push bc
           ld c,field
@@ -450,6 +501,7 @@ _de_state_pnt
 
 
 _set_state
+          push af
           push hl
           ld b,0
           ld hl,(state_sp)
@@ -459,6 +511,7 @@ _set_state
           ld (hl),b
           ld l,c
           ld h,b
+          pop af
           ret
 
 _set_state_byte
@@ -527,8 +580,8 @@ _check_in_focus
       ENDM
 
       MACRO CALL_STATE field
-          LD_BC_STATE(field)
-          call jp_bc
+          ld c,field
+          call _call_state
       ENDM
 
       MACRO CALL_STATE_EXT field
@@ -761,17 +814,7 @@ _setup_widget
           ld bc,widget_virt_size
           ldir
 ;hack? reset focus
-
-          ld c,(hl):inc hl ; Widget's init
-          ld b,(hl)
-          pop hl
-jp_bc
-          ld (dbg_call),bc
-          CHECK_ADDRESS()
-jp_bc_ext               ; Don't check address for external hook.
-          ld (dbg_call'),bc
-          push bc
-          ret
+          jp _jp_hl_pop
 
 dbg_call WORD 
 dbg_call' WORD 
@@ -941,7 +984,7 @@ validate
  ; We could temporarily set state_sp_handler to state_sp,
  ; but that adds unnecessary code.
  ;       CHECK_IN_FOCUS()
-          CALL_STATE(on_exit)
+          call call_state_on_exit
 ;We reset the buffer to display from model, not from existing field
 ;Otherwise when entering out-of-range value (e.g. 5000 for pitch),
 ;it would still display 5000 instead of the clipped value (4095)
@@ -1108,6 +1151,11 @@ push_state
           or a:sbc hl,de:jr z,.okparent
 ; when stack is copied to state_stack_disp, 
  ; parent still points to state_stack
+      IF todo
+; Well it means parent is not accurate in this case
+; - is it ever used at all?
+; - why not just shift the stack pointer?
+      END
           ld de,state_stack - state_stack_disp
           or a:sbc hl,de:jr z,.okparent
           call fail
@@ -1702,6 +1750,15 @@ refresh_sp ld hl,0
           call set_state_sp
           ret
 
+refresh_nofocus_safe_save_cursor
+;in: hl=state to display
+          push hl
+          CALL_STATE_EXT(get_cursor)
+          ex (sp),hl
+          call refresh_nofocus_safe
+          pop hl
+          CALL_STATE_EXT(set_cursor)
+          ret
 
 refresh_nofocus_safe
 ;Refresh without changing original state ("safe")
@@ -1796,22 +1853,55 @@ struct_lft
           pop af
           jr z,.slft_next
 
+          call _struct_setup_field_cursor
+          pop hl        ; discard old field#
           jp struct_enter_field
 
 struct_stay
 ;here (sp) = initial col
 ; /invariant/ 1. Must reselect field
           pop hl
+struct_stay_
           call setup_field
       IF dev_checks
           call nc,fail
       END
+struct_reenter
 ;'enter' Needed to e.g. setup field editor and regive focus
 ;removed when exiting.
           call enter
 ; !!!!! DISTINCTION Z/NZ not done for now (see /handler_table/)
           or a
           ret
+
+struct_first
+; Go to first r/w field
+          call rewind_state
+          xor a
+          call setup_rw_field
+          jr struct_reenter
+
+
+struct_last
+; Go to last r/w field
+; Hack!!! Actually advance 8 fields
+
+; If already last: stay (copy/paste from struct_rgt)
+; Not sure why it is necessary!
+          call _struct_go_rgt
+          jr nc,struct_stay_
+
+ctrl_rgt_nb_fields = 8
+
+          ld b,ctrl_rgt_nb_fields-1
+.lp
+          push bc
+          call _struct_go_rgt
+          pop bc
+          jr nc,struct_stay_
+          djnz .lp
+          jp struct_enter_field
+
 
 wc_struct
           SET_STATE(embedded_ui) ; pnt to list of fields
@@ -1921,6 +2011,18 @@ get_field
 
 
 struct_rgt
+          call _struct_go_rgt
+          jp nc,struct_stay_
+struct_enter_field
+          call enter
+          xor a:scf
+          ret           ; C Z: handled, nothing to do. 
+
+_struct_go_rgt
+; Out: If ok: next R/W field selected, Carry
+     ; Otherwise (no more R/W field): NC
+                                    ; HL = previous col 
+
 ;Here: focus is still on child (field).
       IF dev_checks
 ;!!! actually not necessarily immediate child, in case of wrapper
@@ -1930,7 +2032,7 @@ struct_rgt
           or a:sbc hl,de:call z,fail
       END
 
-; Must set cursor in case /struct_stay/ is called.
+; Must set cursor in case /struct_stay/ is called (by client)
           call reset_cursor_from_widget_location
 ; init d = pos.x+width
      ; e = pos.y  
@@ -1947,8 +2049,8 @@ struct_rgt
 ; hl = col (field#)
           inc hl
           call setup_field
-          jp nc,struct_stay ; past last field
-          jr nz,.done
+          jr nc,.exit   ; past last field
+          jr nz,.done   ; ok R/W
 
           call struct_add_width
           call rewind_state
@@ -1956,7 +2058,17 @@ struct_rgt
 
 .done
           call rewind_state
-struct_enter_field
+          call _struct_setup_field_cursor
+          pop hl        ; discard prev col
+          scf
+          ret
+.exit
+          pop hl
+          ret
+
+_struct_setup_field_cursor
+;In: HL: col
+   ; DE: cursor
           SET_STATE(struct_col)
           call setup_field
       IF dev_checks
@@ -1966,10 +2078,7 @@ struct_enter_field
           ex de,hl
           CALL_STATE_EXT(set_cursor)
           call reset_widget_location_from_cursor
-          call enter
-          pop hl        ; discard initial col
-          xor a:scf
-          ret           ; C Z: handled, nothing to do. 
+          ret
 
 struct_add_width
 ; D += width + 1 (for separator)
@@ -1992,6 +2101,8 @@ multiline_up
 ;-----------
           ld hl,(state_sp)
           push hl
+; Hack: needed to reset X position (at start of field)
+      ; Note: updated in update_cur_y
           call reset_cursor_from_widget_location
           call rewind_state
 ;Decrement model's line
@@ -2000,7 +2111,7 @@ multiline_up
           jr z,multiline_stay
 ;ok line      
           dec a
-          CALL_STATE(select_line)
+          call call_state_select_line
 ;Now view itself    
           GET_STATE_BYTE(cur_y)
           ld c,a
@@ -2008,9 +2119,9 @@ multiline_up
           or a
           jr z,.okview
           GET_STATE_BYTE(scroll_offset)
-; Scroll if cur_y = offset  (musn't be lower)
+; Scroll if cur_y <= offset 
           cp c
-          jr z,.scroll_down
+          jr nc,_multiline_scroll_down
       IF dev_checks
           call c,fail   ; past scroll threshold
       END
@@ -2019,38 +2130,16 @@ multiline_up
           or a
           jr z,multiline_stay
           dec a
-          SET_STATE_BYTE(cur_y)
-; Cursor
-          CALL_STATE_EXT(get_cursor)
-          dec l
-      IF dev_checks
-          call z,fail
-          call m,fail
-      END
-          push hl
-          CALL_STATE_EXT(set_cursor)
-; Reset embedded wiget's Y location 
-          call push_state
-          pop hl
-          ld a,l
-          SET_STATE_BYTE(widget_pos_y)
-; Re-enter nested widget
-; We don't call widget_setup like struct does, 
-; as we don't want to reset embedded's state (e.g. struct's col)
-; Todo: harmonize? 
-          pop hl
-          call set_state_sp
-      IF need_room
-; do "reset location" in enter?
-      END
-          call reset_widget_location_from_cursor
-          call enter
-          xor a:scf
-          ret           ; C Z: handled, nothing to do. 
+          jr _multiline_update_cur_y
 
-.scroll_down
- ; todo
-      BRK
+_multiline_scroll_down
+          GET_STATE_BYTE(line_at_top)
+      IF dev_checks
+          or a:call z,fail
+      END
+          dec a
+          jp _multiline_scroll_com
+
 
 multiline_stay
 ; See /struct_stay/
@@ -2062,17 +2151,19 @@ multiline_stay
 multiline_dwn
           ld hl,(state_sp)
           push hl
+; Hack: needed to reset X position (at start of field)
+      ; Note: updated in update_cur_y
           call reset_cursor_from_widget_location
           call rewind_state
-;Increment model's line
-          CALL_STATE(get_line#)
+;Increment model's line    
+          call call_state_get_line#
           ld b,a
           call get_current_line_number
           inc a
           cp b
           jr nc,multiline_stay
-;ok line
-          CALL_STATE(select_line)
+;ok line 
+          call call_state_select_line
 ;Now view itself
           GET_STATE_BYTE(cur_y)
           inc a
@@ -2084,39 +2175,144 @@ multiline_dwn
           ld a,b
 ; Scroll if cur_y = height - offset  (musn't be greater)
           cp c
-          jr z,.scroll_up
+          jr z,_multiline_scroll_up
       IF dev_checks
           call nc,fail  ; past scroll threshold
       END
-          SET_STATE_BYTE(cur_y)
-; Cursor
-          CALL_STATE_EXT(get_cursor)
-          inc l
-          push hl
-          CALL_STATE_EXT(set_cursor)
-; Reset embedded wiget's Y location 
-          call push_state
-          pop hl
-          ld a,l
-          SET_STATE_BYTE(widget_pos_y)
+_multiline_update_cur_y
+          call update_cur_y
+_multiline_reenter
 ; Re-enter nested widget
 ; We don't call widget_setup like struct does, 
 ; as we don't want to reset embedded's state (e.g. struct's col)
 ; Todo: harmonize? 
           pop hl
           call set_state_sp
-      IF need_room
-; do "reset location" in enter?
-      END
+; Hack: workaround to pass new location to nested widget (even
+      ; through several layers)
+      ; cursor was updated in /update_cur_y/
           call reset_widget_location_from_cursor
           call enter
           xor a:scf
           ret           ; C Z: handled, nothing to do. 
 
-.scroll_up
- ; todo
-      BRK
+_multiline_scroll_up
+          GET_STATE_BYTE(line_at_top)
+          inc a
+_multiline_scroll_com
+;In: A = new line at top
+   ; !!! (sp) = saved state_sp
+          SET_STATE_BYTE(line_at_top)
+          ld hl,(state_sp)
+          call refresh_nofocus_safe_save_cursor
+          jr _multiline_reenter
 
+multiline_ctrl_up
+          ld hl,(state_sp)
+          push hl
+          call reset_cursor_from_widget_location
+          call rewind_state
+          GET_STATE_BYTE(line_at_top)
+          ld b,a
+          GET_STATE_BYTE(view_height)
+          ld c,a
+; If top < h, cur_y -= h-top (clipped)   (also work if top = h)
+          sub b
+          jr c,.oky
+          ld l,a
+          GET_STATE_BYTE(cur_y)
+          sub l:jr nc,$+3:xor a
+          call update_cur_y
+.oky
+          ld a,b
+          or a
+
+          sub c
+          jr nc,$+3:xor a ; clip
+
+          jr _multiline_scroll_com
+
+multiline_ctrl_dwn
+          ld hl,(state_sp)
+          push hl
+          call reset_cursor_from_widget_location
+          call rewind_state
+          call call_state_get_line#
+      IF dev_checks
+          or a:call z,fail ; We don't handle empty structure
+      END
+          dec a
+          ld c,a
+          GET_STATE_BYTE(view_height)
+          ld b,a
+          GET_STATE_BYTE(line_at_top)
+          cp c
+          jp z,multiline_stay
+          add b
+; clip to line# - 1
+          cp c:jr c,$+3:ld a,c
+          jr _multiline_scroll_com
+
+multiline_top
+          ld hl,(state_sp)
+          push hl
+          call reset_cursor_from_widget_location
+          call rewind_state
+          xor a
+          call update_cur_y
+          xor a
+          jr _multiline_scroll_com
+
+multiline_bottom
+          ld hl,(state_sp)
+          push hl
+          call reset_cursor_from_widget_location
+          call rewind_state
+          GET_STATE_BYTE(cur_y)
+          ld b,a
+          push bc
+          call call_state_get_line#
+          pop bc
+          scf:sbc b
+      IF dev_checks
+;We cannot have cur_y >= line#
+          call c,fail
+      END
+          jp _multiline_scroll_com
+
+
+update_cur_y
+; Update cur_y and cursor Y (hack)
+;In: a= new y
+          push bc
+          SET_STATE_BYTE(cur_y)
+; !!Hack!! Update cursor so new position can be passed (by caller)
+; to nested widget (via reset_widget_location_from_cursor)
+; The alternative would be to propagate cursor position at /enter/
+; phase.
+          ld b,a
+          GET_STATE_BYTE(widget_pos_y)
+          add b
+          push af
+          CALL_STATE_EXT(get_cursor)
+          pop af
+          push af
+          ld l,a
+          CALL_STATE_EXT(set_cursor)
+
+; Updated embedded widget's Y location 
+; Not sufficient: we should update all nested widgets
+                ; e.g. struct, refresh, field.
+; Necessary when refresh is used (other wrong line got refreshed)
+          call push_state
+          pop af
+          SET_STATE_BYTE(widget_pos_y)
+          call pop_state
+      IF dev_checks
+          call z,fail
+      END
+          pop bc
+          ret
 
 ; -------------------------------------------------------
 enter
@@ -2131,7 +2327,7 @@ delegate_width
           GET_STATE(embedded_ui)
           call clone_state
           call _setup_widget
-          CALL_STATE(get_width)
+          call call_state_get_width
           ex (sp),hl
           call set_state_sp
           pop hl
@@ -2145,7 +2341,7 @@ delegate_set
           GET_STATE(embedded_ui)
           call clone_state
           call _setup_widget
-          CALL_STATE(on_exit)
+          call call_state_on_exit
           pop hl
           call set_state_sp
           pop hl
@@ -2571,6 +2767,25 @@ _hexa_byte_to_buffer
           call put_hexa_a
           jr _put_0_pop
 
+append_to_buffer
+; IN: hl = nt string
+          ld de,wv_tmp_buffer
+          ex de,hl
+          call skip_nt
+          dec hl        ; rewind to 0
+      IF dev_checks
+;Mustn't be pre-buffer
+          ld a,l:cp wv_tmp_buffer-1 AND &FF:call z,fail
+      END
+          ex de,hl
+;enchaine
+copy_nt
+          ld a,(hl):inc hl
+          ld (de),a:inc de
+          or a
+          jr nz,copy_nt
+          ret
+
 get_hexa_byte
           call get_byte
           ld de,wv_edit_buffer
@@ -2951,11 +3166,17 @@ h_kstruct
       BYTE ev_child_exit:WORD struct_rgt ; esc: like k_rgt
       BYTE k_lft:WORD struct_lft
       BYTE k_rgt:WORD struct_rgt
+      BYTE kc_lft:WORD struct_first
+      BYTE kc_rgt:WORD struct_last
       BYTE 0:WORD 0
 
 h_kmultiline
       BYTE k_up:WORD multiline_up
       BYTE k_dwn:WORD multiline_dwn
+      BYTE kc_up:WORD multiline_ctrl_up
+      BYTE kc_dwn:WORD multiline_ctrl_dwn
+      BYTE kc_f0:WORD multiline_top
+      BYTE kc_fdot:WORD multiline_bottom
       BYTE 0:WORD 0
 
 h_key_handler
@@ -3310,7 +3531,7 @@ sign_init = &BB         ; arbitrary marker
 state_sp WORD state_stack
 state_sp_handler WORD 0
 
-wv_tmp_buffer SKIP 8
+wv_tmp_buffer SKIP 80
 
 ; stack ------
 

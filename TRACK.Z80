@@ -48,6 +48,9 @@ todo1                   ; !!! remove used_tracks
 ; --------------------
     ; Clip_set_duration
 
+; Phrase -------------
+; --------------------
+    ; phrase_select_next_row ; Here since needs track_get_phrase_at
 
 ; Subsongs -----------
 ; --------------------
@@ -121,153 +124,6 @@ reg_size = 3
       ; + Set_track_loop
       ; Song_add_map: use those
    ; 20 Remove temporary dbg
-;2024
-; --- For v0l ---- 
-  ; Jun        
-   ; 28 fix get_event_hook_at: again mistake in t0 <= t < t1 test
-      ; eval: lift flags back to z80
-   ; 19 Subsong_add: take A = id (for consistency)    
-   ; 18 Init_track_module: don't create tracks. Instead: /New_module/
-      ; Song_select_new_track: don't add in subsong
-         ; (because salo loads all track before knowing how to dispatch)
-      ; Add: Song_add_track
-   ; 17 Add: Song_get_first_track
-           ; Song_get_next_track
-      ; For serialisation and future subsong handling.
-      ; Init_track_module/Song_add_map: start track numbering at 1
-           ; instead of 0 (to match usual channel numbering)
-
-   ; 14 Song_select_new_track: Pass ID. - Consistent with phrases etc
-                                      ; - Ease loading (salo.o)
-                             ; Pass mix mode (future proof)
-      ; Add track_get_event_hook_at
-      ; Set_phrase_at_t/Set_transpose_at_t: - call be call in any order
-                                          ; - will replace previous val
-   ; 13 Reserve slot for "mix mode": tf_mix
-; --- For v0h ----
-  ; Apr  
-   ; 24 Set_phrase_at_t: add check (Get_phrase must return NZ)
-      ; Song_add_map: idem
-; --- For v0g ----
-   ; 10 Fix dest_deref16: wasn't adding operand like ind does.
-   ; 09 Put missing signatures for ext_* routines
-      ; prepend_event: replace AUM code by good old z80! 
-      ; Song_add_map.prep was initializing the wrong variable!
-               ; (time instead of timestamp)
-         ; Morale: use local variable instead?
-   ; 08 Introduce eval_init (for tracknrt)
-      ; Finish s/regs/aum_regs
-          ; NOTE: why is "regs" even visible from here?
-      ; Fix another typo
-      ; Song_select_new_track: don't report flags:
-              ; - for now it cannot fail 
-              ; - if at some point we allocate something, we'll use
-                ; assertion mechanisme.
-  ; Mar 
-   ; 31 Add CALL_EXT01()
-   ; 25 Add Song_add_map
-   ; 14 Dismiss track_append_current_phrase (make no more sense with
-             ; RDV based paradigm)
-      ; Introduce Set_phrase_at_t
-      ; Deactive ui (first we must validate new APIs for convertion)
-            ; And, faster to assemble!
-; --- For v0e ----
-   ; 11 Design change: Duration in event node, not in phrase node
-                 ; - new phrase can happen before end of phrase
-                 ; - phrase is auto-looping
-                 ; - !!! actually still useful for drawing track
-                       ; (for optimisation, otherwise we would have to
-                         ;compute duration for each repetition)
-      ; Discard track_get_event_at (doesn't fit new structre very well)
-      ; introduce get_event_hook_at
-                ; set_event_hook_at
-      ; aum: introduce lit20 operand
-   ; 10 Track can have multiple events at given timestamp
-         ; Adapt structure to reflect that
-         ; ONHOLD: Introduce track_get_phrase_at
-                 ; Priority is player and convertion
-  ; Feb            
-   ; 29 Init_track: create 3 tracks with channel A, B, C
-; --- For v0c ----
-   ; 28 shortcut.o, memcpc.o: use local ones
-
-; --- For v0A ----
-;2023
- ; Dec
-   ; 22 Arrange order of imports to have main sources first
-   ; 21. Rollback previous: multi mode done by ayane,
-               ; so we don't add bandaya dependency        
-   ; 16. Set up multi-mode (under int)
-
-; --- For v09 ----  
-  ; Dec 3. lib/shortcut.o : use the one in ums: for consistency
-
-; --- For v08 ----  
-  ; May 19. Only scroll when reaching screen boundaries (no sub window)
-              ; -> less refresh overfall
-              ; -> simpler for now
-       ; Replace goto_pos by go_left/go_right
-       ; skip: add missing opcode and modifiers, fix skip_fun_com
-
-; --- For v07 ----  
-
-; v9: AUM: Change encoding to allow more modifiers
-        ; - introduce /max/
-        ; - now only 16 registers allowed: more than enough.
-    ; Introduce ui_sequencer (cursor handling for navigation)
-
-; --- For v06 ----
-
-; v8: Introduce track_append_current_phrase (nrt helper)
-    ; track_draw: must follow indirection for actual clip stucture.
-    ; Use memcpc.o (for check_hl_in_bank)
-
-; --- For v05 ----
-
-; v7: track_get_clip_at: Also return starting time
-    ;   (will be useful for navigation) 
-
-; --- For v04 ----
-
-; v6: Reverse part of v5: pointers **MUST** be little endian
-          ; to allow indexing (ind + lit n)
-      ; -> song_select_new_track: store list id little endian
-         ; (liszt routine will have proper CDE id no matter what)
-    ; binary_common: properly set Z flag.
-    ; fun_com: keep aum_af as is.
-
-; v5: --- WIP --- 
-    ;  Extract test in track.nrt
-      ; -> Avoid double ENT issue
-      ; -> Less space and faster to assemble.
-    ; Fix /track_append_clip/
-    ; Set /current_track/ (was readonly!)
-    ; [harmonisation] Set BK, MSB, LSB in that order (expected by liszt)
-    ; Remove cur_bk, set/get_bk: handled by chunk.o via liszt
-    ; call_ext_com: read 24bits regs in c,d,e to match liszt expectation
-
-; v4: API for st128 /track_append_clip/...
-    ; track_draw: Divide time by 64 to show outline.
-
-; v3: Boulet! It's not track that has color, but each clip
-
-; v2: Implement /draw_track/
-    ; + /min/ modifier
-    ; + /call_ext_to_words/
-    ; eval_operand_and_store: must return
-
-; v1: Implement /track_get_event_at/ -> Yeah.
-    ; Restrict AUM registers to 24 bits (see /reg32/)
-       ; - That fits our needs (time, epnt - extended pointeurs)
-       ; - More wouldn't help
-    ; We still align every 4 bytes though, for debugging purpose
-; v0: 4 tests aum ok.
-
-;Note: Using liszt can be error-prone (stateful iteration prevents
-     ; some concurrent use if not careful). Yet we try to use as 
-     ; much orgams code as possible:
-         ; - Exercise the code intensively
-         ; - Not reinventing the wheel
 
 scr_set_border = &BC38
 
@@ -1724,7 +1580,7 @@ t_nxt = r3
 .while
           LD3(out2,t_cur + sub,t_end) ; out2: void
           RET_NC()
-          FUN2(track_get_event_at,track,t_cur)
+          FUN2(_track_get_event_at,track,t_cur)
           JP_Z(.past_clip)
 ;assert t < t of next clip                              
 ;As for now, we don't accept clip with duration 0
@@ -1871,7 +1727,7 @@ minnext = r2
 .while
           CALL_EXT11(ext_get_track,track#)
           JP_Z(.retparams)
-          FUN2(track_get_event_at,out0,in0)
+          FUN2(_track_get_event_at,out0,in0)
           JP_Z(.next)
 
           LD3(maxstart,maxstart + max,t0)
@@ -1996,51 +1852,6 @@ void  = r1
           LD2(t0,t1)
           JP(.loop)
 
-      IF 0
-!!! discarded: use track_get_event_hook_at
-          SIGN(2,2,FLAG_Z)
-track_get_phrase_at
-;------------------
-; Like track_get_event_at, but follow
-; Given t, return NZ, clip spanning from t0..t1 such than t0 <= t < t1
-; or Z if no such clip.
-
-; in0: track   (pnt in tracks)
-; in1: t: target time    
-; out0: clip node
-; out1: t1 (start of following clip)  
-track = in0
-t     = in1
-tgcaclip = out0
-t0    = out1
-t1    = out2
-void  = r1
-; t0 := 0                            
-          BRK()
-;!! todo
-          LD2(t0,lit + 0)
-; clip (out0) := track.events.head()
-!!! review that, no indirection anymore
-          CALL_EXT1'1(ext_connect_head,track + ind,lit + tf_clips)
-.loop
-; ret if end of list 
-          RET_Z()
-; t1 = t0 + cur_clip.duration
-          LD5(t1,t0 + add,conv16,tgcaclip + ind,lit + idsz + evt0_dur)
-; if t < t0, try next clip 
-          LD3(void,t + sub,t0)
-          JP_C(.next)
-; ret if t < t1
-          LD3(void,t + sub,t1)
-          RET_C()       ; NZ
-.next
-; next clip
-; t0 := t1
-          LD2(t0,t1)
-; clip := clip.next()                      
-          CALL_EXT11(ext_next_node,tgcaclip)
-          JP(.loop)
-      END
 
 Song_select_track
 ;----------------
@@ -2304,12 +2115,69 @@ is_last_event
           ret
       END
 
+select_next_row
+;-----------
+; Select next row and update corresponding timestamp 
+; (potentially in next phrase, that's why routine is not in phrase.o,
+; ;as we might need track_select_phrase_at)
+; 
+; In: hl = pnt to t (for update)
+    ; row selected
+;Out; If such row: NZ, row selected
+    ; Otherwise, Z
+    ; (hl) updated in any case     
+      BRK
+ ; !!! todo for ui
+
+track_select_phrase_at
+;---------------------
+          call track_get_phrase_at
+          ret z
+          jp song_select_phrase
+
+track_get_phrase_at
+;------------------
+; Given t, return NZ, phrase spanning from t0..t1 such than t0 <= t < t1
+; or Z if no such phrase.
+; In: hl = pnt to t
+;Out: If such hook, NZ
+                  ;  A = phrase ID
+    ; Otherwise, Z
+          push de
+          ld a,evt_change_phrase AND &FF
+          call track_get_event_at
+          jr z,.exit
+      BRK
+; TODO: get phrase id
+.exit
+          pop de
+          ret
+
+track_get_event_at
+;-----------------
+; In:  A = event type
+    ; hl = pnt to t
+;Out: If such hook, NZ
+                  ; hl = event structure
+                  ; de = param (for convenience)
+    ; Otherwise, Z
+    ; BC trashed
+          push af
+          call track_get_event_hook_at
+          pop bc        ; b=event type
+          ret z
+
+ ; skip link to next hook and duration. 
+          idsz + evt0_link ** inc hl
+          ld a,b
+          jp goto_event
+
 track_get_event_hook_at
 ;----------------------
-; In:  A = type event  
-    ; de = param event      
-    ; hl = pnt to t
-;Out: hl = hook structure
+; In: hl = pnt to t
+;Out: If such hook, NZ
+                  ; hl = hook structure
+    ; Otherwise, Z
           call connect_bk_track
           call setup_track_t
           ld hl,get_hook_at

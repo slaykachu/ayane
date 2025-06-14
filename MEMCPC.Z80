@@ -1,6 +1,7 @@
 ; << Memory bank handling for ayane >>
 ; CPC specific PAGING (out &7fxx,&cX)
-; v0.0ac  5 Mar 25
+; 2025 Jun 9: Allow C1 connection
+
 dev_checks = 1
 todo  = 1
 
@@ -139,6 +140,7 @@ check_b_bank
 check_bk_a
           push af
           cp &C0:jr z,.ok
+          cp &C1:jr z,.ok
 ; Must be in bank < &c7  (well actually < &cf for chunk.nrt)
           and &F4
           cp &C4:call nz,mess

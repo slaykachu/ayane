@@ -1,0 +1,133 @@
+; <<<<<<<< Instrument selector >>>>>>>>>
+; v0.0a 6 Mar 25
+
+to_be_implemented = &BE00
+dev_checks = 1
+need_rom = 1
+manual_test = 0
+
+      IMPORT "const.i"
+      IMPORT "memmap.i"
+
+      IF manual_test
+      ORG &40
+      ENT instr_selector
+      END
+
+      IMPORT "chung.o"  ; Model (instr get/set row)
+      IMPORT "ged.o"
+      IMPORT "shortcut.o" ; for setup_keys kcdel km_wait_key
+      IMPORT "testlib.o" ; for dev test
+
+instr_selector
+; --- Firmware setup ---  
+          ld a,2:call &BC0E
+      IF manual_test
+          call setup_keys ; already done by ged (and full_init)
+
+; --- For dev test ---
+          call init_for_test
+          call dummy_instr_ui
+          ld b,2:call instr_set_loop
+          ld a,2:call dummy_instr_ui_id
+          ld a,3:call dummy_instr_ui_id
+      END
+
+; --- Save current in case of ESC ---
+          call Song_get_instr
+          ld (saved_instr),a
+
+; --- Gedeihen setup ---
+          call gedeihen_init
+ ; For now, keep default (firmware hooks)
+ ;     call gedeihen_set_hooks 
+          ld hl,selector_ui
+          call setup_widget
+          call refresh_all
+
+mainloop
+; In the mainloop we can do other processing (raster etc)...
+          call km_wait_key
+          call gedeihen_process
+
+;TODO: review that, interface has changed
+          jr c,mainloop
+; Z: ev_child_exit. 
+          call z,to_be_implemented
+;--- Unhandled key 
+          cp 13:jr z,.select ; Exit, instr selected
+          cp esc_code
+          jr nz,mainloop
+;cancel
+          ld a,(saved_instr)
+          call Song_select_instr
+          ret
+
+.select
+          call instr_does_exist
+          ret nz        ; Existing: nothing to do
+;New instr: add empty line (prevent ged assert)
+          jp instr_append_empty_row
+
+; -------------------------------------------------
+
+refresh_all
+      IF need_room
+ ; factorize with instrui
+      END
+          ld hl,&0101:call txt_set_cursor
+          call gedeihen_disp
+;reenter
+          ld hl,&0101:call txt_set_cursor
+          ld hl,selector_ui
+          jp gedeihen_enter
+
+; -------------------------------------------------
+selector_ui
+      BYTE w_multiline
+      WORD instr_id_ui
+      WORD ui_get_instr#
+      WORD ui_select_instr
+      BYTE 9            ; Height (for vampire1.chp)
+      BYTE 0            ; scroll offset (margin)
+
+ui_get_instr#
+;Hack for now. Do i have song_get_instr# ?
+          ld a,9
+          ret
+
+ui_select_instr
+          inc a         ; start from 1
+          call Song_select_instr
+          scf           ; Carry means ok
+          ret
+
+extra_handler
+      BYTE 0:WORD 0
+
+instr_id_ui
+; Display instr id (future: name and graphic preview!)
+      BYTE w_text_dyn
+      WORD instr_title
+
+instr_title
+;Out: hl= txt to print
+          call Song_get_instr
+          call _deci_byte_to_buffer
+          push hl
+          call instr_does_exist
+          jr z,.empty
+;toto: print name     
+          pop hl
+          ret
+
+.empty
+          ld hl,.empty_txt
+          call append_to_buffer
+          pop hl
+          ret
+
+.empty_txt BYTE " <New instr>",0
+
+
+saved_instr BYTE 

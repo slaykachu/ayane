@@ -1,0 +1,665 @@
+; <<<<<<<< Instrument editor >>>>>>>>>
+
+; 2025 May 30: Show loop
+
+;   Vol  Arp Pitch No  E R Arp Pitch  Buz1 Arp Pitch  Buz2 Arp Pitch
+; x F -- +12 -4095 31  A x +12 +1000     x +10 +1000    x  +10 +1000
+; x 8 -  +12 -4095 31  A   +12 +1000     x +10 +1000    x  +10 +1000
+; x 0    +12 -4095 31  A   +12 +1000     x +10 +1000    x  +10 +1000
+
+;todo: don't delete when only one row
+
+to_be_implemented = &BE00
+dev_checks = 1
+
+      IMPORT "const.i"
+      IMPORT "memmap.i"
+
+      ORG &40
+      ENT start
+
+      IMPORT "chung.o"  ; Model (instr get/set row)
+      IMPORT "instrsel.o"
+      IMPORT "ged.o"
+      IMPORT "timer.o"  ; for fx_null/sync_buzzer_register
+      IMPORT "piano.o"
+      IMPORT "shortcut.o" ; for setup_keys kcdel km_wait_key
+      IMPORT "testlib.o" ; for dev test
+
+start
+; --- Firmware setup ---
+          ld a,2:call &BC0E
+          call setup_keys
+
+; --- For dev test ---
+          call init_for_test
+          call dummy_instr
+;          call dummy_instr_ui
+          ld b,2:call instr_set_loop
+
+; add row to test scroll
+          ld b,4
+.addrows  push bc
+          xor a
+          call insert_empty_row
+          pop bc
+          djnz .addrows
+
+; --- Gedeihen setup ---
+          call cold_refresh
+
+mainloop
+; In the mainloop we can do other processing (raster etc)...
+          ld a,(&4000):cp &C5:call nz,&BE00
+          call km_wait_key
+          push af
+          ld a,(&4000):cp &C5:call nz,&BE00
+          pop af
+   ;       cp &FC:jr z,break        
+   ;       cp "C":call z,&BE00
+          call gedeihen_process
+          push af
+          ld a,(&4000):cp &C5:call nz,&BE00
+          pop af
+
+;TODO: review that, interface has changed
+          jr c,mainloop
+; Z: ev_child_exit. 
+          call z,to_be_implemented
+;--- Unhandled key
+          cp esc_code
+          jr z,.exit
+;--- Try piano
+          call check_note
+          jr mainloop
+.exit
+          ret
+
+break
+;for debug
+          call &BB06
+          ret
+
+
+instr_ui
+;Put key_handler at root, since under multiline: not handler
+;Refresh after insert/del line is handled in a adhoc maner,
+;as we cannot yet use w_refresh twice in the tree.
+      BYTE w_key_handler
+      WORD instr_ui'
+      WORD extra_handler
+
+instr_ui'
+      BYTE w_multiline
+      WORD instr_row_ui
+      WORD ui_get_rows#
+      WORD ui_select_row
+      BYTE 4            ; Height
+      BYTE 2            ; scroll offset (margin)
+
+ui_get_rows#
+          call instr_get_rows#
+          ld a,c
+          ret
+
+ui_select_row
+          ld (selected_line),a
+          call select_row
+          ld de,row_buffer
+          call get_row
+;          ld a,(selected_line):cp 2:call z,&BE00
+          scf           ; Carry means ok
+          ret
+
+extra_handler
+      BYTE 13:WORD _insert_row
+      BYTE kcdel:WORD _del_row
+      BYTE "I"-&40:WORD _instr_sel
+      BYTE 0:WORD 0
+
+_del_row
+          ld a,(selected_line)
+          call del_row
+          jr _refresh
+
+_insert_row
+;Clone row
+          ld de,row_buffer:call get_row
+          ld a,(selected_line)
+          call insert_empty_row
+          ld de,row_buffer:call instr_set_row
+;enchaine
+_refresh
+;Refresh from root
+          ld a,(selected_line):push af
+          ld hl,state_stack
+          call force_refresh_custom
+;Hackish: selected_line was changed for disp
+        ; (since calling ui_select_row)
+          pop af:ld (selected_line),a
+;For cursor (use refresh_focus instead?)
+;Cannot use gedehein_enter now as delegate_width
+;would reset multiline state.
+;We rely on the fact force_refresh_custom use auxiliary stack,
+;so the state is preserved.
+          call enter
+          xor a:scf     ; mark as handled
+          ret
+
+_instr_sel
+          call instr_selector
+          ld a,2:call &BC0E
+;enchaine       
+cold_refresh
+          call gedeihen_init
+ ; For now, keep default (firmware hooks)
+ ;     call gedeihen_set_hooks 
+          ld hl,instr_ui
+          call setup_widget
+;enchaine
+refresh_all
+          ld hl,&0101:call txt_set_cursor
+          call gedeihen_disp
+reenter
+          ld hl,&0101:call txt_set_cursor
+          ld hl,instr_ui
+          jp gedeihen_enter
+
+instr_row_ui
+      BYTE w_struct
+      IF 1
+      WORD loop_ui
+      WORD mixer_ui
+      WORD vol_ui
+      WORD arp_ui
+      WORD pitch_ui
+      WORD noise_flag_ui
+      WORD noise_value_ui
+      WORD env_type_ui
+      WORD env_arp_ui
+      WORD env_pitch_ui
+      WORD env_retrig_ui
+      END
+      WORD fx0_type_ui
+      WORD fx0_env_ui
+      WORD fx0_arp_ui
+      WORD fx0_pitch_ui
+      IF 0
+      WORD fx1_type_ui
+      WORD fx1_env_ui
+      WORD fx1_arp_ui
+      WORD fx1_pitch_ui
+      END
+      WORD 0
+
+loop_ui
+      BYTE w_toggle_custom
+      WORD _set_loop
+      WORD _get_loop
+
+mixer_ui
+      BYTE w_toggle_custom
+      WORD _set_mix
+      WORD _get_mix
+
+vol_ui
+      BYTE w_refresh
+      WORD vol_ui'
+vol_ui'
+      BYTE w_optional_readwrite
+      WORD vol_ui''
+      WORD is_volume
+vol_ui''
+      BYTE w_hexa_digit_custom
+      WORD _set_vol
+      WORD _get_vol
+
+arp_ui
+      BYTE w_deci_99_signed
+      WORD _set_arp
+      WORD _get_arp
+
+pitch_ui
+      BYTE w_deci_9999_signed
+      WORD _set_pitch
+      WORD _get_pitch
+
+noise_flag_ui
+      BYTE w_toggle_custom
+      WORD _set_noise_flag
+      WORD _get_noise_flag
+
+noise_value_ui
+      BYTE w_deci_99_custom
+      WORD _set_noise_value
+      WORD _get_noise_value
+
+env_type_ui
+      BYTE w_refresh
+      WORD env_type_ui'
+env_type_ui'
+      BYTE w_key_handler
+      WORD env_type_ui''
+      WORD env_type_handler
+env_type_ui''
+; Optional (e.g. deactivated if volume not hard,
+           ;but must be able to change it)
+      BYTE w_optional_readwrite
+      WORD env_type_ui'''
+      WORD is_env_hard
+env_type_ui'''
+      BYTE w_hexa_digit_custom
+      WORD _set_env_type
+      WORD _get_env_type
+
+env_type_handler
+      BYTE k_clr:WORD _deactivate_env
+      BYTE " ":WORD _toggle_env
+      BYTE 0:WORD 0
+
+env_arp_ui
+      BYTE w_optional
+      WORD env_arp_ui'
+      WORD is_env_hard
+env_arp_ui'
+      BYTE w_deci_99_signed
+      WORD _set_env_arp
+      WORD _get_env_arp
+
+env_pitch_ui
+      BYTE w_optional
+      WORD env_pitch_ui'
+      WORD is_env_hard
+env_pitch_ui'
+      BYTE w_deci_9999_signed
+      WORD _set_env_pitch
+      WORD _get_env_pitch
+
+env_retrig_ui
+      BYTE w_optional
+      WORD env_retrig_ui'
+      WORD is_env_hard
+env_retrig_ui'
+      BYTE w_toggle_custom
+      WORD _set_env_retrig
+      WORD _get_env_retrig
+
+fx0_type_ui
+; For now toggle as there is only one type of fx
+      BYTE w_refresh
+      WORD fx0_type_ui'
+fx0_type_ui'
+      BYTE w_toggle_custom
+      WORD _set_fx0_type
+      WORD _get_fx0_type
+
+fx0_arp_ui
+      BYTE w_optional
+      WORD fx0_arp_ui'
+      WORD has_fx0
+fx0_arp_ui'
+      BYTE w_deci_99_signed
+      WORD _set_fx0_arp
+      WORD _get_fx0_arp
+
+fx0_pitch_ui
+      BYTE w_optional
+      WORD fx0_pitch_ui'
+      WORD has_fx0
+fx0_pitch_ui'
+      BYTE w_deci_9999_signed
+      WORD _set_fx0_pitch
+      WORD _get_fx0_pitch
+
+fx0_env_ui
+      BYTE w_optional
+      WORD fx0_env_ui'
+      WORD has_fx0
+fx0_env_ui'
+      BYTE w_hexa_digit_custom
+      WORD _set_fx0_env
+      WORD _get_fx0_env
+
+fx1_type_ui
+      BYTE w_refresh
+      WORD fx1_type_ui'
+fx1_type_ui'
+      BYTE w_toggle_custom
+      WORD _set_fx1_type
+      WORD _get_fx1_type
+
+fx1_arp_ui
+      BYTE w_optional
+      WORD fx1_arp_ui'
+      WORD has_fx1
+fx1_arp_ui'
+      BYTE w_deci_99_signed
+      WORD _set_fx1_arp
+      WORD _get_fx1_arp
+
+fx1_pitch_ui
+      BYTE w_optional
+      WORD fx1_pitch_ui'
+      WORD has_fx1
+fx1_pitch_ui'
+      BYTE w_deci_9999_signed
+      WORD _set_fx1_pitch
+      WORD _get_fx1_pitch
+
+fx1_env_ui
+      BYTE w_optional
+      WORD fx1_env_ui'
+      WORD has_fx1
+fx1_env_ui'
+      BYTE w_hexa_digit_custom
+      WORD _set_fx1_env
+      WORD _get_fx1_env
+
+_set_loop
+          ld a,(selected_line)
+          ld b,a
+          call instr_set_loop
+; Hack: refresh all (since must erase previous loop marker)
+          jp _refresh
+
+_get_loop
+; Return 0 if selected_line = loop point
+;          ld a,(dbg+4):cp &F7:call z,&BE00
+          call instr_get_loop
+          jr nc,_zero   ; no loop at all
+
+          ld a,(selected_line)
+          cp b
+          jr nz,_zero
+_nonzero
+          xor a:inc a
+          ret
+_zero
+          xor a
+          ret
+
+
+_set_mix
+          ld c,7
+_set_flags
+          cpl
+          and c
+          ld b,a
+          ld hl,row_buffer+instr_flags
+          ld a,c
+          cpl
+          and (hl)
+          or b
+          ld (hl),a
+_update_row
+; Report change to actual row.
+          ld de,row_buffer
+          call instr_set_row
+          scf:ret
+
+_get_mix
+          ld c,7
+_get_flags
+          ld a,(row_buffer+instr_flags)
+          cpl
+          and c
+          ret
+
+_set_vol
+          add a         ; Encoding
+          ld (row_buffer+instr_vol),a
+          jr _update_row
+_get_vol  ld a,(row_buffer+instr_vol)
+          srl a
+          ret
+
+_set_arp  add a         ; expect pre-encoded
+          ld (row_buffer+instr_arp),a
+          jr _update_row
+_get_arp  ld a,(row_buffer+instr_arp)
+          sra a         ; signed
+      IF dev_checks
+          call c,fail
+      END
+          ret
+
+_set_pitch
+          ld (row_buffer+instr_pitch),hl
+          jr _update_row
+_get_pitch ld hl,(row_buffer+instr_pitch):ret
+
+_set_noise_flag ld c,&38:jr _set_flags
+_get_noise_flag ld c,&38:jr _get_flags
+
+_set_noise_value
+          ld (row_buffer+instr_noise),a
+          jr _update_row
+_get_noise_value
+          ld a,(row_buffer+instr_noise):ret
+
+is_volume
+;          ld a,(row_buffer+instr_vol):bit 0,a:call nz,&BE00
+          ld a,(row_buffer+instr_vol):cpl:and flags_env_hard:ret
+is_env_hard
+          ld a,(row_buffer+instr_vol):and flags_env_hard:ret
+_deactivate_env
+          ld hl,row_buffer+instr_vol
+          ld a,(hl):and flags_env_hard XOR &3F:ld (hl),a
+          jr _refresh_env
+_toggle_env
+          ld hl,row_buffer+instr_vol
+          ld a,(hl):xor flags_env_hard:ld (hl),a
+_refresh_env
+; Needed to (in) validate hard env fields.
+          call _update_row
+          call validate ; needed for w_refresh
+          call refresh_focus
+          xor a         ; we expect Z, but it's not used (just checked)
+          scf:ret
+
+_set_env_type
+; Note: we don't store env type in volume, to allow "undo" when
+      ; unselecting hard env: user get back original volume.
+          ld hl,row_buffer+instr_vol
+flags_env_hard = &21    ;bit 0 for rrca, bit 5 so already set for volume
+          ld c,a
+          ld a,(hl):or flags_env_hard:ld (hl),a
+          ld a,c
+          ld c,&0F
+_set_env_type_
+          and c
+          ld b,a
+          ld hl,row_buffer+instr_hard_type
+          ld a,c
+          cpl
+          and (hl)
+          or b
+          ld (hl),a
+          jp _update_row
+_get_env_type
+          ld c,&0F
+_get_env_type_
+          ld a,(row_buffer+instr_hard_type)
+          and c
+          ret
+
+_set_env_retrig
+          ld c,&10
+          jr _set_env_type_
+_get_env_retrig
+          ld c,&10
+          jr _get_env_type_
+
+_set_env_arp
+          add a
+          ld (row_buffer+instr_hard_arp),a
+          jp _update_row
+_get_env_arp
+          ld a,(row_buffer+instr_hard_arp)
+          sra a
+      IF dev_checks
+          call c,fail
+      END
+          ret
+
+_set_env_pitch
+          ld (row_buffer+instr_hard_pitch),hl
+          jp _update_row
+_get_env_pitch
+          ld hl,(row_buffer+instr_hard_pitch):ret
+
+
+_set_fx0_type
+;For now, just toggle
+          call _fx0_type_pnt
+          ld bc,fx_null
+          or a:jr z,.set
+          ld bc,sync_buzzer_register
+.set
+          ld (hl),c:inc hl
+          ld (hl),b
+          jp _update_row
+
+has_fx0
+;NZ if yes  (for now coincide with _get_fx0_type used for toggle)
+_get_fx0_type
+;For now, just toggle
+;A = non-zero if set
+          call _fx0_type_pnt
+      IF [fx_null AND &FF] - [sync_buzzer_register AND &FF]:ELSE
+ !!! needs MSB to discrimate
+      END
+          ld a,(hl)
+      IF dev_checks
+          cp fx_null AND &FF:jr z,.ok
+          cp sync_buzzer_register AND &FF:jr z,.ok
+          call fail
+.ok
+      END
+          xor fx_null AND &FF
+          ret
+
+_fx0_type_pnt
+          ld c,0
+_fx0_pnt
+; Set hl=sub field fx0, and check proper setup
+; In: C: fx0 field offset 
+      IF dev_checks
+          ld hl,row_buffer
+          call _check_sfx
+      END
+          ld hl,row_buffer+fx0_type
+          ld b,0
+          add hl,bc
+          ret
+
+_set_fx0_arp add a:ld (row_buffer+fx0_arp),a:jp _update_row
+_get_fx0_arp ld a,(row_buffer+fx0_arp)
+          sra a
+      IF dev_checks
+          call c,fail
+      END
+          ret
+
+_set_fx0_pitch ld (row_buffer+fx0_pitch),hl:jp _update_row
+_get_fx0_pitch ld hl,(row_buffer+fx0_pitch):ret
+
+; Each sync buzzer can set its own env type
+_set_fx0_env ld (row_buffer+fx0_param),a:jp _update_row
+_get_fx0_env ld a,(row_buffer+fx0_param):ret
+
+_set_fx1_type
+;For now, just toggle
+          call _fx1_type_pnt
+          ld bc,fx_null
+          or a:jr z,.set
+          ld bc,sync_buzzer_register
+.set
+          ld (hl),c:inc hl
+          ld (hl),b
+          jp _update_row
+
+has_fx1
+;NZ if yes  (for now coincide with _get_fx0_type used for toggle)
+_get_fx1_type
+;For now, just toggle
+;A = non-zero if set
+          call _fx1_type_pnt
+      IF [fx_null AND &FF] - [sync_buzzer_register AND &FF]:ELSE
+ !!! needs MSB to discrimate
+      END
+          ld a,(hl)
+      IF dev_checks
+          cp fx_null AND &FF:jr z,.ok
+          cp sync_buzzer_register AND &FF:jr z,.ok
+          call fail
+.ok
+      END
+          xor fx_null AND &FF
+          ret
+
+_fx1_type_pnt
+          ld c,0
+_fx1_pnt
+; Set hl=sub field fx0, and check proper setup
+; In: C: fx0 field offset 
+      IF dev_checks
+          ld hl,row_buffer
+          call _check_sfx
+      END
+          ld hl,row_buffer+fx1_type
+          ld b,0
+          add hl,bc
+          ret
+
+_set_fx1_arp add a:ld (row_buffer+fx1_arp),a:jp _update_row
+_get_fx1_arp ld a,(row_buffer+fx1_arp)
+          sra a
+      IF dev_checks
+          call c,fail
+      END
+          ret
+
+_set_fx1_pitch ld (row_buffer+fx1_pitch),hl:jp _update_row
+_get_fx1_pitch ld hl,(row_buffer+fx1_pitch):ret
+
+; Each sync buzzer can set its own env type
+_set_fx1_env ld (row_buffer+fx1_param),a:jp _update_row
+_get_fx1_env ld a,(row_buffer+fx1_param):ret
+
+
+
+clip_4095
+; Clip into -4095 .. 4095
+          bit 7,h
+          jr nz,.neg
+          ld bc,4095
+          or a:sbc hl,bc:add hl,bc
+          ret c
+          jr ld_hl_bc
+.neg
+          ld bc,-4095
+          or a:sbc hl,bc:add hl,bc
+          ret nc
+;enchaine
+ld_hl_bc
+          ld l,c
+          ld h,b
+          ret
+
+; ----------- make dummy instr ---------------
+
+      MACRO VOL n
+; Encode as expected -> xxxx0
+      BYTE n*2
+      ENDM
+
+      MACRO VOL_HARD
+      BYTE flags_env_hard ; Bit 0 and 5 Set (so after rrca, bit set)
+      ENDM
+
+;----------------------------------------
+
+      SKIP -$ AND &0F   ; easier debug
+row_buffer SKIP instr_row_size_max
+selected_line BYTE 0

@@ -2,23 +2,10 @@
 ; See todonrt for chunk related routines
 
 ;2025
- ; Apr
-; ---- Ayane 0.ac ----
-  ;24 test_instr_ayane_append_rows
-;2024
- ; Oct
-; ---- Ayane 0.0y ----
-  ;19 Add /test_delete_row/
-    ; Add /test_insert_row/
-; ---- Ayane 0.0v ----
-  ; 4 Fix /test_instr_edit/ itself: set_row expect fx routine
-    ; Add test_get_row
-; ---- Ayane 0.0u ----
-; Sep
-  ; 24 Remove chipnsfx related test
+; ---- Ayane 0.ae ----
+  ;May 30 /test_loop'/
+
 has_chipnsfx = 0
-; Apr
-  ; 11 Only keep fresh test test_loop. Old tests in todonrt.o
 
       ORG &0100
       ENT tests
@@ -37,6 +24,7 @@ tests
           call test_instr_ayane_append_rows
           call test_get_row
           call test_loop
+          call test_loop'
           call test_loop_past_end
           call test_get_field
           call test_instr_edit
@@ -58,7 +46,7 @@ fail  = &BE00
 nrt_init
 ;-------
 ; clear bk for easy analysis
-          ld bc,&7F00+bk_nrt:out (c),c
+          ld bc,&7F00+bk_ayane:out (c),c
           ld hl,&4000:ld de,&4001:ld bc,&3FFF:ld (hl),&F7:ldir
 
           jp full_init
@@ -86,6 +74,23 @@ tl_row# = 5
           cp b:call nz,fail
           pop bc
           djnz .lp
+          ret
+
+test_loop'
+;--------- 
+;Try to reproduce issue from instrui.o
+;Well, cannot reproduce!
+
+          call init_for_test
+          call dummy_instr
+
+          ld b,2:call instr_set_loop
+          call instr_get_loop:call nc,fail
+          ld a,b:cp 2:call nz,fail
+
+          ld b,0:call instr_set_loop
+          call instr_get_loop:call nc,fail
+          ld a,b:cp 0:call nz,fail
           ret
 
 test_loop_past_end
