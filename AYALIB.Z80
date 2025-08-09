@@ -1,0 +1,50 @@
+;------------------------------------------------------
+ ; Wrapper to assemble main modules (by transitivity)
+ ; Not executable! Just CTRL-1 and save Binary.
+
+; No save directive: mitigation, we'll save the whole padding areas!
+
+      MACRO PAD
+      FILL -$ AND &1F,&F7
+      ENDM
+
+      IMPORT "memmap.i"
+
+;Do it first so other sources will use this instance
+      ORG code_start'
+ged
+      IMPORT "ged.o"
+ged_
+      SKIP bandaya - $
+      IMPORT "bandaya.o"
+bandaya_
+
+      FILL ramlimit'-$,0
+
+      ORG disp_start    ; &3fc0
+;Since we have to save all, put the lib here
+      IMPORT "disp.o"
+  ;        PAD()
+
+      ORG $ + &8000,$$  ; &c1
+      IMPORT "pianoui.o"
+      IF $ - &8000 - $$
+ !! out of sync
+      END
+      ORG $ - &8000
+
+      FILL code_start'-$,&F7
+
+; ---- All other modules ---
+; Put here so that uiloop uses ged and pianoui.o already loaded
+
+      ORG code_start
+      IMPORT "init.o"   ; pull track, phrase, chung, ...
+hi
+      FILL code_main-$,0 ; Poor's man limit
+
+;--- That's it ---------------------------------------
+
+      SAVE "ayalib.bi0",code_start,hi-code_start
+      SAVE "ayalib.bi1",ged,bandaya_-ged
+
