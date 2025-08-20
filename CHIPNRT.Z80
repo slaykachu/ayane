@@ -167,7 +167,8 @@ chp_module
 ;      LOAD "4k08.chq"   ; with header
 ;      LOAD ":40y/kim9.chq" ; binary version
 ;      LOAD ":40y/kima.chq" ; binary version
-      LOAD ":40y/kim0.chp"
+    ;  LOAD ":40y/kim0.chp"
 ;      LOAD ":40y/kimc.chp"
+      LOAD "ums:chp/vampire1.chp"
       END
 

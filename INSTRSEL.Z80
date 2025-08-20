@@ -1,39 +1,37 @@
 ; <<<<<<<< Instrument selector >>>>>>>>>
+; 2025 
+  ; Aug 20: Remove import "uiloop" (not needed)
+      ; 02: Use instrui.instr_change
+  ; Jul 14: Move manual test in instrstt.o 
 ; v0.0a 6 Mar 25
 
 to_be_implemented = &BE00
 dev_checks = 1
 need_rom = 1
-manual_test = 0
 
       IMPORT "const.i"
       IMPORT "memmap.i"
 
-      IF manual_test
-      ORG &40
-      ENT instr_selector
-      END
-
       IMPORT "chung.o"  ; Model (instr get/set row)
       IMPORT "ged.o"
-      IMPORT "shortcut.o" ; for setup_keys kcdel km_wait_key
-      IMPORT "testlib.o" ; for dev test
+      IMPORT "memcpc.o" ; reset_sp
+      IMPORT "instrui.o" ; for instr_change
+ ;     IMPORT "shortcut.o" ; for setup_keys kcdel km_wait_key
 
-instr_selector
-; --- Firmware setup ---  
-          ld a,2:call &BC0E
-      IF manual_test
-          call setup_keys ; already done by ged (and full_init)
+instrsel_code
+          jr instr_selector_init
+          jr instr_selector_process
 
-; --- For dev test ---
-          call init_for_test
-          call dummy_instr_ui
-          ld b,2:call instr_set_loop
-          ld a,2:call dummy_instr_ui_id
-          ld a,3:call dummy_instr_ui_id
-      END
+; ----------------------------------
+      MACRO UNHANDLED code
+          xor a:inc a   ; NC, NZ
+          ld a,code
+      ENDM
+; ----------------------------------
 
+instr_selector_init
 ; --- Save current in case of ESC ---
+; becose changed to display names?
           call Song_get_instr
           ld (saved_instr),a
 
@@ -43,31 +41,32 @@ instr_selector
  ;     call gedeihen_set_hooks 
           ld hl,selector_ui
           call setup_widget
-          call refresh_all
+          jp refresh_all
 
-mainloop
-; In the mainloop we can do other processing (raster etc)...
-          call km_wait_key
+
+instr_selector_process
           call gedeihen_process
-
 ;TODO: review that, interface has changed
-          jr c,mainloop
-; Z: ev_child_exit. 
+          ret c
           call z,to_be_implemented
-;--- Unhandled key 
+;--- Unhandled key
+;(for just one key, simpler to do it explicitly than
+ ;introduce handler widget) 
           cp 13:jr z,.select ; Exit, instr selected
           cp esc_code
-          jr nz,mainloop
+          ret nz
 ;cancel
           ld a,(saved_instr)
           call Song_select_instr
+          UNHANDLED(esc_code) ; So uiloop can process exit
           ret
 
 .select
-          call instr_does_exist
-          ret nz        ; Existing: nothing to do
-;New instr: add empty line (prevent ged assert)
-          jp instr_append_empty_row
+          call instr_change
+;Caller will enter instrui
+          ld a,13
+          or a
+          ret
 
 ; -------------------------------------------------
 

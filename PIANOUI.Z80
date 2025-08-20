@@ -1,4 +1,8 @@
 ; <<<<< Display piano (shading and stuff) >>>>>
+; 2025 Aug  2 More static checks
+            ; Update status bar
+         ;  1 Lower display
+     ; Jun 23 Move test in pianouit
 
 hei   = 15
 wid   = 95
@@ -6,48 +10,28 @@ wid_2_octaves = 2*7*6 / 4 ; 7 keys, 6 pixels per key
 r1    = 48
 r2    = 50
 
-piano_dest = &4000 + r1*4
+piano_dest = &4000 + r1*8
 
-      ORG &0100
-      ENT test
+      IF $ AND &C000 != &C000
+  !! must be imported in bank C1
+      END
 
+      IMPORT "const.i"  ; x_pos_octave
       IMPORT "memmap.i"
-; Import memcpc here so that bandaya doesn't import it in its reserved
-; area.
-      IMPORT "memcpc.o"
-save_pc = $
-      ORG bandaya
-      IMPORT "bandaya.o"
-      ORG save_pc
 
-; -----------------------------------
+;--------------------------------------
+      MACRO LOCATION x,y
+          ld de,x*&0100 + y
+      ENDM
 
-test
-          ld a,1:call &BC0E
-          ld a,0:ld bc,&00:call &BC32
-          ld a,1:ld bc,&0B0B:call &BC32
-          ld a,2:ld bc,&0606:call &BC32
-          ld a,3:ld bc,&1A1A:call &BC32
+      MACRO CALL_DS adr
+ ; ds="disp status" status_* in disp.o
+    ; -> direct call
+          call adr
+          ei            ; after DI from disp
+      ENDM
+;--------------------------------------
 
-          call firm2status
-
-.tstlp
-          ld a,(octave)
-          call disp_piano
-
-          call &BB06
-          cp &FC
-          ret z         ; exit
-
-          call menu
-          jr .tstlp
-
-menu
-          cp &F3        ; REPLACE with f4
-          jr z,octave_rgt
-          cp &F2
-          jr z,octave_lft
-          ret
 
 octave_rgt
           ld hl,octave
@@ -55,8 +39,6 @@ octave_rgt
           ret nc
           inc a
           jr octave_com
-          ld (hl),a
-          jr disp_piano
 
 octave_lft
           ld hl,octave
@@ -65,11 +47,18 @@ octave_lft
           dec a
 octave_com
           ld (hl),a
-;enchaine
+          jr disp_piano_
+
 disp_piano
+          ld a,(octave)
+disp_piano_
 ; Display piano (shaded expect octave A and A+1)
 ; In: A = octave
+
           push af
+          LOCATION(x_pos_octave,y_pos_octave)
+          CALL_DS(status_deci_a_at)
+
           ld hl,sprite
           ld de,piano_dest
           ld bc,hei*&0100 + wid
@@ -184,3 +173,17 @@ octave BYTE 0
 
 sprite
       LOAD "touches.win"
+hu    = $
+ho    = $$
+
+save_pc = $
+save_obj = $$
+      ORG disp_start
+; We import disp since we share the bank
+;  -> Allow direct call to routines (faster and smaller)
+ ; Otherwise disp-jp.call_status would reconnected original bank (c5)
+   ; -> crash
+      IMPORT "disp.o"
+
+      ORG save_pc,save_obj
+

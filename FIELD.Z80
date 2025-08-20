@@ -5,6 +5,10 @@
 ; Tests in fieldnrt.o
 
  ; It differs from :lib/ version -> cursor not allowed past /00
+ ; 2025 Aug 4: Deactivate CTRL-Lft/Rgt in field
+               ; -> not useful for short numerical fields
+               ; -> prevent consistent shortcut in instrui row
+handle_ctrl_cursor = 0
 
 todo  = 1
 dev_checks = 1
@@ -15,13 +19,6 @@ fail  = &BE00
 
 scan_key
       IMPORT "scan-key.o"
-
-; 2024 
-  ; Jul       
-     ; 8. Customization ayane: kright at end of field must return NC
-          ; (hence, seen as unhandled: parent struct can go to nxt cell)
-          ; Difference from lib/ -> end of field is /00, 
-             ; instead of full capacity. No "free cursor"
 
       IF todo
 ; do same for k_lft?  or don't allow to navigate in field?
@@ -242,7 +239,7 @@ SfillLP
           djnz SfillLP
           jr fe_modified_pop_bchl
 
-
+      IF handle_ctrl_cursor
 fe_C_LEFT
 ;--------
           xor a
@@ -254,7 +251,7 @@ fe_C_RIGHT
 update_cursor
           ld c,a
           jr fe_unchanged
-
+      END
 
 add_hl_c
           ld a,c
@@ -279,8 +276,10 @@ ksclr = 161
 fe_keys
       BYTE kleft:WORD fe_MOVE_L ; Fleche GAUCHE
       BYTE kright:WORD fe_MOVE_R ; Fleche DROITE
+      IF handle_ctrl_cursor
       BYTE kcleft:WORD fe_C_LEFT ; CTRL+ fleche gauche
       BYTE kcright:WORD fe_C_RIGHT ; CTRL+ fleche droite
+      END
       BYTE kdel:WORD fe_DEL_CHAR
       BYTE kclr:WORD fe_CLR_CHAR
       BYTE ksdel:WORD S_DEL ; SHIFT + DEL

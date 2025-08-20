@@ -1,5 +1,8 @@
 ; Tests salo
-; v0.0ac  05 Mar 25
+; 2025
+   ; Aug 9 Exercise file > &100 
+; -- v0.0ac --
+   ; Mar 5 First version
 
       ORG &0100
       ENT tests
@@ -29,6 +32,7 @@ tests
           call test_save_empty_phrase
           call test_load_empty_module ; also test save-load-save
           call test_assets
+          call test_big
           ret
 
 nrt_init
@@ -80,8 +84,12 @@ test_save_empty_phrase
 test_assets
 ;---- Progressively build a module,
 ; and checks save+load+save    
+          ld a,0:ld (hack_ret),a
 
           call nrt_init
+
+; Sanity: check no track in subsong
+          call Song_get_first_track:call nz,fail
 
 ; - Empty instr 
           ld a,1        ; id (0 is reserved)
@@ -133,7 +141,6 @@ test_assets
           call check_save_load_save
           call phrase_get_rows#:cp 1:call nz,fail
 ; --- With fx
- ;  TODO
 ; --- With note
           ld a,43
           call row_set_note
@@ -160,9 +167,10 @@ phrase4 = 4
           ld a,1        ; id
           ld bc,&0100   ; output and mix mode
           call Song_select_new_track
+          ld hl,_check_1_track:ld (hook_check_jp),hl
           call check_save_load_save
 ; -- With event
-          ld a,7
+          ld a,5
           ld hl,time1
           call Set_transpose_at_t
           call check_save_load_save
@@ -180,18 +188,28 @@ phrase4 = 4
           ld a,2
           ld bc,&0200   ; output and mix mode
           call Song_select_new_track
+          ld hl,_check_2_tracks:ld (hook_check_jp),hl
           call check_save_load_save
 ; - Empty subsong
           xor a
           call Subsong_add
+; Sanity: check no track in subsong
+          call Song_get_first_track:call nz,fail
           call check_save_load_save
 ; -- With one track
           ld a,1
           call Subsong_add_track
+          ld hl,_check_1_track_in_subsong:ld (hook_check_jp),hl
           call check_save_load_save
 ; -- With two tracks
           ld a,2
+          ld hl,_nocheck:ld (hook_check_jp),hl
           call Subsong_add_track
+          call check_save_load_save
+; -- Big instruments to have buffer > &100
+          ld b,30
+          ld hl,raw_row3
+          call instr_ayane_append_rows
           call check_save_load_save
           ret
 
@@ -206,9 +224,28 @@ paramX BYTE "X"
 time1 WORD &BABE:BYTE 0
 time2 WORD &8000:BYTE 2 ; more than &10000 ticks away 
 
+test_big
+;-------
+;Full file 
+          call nrt_init
+          ld hl,.name
+          ld bc,0
+          call load_file:call nc,fail
+          ld de,destnrt:call nrt_save_no_meta
+          ld bc,&7FC0:out (c),c
+          ld hl,vampire
+          ld de,destnrt
+          ld bc,vampire_size
+          call compare_sized
+          ret
+
+.name BYTE "testdata/vampire1.aya",0
+
 check_save_load_save
 ; --- Check idempotence ----
+
           ld a,".":call &BB5A
+hack_ret  ret           ; to speed-up tests
 ; Save state
           call Song_get_instr:push af
 ; -- In NRT: doesn't use id > 4
@@ -216,20 +253,23 @@ check_save_load_save
       ;    call phrase_get_row_position:push hl
           call song_get_current_phrase:push af
           cp 5:call nc,fail
-          call get_current_track_pnt:push af ; also gives ID
+          call get_current_track_header:push af ; also gives ID
           cp 5:call nc,fail
           call Song_get_current_subsong:push af
           cp 5:call nc,fail
 
 ; Clear buffer for comparaison (we don't know exact lenght)
-
           ld hl,destnrt:ld de,destnrt+1:ld bc,destsize-1:ld (hl),0:ldir
           ld hl,destnrt2:ld de,destnrt2+1:ld bc,destsize-1:ld (hl),0
           ldir
 
+          call hook_check ; sanity
+
 ; -- Save twice: must give same result
           ld de,destnrt:call nrt_save
+          call hook_check
           ld de,destnrt2:call nrt_save
+          call hook_check
           ld de,destnrt
           ld hl,destnrt2
           ld bc,destsize
@@ -237,7 +277,9 @@ check_save_load_save
 
 ; -- Reload + save 
           ld hl,destnrt:call nrt_load
+          call hook_check
           ld de,destnrt2:call nrt_save
+          call hook_check
           ld de,destnrt
           ld hl,destnrt2
           ld bc,destsize
@@ -246,7 +288,7 @@ check_save_load_save
 ; Check state    
           call Song_get_current_subsong
           pop bc:cp b:call nz,fail
-          call get_current_track_pnt
+          call get_current_track_header
           pop bc:cp b:call nz,fail
           call song_get_current_phrase
           pop bc:cp b:call nz,fail
@@ -256,6 +298,36 @@ check_save_load_save
           pop bc:cp b:call nz,fail
           ret
 
+hook_check
+hook_check_jp = $+1
+          call _nocheck
+_nocheck
+          ret
+
+_check_1_track
+;Only track 1 set
+          ld a,1:call _check_has_track
+          ld a,2:call _check_no_track
+          ret
+_check_2_tracks
+;Only track 1 and 4 set
+          ld a,1:call _check_has_track
+          ld a,2:call _check_has_track
+          ld a,3:call _check_no_track
+          ret
+_check_has_track
+          call get_track_header
+          ld a,(hl):inc hl:or (hl):call z,fail
+          ret
+_check_no_track
+          call get_track_header
+          ld a,(hl):inc hl:or (hl):call nz,fail
+          ret
+
+_check_1_track_in_subsong
+          call Song_get_first_track:call z,fail
+          call Song_get_next_track:call nz,fail
+          ret
 
 almost_empty
 ; no assets, just some meta_data
@@ -272,10 +344,10 @@ dummy_ = $ - dummy_meta
       BYTE 0            ; Selected (given even if no table exist)
       BYTE "Inst":BYTE SENTINELLE
       BYTE 0
-      BYTE "Phrs":BYTE phrase_param#
+      BYTE "Phrs"
       WORD SENTINELLE_16 ; More than 256 possible phrases
       BYTE 0
-      BYTE "Trck":BYTE track_param#:BYTE SENTINELLE
+      BYTE "Trck",SENTINELLE
       BYTE 0
       BYTE "Song"
 ;Even empty module has one subsong
@@ -310,12 +382,13 @@ empty_phrase
       BYTE 0            ; Selected (given even if no table exist)
       BYTE "Inst":BYTE SENTINELLE
       BYTE 0
-      BYTE "Phrs":BYTE phrase_param#
+      BYTE "Phrs"
       BYTE 0            ; phrase id
       BYTE 1            ; alt#
       BYTE type_phrase
       BYTE 0            ; no custom delai_ui
           NO_TEXT()
+      BYTE phrase_param#
       BYTE 1            ; color = id + 1
       IF phrase_param# - 1
   !! add other params here
@@ -324,7 +397,7 @@ empty_phrase
       BYTE 0            ; alt selected
       WORD SENTINELLE_16 ; More than 256 possible phrases
       BYTE 0
-      BYTE "Trck":BYTE track_param#:BYTE SENTINELLE
+      BYTE "Trck",SENTINELLE
       BYTE 0
       BYTE "Song"
 ;Even empty module has one subsong
@@ -359,6 +432,14 @@ nrt_save
           call save:call nc,fail
           ret
 
+nrt_save_no_meta
+          call memdisk_init_write
+          ld hl,memdisk_write_bloc
+    ;      ld ix,tmpbrk
+          ld bc,0
+          call save:call nc,fail
+          ret
+
 tmpbrk
           call &BE00
           scf           ; pretend it's ok
@@ -388,7 +469,7 @@ nrt_load
 
 dest_meta SKIP dummy_
 
-destsize = &0300
+destsize = &0C00
 
       SKIP -$ AND &FF
 destnrt
@@ -396,6 +477,11 @@ destnrt
 destnrt2
       SKIP destsize
 
-      SKIP ramlimit' - $ ; poor man's limit
+      SKIP &A400 - $    ; poor man's limit
 
+      ORG &5000
+vampire
+      LOAD "testdata/vampire1.aya"
+vampire_size = &0ABD
+; vampire_size = $ - vampire   Doesn't work: unidos copy rounded to b00
 

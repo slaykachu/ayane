@@ -4,7 +4,9 @@
 
 ; To be completed, too lazy for now
 
-; 2025 Jun 6: jp_disp: allow reentrency
+; 2025 Aug 2: Add put_deci_a_pad0 
+
+     ; Jun 6: jp_disp: allow reentrency
 
 devchecks = 1
 
@@ -21,8 +23,10 @@ devchecks = 1
 ;note: doesn't return here, but at caller's level
       ENDM
 
+      IF disp != &4800
+ !! unexepected
+      END
 
-disp  = &4800
 init_disp_adr = disp    ; used for checks in call_disp
 
 init_disp JP_DISP(disp)
@@ -75,6 +79,7 @@ disp_hexa_hl_inv
 disp_hexa_hl_shaded
 
 put_deci_a
+put_deci_a_pad0
 put_deci_hl
 put_hexa_a
 put_hexa_hl
@@ -87,20 +92,22 @@ dump_hexa_shaded
 str_pad_at
 str_pad_at_ei
 
-status_set_cursor JP_STATUS(disp+&8A)
+status_set_cursor JP_STATUS(disp+&8D)
 
-status_char_at JP_STATUS(disp+&8D)
-status_str_at JP_STATUS(disp+&90)
-status_pad_at
-status_deci_a_at
+status_char_at JP_STATUS(disp+&90)
+status_str_at JP_STATUS(disp+&93)
+status_pad_at JP_STATUS(disp+&96)
+status_deci_a_at JP_STATUS(disp+&99)
+status_deci_a_pad0_at JP_STATUS(disp+&9C)
 status_deci_hl_at
 status_hexa_a_at
 status_hexa_hl_at
 
-status_char JP_STATUS(disp+&A2)
-status_str JP_STATUS(disp+&A5)
+status_char JP_STATUS(disp+&A5)
+status_str JP_STATUS(disp+&A8)
 status_pad
 status_deci_a
+status_deci_a_pad0
 status_deci_hl
 status_hexa_a
 status_hexa_hl
@@ -148,7 +155,6 @@ call_disp
           pop hl
           ret
 
-      IF 0
 call_status
 ;----------     
 ; Connect &c1, call routine, and connect back connected bk
@@ -174,8 +180,8 @@ call_status
           call connect_a
       IF dev_checks
 ; verify code has been loaded
-          ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
-          ld a,(init_disp_adr+3):cp &C3:call nz,fail
+          ld a,(init_disp_adr+&8000):cp &C3:call nz,fail ; jp
+          ld a,(init_disp_adr+&8003):cp &C3:call nz,fail
       END
           pop af
           ex (sp),hl
@@ -186,7 +192,6 @@ call_status
           call connect_l
           pop hl
           ret
-      END
 
 
 jp_disp

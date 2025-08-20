@@ -2,12 +2,17 @@
  ; Wrapper to assemble main modules (by transitivity)
  ; Not executable! Just CTRL-1 and save Binary.
 
-; No save directive: mitigation, we'll save the whole padding areas!
-
       MACRO PAD
       FILL -$ AND &1F,&F7
       ENDM
 
+      MACRO ASSERT pred
+      IF pred:ELSE
+ !! fail     
+      END
+      ENDM
+
+; --------------------------------
       IMPORT "memmap.i"
 
 ;Do it first so other sources will use this instance
@@ -16,35 +21,56 @@ ged
       IMPORT "ged.o"
 ged_
       SKIP bandaya - $
+
       IMPORT "bandaya.o"
 bandaya_
 
-      FILL ramlimit'-$,0
-
-      ORG disp_start    ; &3fc0
-;Since we have to save all, put the lib here
-      IMPORT "disp.o"
-  ;        PAD()
-
-      ORG $ + &8000,$$  ; &c1
-      IMPORT "pianoui.o"
-      IF $ - &8000 - $$
- !! out of sync
-      END
-      ORG $ - &8000
-
-      FILL code_start'-$,&F7
+      SKIP ramlimit'-$
 
 ; ---- All other modules ---
 ; Put here so that uiloop uses ged and pianoui.o already loaded
 
       ORG code_start
       IMPORT "init.o"   ; pull track, phrase, chung, ...
+      IMPORT "instrui.o"
+      IMPORT "instrsel.o"
+  ;    IMPORT "uiloop.o"  !!  doesn't fit
+      IMPORT "memcpc.o"
 hi
-      FILL code_main-$,0 ; Poor's man limit
+      SKIP code_main-$  ; Poor's man limit
+
+      IF 0
+ !! no, would overwrite source
+; For saving, nevermind if it's not in the right bank
+      BANK BK_DISP
+      END
+
+;      ORG disp_start    ; &3fc0
+ ;     IMPORT "disp.o"
+  ;        PAD()
+
+      ORG disp_start'
+      ORG $ + &8000,$$  ; &c1
+      IMPORT "pianoui.o"
+      IF $ - &8000 - $$
+ !! out of sync
+      END
+      ORG $ - &8000
+disp_bk_end
+
+
+;--- Check entry points ------------------------------
+
+          ASSERT(full_init == &3240)
+          ASSERT(memcpc_code == &0D00)
+          ASSERT(bandaya_code == bandaya)
+;          ASSERT(uiloop_code == 0)
+;          ASSERT(instrui_code == 0)
+;          ASSERT(instrsel_code == 0)
 
 ;--- That's it ---------------------------------------
 
-      SAVE "ayalib.bi0",code_start,hi-code_start
-      SAVE "ayalib.bi1",ged,bandaya_-ged
+ ;     SAVE "ayalib0.bin",code_start,hi-code_start
+ ;     SAVE "ayalib1.bin",ged,bandaya_-ged
+      SAVE "pianouil.bin",disp_start',disp_bk_end-disp_start'
 

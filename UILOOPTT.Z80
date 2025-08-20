@@ -1,0 +1,76 @@
+; <<<< Manual test of uiloop >>>>
+
+      IMPORT "memmap.i"
+
+;Do it first so other sources will use this instance
+      ORG code_start'
+      IMPORT "ged.o"
+      FILL bandaya-$,&F7
+      IMPORT "bandaya.o"
+      FILL ramlimit'-$,&F7
+
+      ORG &0100
+      ENT start
+      IMPORT "uiloop.o"
+      IMPORT "shortcut.o" ; kesc
+      IMPORT "testlib.o"
+      IMPORT "instrui.o" ; to test CTRL-f3 enter instr editor
+
+; ----------------------------
+      MACRO ASSERT pred
+      IF pred:ELSE
+  !! fail
+      END
+      ENDM
+; ----------------------------
+
+
+start
+;----   
+; catch improper disp calls
+          ld bc,&7FC0:out (c),c
+      ;    ld hl,&4000:ld de,&4001:ld bc,&3FFF:ld (hl),&f7:ldir
+          ld hl,&4000:ld de,&4001:ld bc,&3FFF:ld (hl),0:ldir
+
+          ld a,2:call &BC0E
+          ld a,0:ld bc,&1010:call &BC32
+          ld a,1:ld bc,&0B0B:call &BC32
+          ld a,2:ld bc,&0606:call &BC32
+          ld a,3:ld bc,&1A1A:call &BC32
+
+          call init_for_test
+          call dummy_instr_ui
+
+          call ui_init_band
+          call gedeihen_init
+          ld hl,ui_null
+          call setup_widget
+
+          call firm2status
+.loop
+          call ui_process_key
+          cp kcf+3:jr z,.instr_ed
+          cp kesc:jr nz,.loop
+          ret
+
+.instr_ed
+          call instr_cold_refresh
+          jr .loop
+
+ui_null
+; Only empty /h_null/ field should be called
+      BYTE w_brk
+
+hi
+          ASSERT($ <= &4000)
+
+      BANK &C7
+      ORG disp_start'
+      ORG $ + &8000,$$  ; &c1
+      IMPORT "pianoui.o"
+      IF $-&8000 - $$
+ !! out of sync
+      END
+
+; -----------------------------------
+

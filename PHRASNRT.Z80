@@ -1,17 +1,20 @@
 ; ---- Tests for phrase.o ---
 
-; Jun 12: Test 
+; Aug  8: Use testlib for init
+        ; Add test_phrase_get_rows#
+; Jun 12: Just version
 
       ORG &0100
       ENT tests
 
       IMPORT "phrase.o"
-      IMPORT "init.o"
+      IMPORT "testlib.o"
       IMPORT "memmap.i" ; for phrases_
 
 fail  = &BE00
 
 tests
+          call test_phrase_get_rows#
           call test_phrase_get_row_at
           call test_phrase_get_row_at'
           call test_phrase_set_blank_row_at
@@ -24,10 +27,27 @@ tests
           call test_row_set
           ret
 
+nrt_init
+          ld a,".":call &BB5A
+          call init_for_test
+          call song_reset
+          ret
+
+test_phrase_get_rows#
+;-------------------- 
+          call nrt_init
+          xor a:call song_select_new_phrase
+          call phrase_get_rows#
+          or a:call nz,fail
+          xor a:call phrase_select_new_row
+          call phrase_get_rows#
+          cp 1:call nz,fail
+          ret
+
 test_phrase_get_row_at
 ;---------------------
 ; Check API
-          call full_init
+          call nrt_init
           xor a:call song_select_new_phrase
 
 ;No row
@@ -45,7 +65,7 @@ test_phrase_get_row_at'
 ;----------------------
 ; Same thing when first row duration <> 0 
 ; Also test phrase_get_rows#
-          call full_init
+          call nrt_init
           xor a:call song_select_new_phrase
 
           call phrase_get_rows#
@@ -66,7 +86,7 @@ test_phrase_set_blank_row_at
 ;---------------------------         
 ; Check API (and that no new phrase is created)
 ; Prerequiste: test_phrase_get_row_at
-          call full_init
+          call nrt_init
           xor a:call song_select_new_phrase
           ld de,0:call phrase_set_blank_row_at
           push hl
@@ -81,7 +101,7 @@ test_phrase_set_blank_row_at
 test_phrase_select_row_at
 ;------------------------
 ; Just check no assertion triggered, and right row selected
-          call full_init
+          call nrt_init
           xor a:call song_select_new_phrase
 
           ld a,0:call phrase_select_new_row:call nc,fail
@@ -99,7 +119,7 @@ test_phrase_select_row_at
 test_phrase_select_row_at_insert
 ;-------------------------------
 ; Test insertion
-          call full_init
+          call nrt_init
           xor a:call song_select_new_phrase
 
           ld a,0:call phrase_select_new_row:call nc,fail
@@ -155,7 +175,7 @@ test_get_duration_empty
 ;----------------------
 ; Just created phrase: must return zero
 
-          call full_init
+          call nrt_init
           xor a:call song_select_new_phrase
           call phrase_get_duration
           ld a,c:or e:or d:call nz,fail
@@ -165,7 +185,7 @@ test_get_duration_single
 ;-----------------------
 ; Just one row: must return duration of this row
 
-          call full_init
+          call nrt_init
           xor a:call song_select_new_phrase
           ld a,13:call phrase_select_new_row:call nc,fail
           call phrase_get_duration
@@ -176,7 +196,7 @@ test_get_duration_single
 test_get_duration_16bits
 ;-----------------------
 ; When ovf 8 bits, an intermediate row is created.
-          call full_init
+          call nrt_init
           xor a:call song_select_new_phrase
           ld a,127:call phrase_select_new_row:call nc,fail
           ld a,255:call row_add_duration
@@ -190,7 +210,7 @@ test_intermediate_row
 ;--------------------
 ; The intermediate row for duration >= &100 must be inserted AFTER.
 ; Prerequisite: test_get_duration_16bits, test_phrase_select_row_at
-          call full_init
+          call nrt_init
           xor a:call song_select_new_phrase
           ld a,&80:call phrase_select_new_row:call nc,fail
 note1 = &14
@@ -224,7 +244,7 @@ test_row_set
 
 check_row_set
           push af
-          call full_init
+          call nrt_init
           xor a:call song_select_new_phrase
           pop af
           call phrase_select_new_row:call nc,fail

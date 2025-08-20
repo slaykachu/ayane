@@ -1,13 +1,5 @@
 ; ---- Shared constants and struct def -----
 
-; 2024
-     ; Sep
-         ; 13: Add fx_type_none
-                 ; fx_type_sync_buzzer
-         ; 12: Add MAX_TIMER_FXS
-         ;  7: Add instr_hard_type
-     ; Jun 20: Deactivate /instr_param#/ (moved in instr signature)
-
 ; Unit is 16nops. 
 ; Line unit wouldn't allow half-lines (e.g. perfect 50hz),
 ; The slowest replay is then 65535 * replay_unit / 312 / 64 = 52 frames
@@ -167,6 +159,18 @@ fx1_pitch WORD
           ]
       WORD              ; marker end of fx
 instr_row_size_max
+
+;-------------------------
+y_pos_octave = 1
+x_pos_octave = 50
+y_pos_instr# = 2
+x_pos_instr# = 49
+y_pos_instr_ed = 6
+x_pos_instr_ed = 8
+;-------------------------
+
+;---
+km_wait_key = &BB18
 
       ORG savepc,saveobj ; restore
 

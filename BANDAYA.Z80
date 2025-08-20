@@ -1,20 +1,37 @@
 ; Screen: Raster / Rupt under int for status bar.
         ; Transitions.
 
-; 2025 June 8
-   ; Special ayane: no need r9=0, bandeau 7*8 lignes
+; 2025 
+ ;Aug     
+   ; 3 Stabilize int1 (like in orgams)
+         ; - Needed to mitigate DI in disp
+         ; - Will also split rasters/mode
+     ; firm2status: don't call clearstatus, for debugging purpose
+     ; status_on: wait for vsync for int0
+
+   ; 2 Mode 2 before piano
+
+ ;Jun 
+   ;25 Remove memmap.o dep, caller must connect C0 before clearstatus
+     ; Fix r2 transition (again?)
+   ;22 Save DE!
+   ; 8 Special ayane: no need r9=0, bandeau 7*8 lignes
                   ; !!! Not Nop-synchro (so )
 
 raster = 1              ; debug rasters in border
+change_r2 = 1           ; 0 for debug timing
 todo  = 1
+needroom = 1
 
-      IMPORT "memmap.i"
-      IMPORT "memcpc.o" ; for connect_bk_io
+bandaya_code
+          jp status_on
+          jp status_off
+          jp firm2status
 
-      IF BK_IO - &C0
- !!! review that
+      IF $ AND &8000:ELSE
+!!! Code must be out of page 0 and bank (since under int)
+; -> could be mitigated: int hook saving and connecting bank.
       END
-connect_bk_screen = connect_bk_io
 
 mc_set_mode = &BD1C
 ;kl_rom_select = &B90F
@@ -80,8 +97,14 @@ int0
       IF todo
 ; Proper r2 transition for OSSC
       END
-          ld b,8:djnz $
+          push de
+          ld b,7:djnz $
+      IF change_r2
           ld de,r2*&0100 + r2'
+      ELSE
+; Same value, but still call the routine for timing purpose.
+          ld de,r2'*&0100 + r2'
+      END
 r2trans0 = $ + 1
           call r2_transition
           call set_crtc:BYTE 12,r12',13,0,1,r1',4,r4',-1
@@ -92,51 +115,21 @@ r2trans0 = $ + 1
 
 ; Set mode via firmware
 ; otherwise, bc' not update -> flicker at each firmware access 
-mode_top  ld a,1:call mc_set_mode ; af corrupt, all others preserved
+mode_top  ld a,2:call mc_set_mode ; af corrupt, all others preserved
 
 ; Int firm while vbl for keyboard handling
           call call_int_firm
 
 ; Set palette, overide firmware colors
-          call set_palette:BYTE &54,&40,&4F,&4B,-1
+          call set_palette:BYTE &58,&43,&4F,&4B,-1
 
-; Black so we are not pertubed by flickering (speed ink)
-          INT_RET(&54,int1)
+          ld hl,int1
+          ei
+          ld (int_dispatch+1),hl
+          halt
+          pop de
 
-int1
-          CHECK_MSB()
-
-          call set_crtc:BYTE 4,r4'',-1
-
-;hook_int1 call no_op
-
-          ld hl,(offset)
-;15 bytes
-          ld bc,&BC0C:out (c),c
-          inc b:out (c),h
-          dec b:inc c:out (c),c
-          inc b:out (c),l
-
-; -- Go to last char line of bandeau to switch to mode 2
-          ld b,31
-          call waitlines
-          call set_palette:BYTE &54,&4B,-1
-; mc_set_mode take an unspecified time, so we change mode ourselves
-; for proper timing.
-          ld a,&8E:out (c),a
-          ld b,5:call waitlines
-          ld b,9:djnz $
-          ld de,r2'*&0100 + r2
-r2trans1 = $ + 1
-          call r2_transition
-          call set_crtc
-r1trans = $+1
-      BYTE 1,r1,-1
-; Needed for c'
-          ld a,2:call mc_set_mode
-
-          INT_RET(&44,int2)
-
+          INT_RET(&45,int2)
 int2
 ; Note: Int2 can be 8 lignes late (even with JR $)
       ; Firmware handling?
@@ -157,6 +150,62 @@ hook_int5 call no_op
           INT_RET(&5D,int0_)
 
 int0_     jp int0       ; Just to be able to reuse INT_RET for int5
+
+
+int1
+; Called from int0
+          CHECK_MSB()
+          call set_crtc:BYTE 4,r4'',-1
+          ld bc,&7F56:out (c),c
+
+;hook_int1 call no_op
+
+          ld hl,(offset)
+;15 bytes
+          ld bc,&BC0C:out (c),c
+          inc b:out (c),h
+          dec b:inc c:out (c),c
+          inc b:out (c),l
+
+; -- Go to last char line of bandeau to switch to mode 2
+          ld b,16:call waitlines
+          ld bc,&7F8D:out (c),c
+          ld de,&0140:out (c),d:out (c),e
+          ld b,15:call waitlines
+          ld bc,&7F8E:out (c),c
+          ld b,7:djnz $
+background_line = &44
+; set_palette would be too slow for both ink
+; (plus, it's better to change ink 1 first)
+;          call set_palette:BYTE background_line,&4B,-1
+          ld bc,&7F00+background_line
+          ld de,&014B
+          out (c),d:out (c),e
+          out (c),0:out (c),c
+; mc_set_mode take an unspecified time, so we change mode ourselves
+; for proper timing.
+          ld b,6:call waitlines
+          ld b,13:djnz $
+      IF change_r2
+r2trans1 = $ + 1
+          ld de,r2'*&0100 + r2
+      ELSE
+          ld bc,&7F45:out (c),0:out (c),c
+          ld b,3:djnz $
+          ld bc,&7F54:out (c),c
+          ld de,r2'*&0100 + r2'
+      END
+          call r2_transition
+          call set_crtc
+r1trans = $+1
+      BYTE 1,r1,-1
+
+; correct stack from int_prelude
+          pop af:pop bc:pop hl
+
+; Needed for c'
+          ld a,2:jp mc_set_mode ; Normal ret, back to /int0/
+
 
 _int_ret
           pop hl
@@ -187,7 +236,7 @@ _int_ret_dbg
 firm2status
 ; If already installed: no-op.
 ; !!! NOT TRUE regarding crtc transition. Todo? fix that? !!!
-          call clearstatus ; screen itself
+     ;     call clearstatus ; screen itself
           call firm2shift
           jp status_on
 
@@ -253,6 +302,9 @@ status_on
           ld a,&C3:ld (int_firm),a
           ld hl,int_prelude:ld (int_firm+1),hl
           ld hl,int0:ld (int_dispatch+1),hl
+          ld b,&F5
+.wait_vsync in a,(c):rra
+          jr nc,.wait_vsync
           ei
           ret
 
@@ -270,7 +322,7 @@ status_off
 
 ; -------------------------------
 clearstatus
-          call connect_bk_screen
+          ld bc,&7FC0:out (c),c
           ld hl,&4000
           ld de,&4001
           ld bc,&3FFF
@@ -358,7 +410,9 @@ set_palette
 
 waitlines
 ; Wait B lines + a bit more
+      IF needroom
 ; TODO: use timer's version for FX.
+      END
           push bc
           ld b,13:djnz $
           pop bc
@@ -372,7 +426,5 @@ int_prelude
 int_dispatch jp int0
 
 offset WORD &3000
-
-      SKIP psg_regs - $ ; poor's man LIMIT
 
 

@@ -23,19 +23,19 @@ setup_keys
           call km_disarm_break
 
 ; --- function keys --------------
+; We remap all fn, so there can be caught (e.g. f6/f9 for octave) 
+    ; Otherwise would be interpreted as numbers
+; We remap all ctrl-fn, even if firmware default.
+; We don't know if they have been remapped. 
 
           ld hl,keyfunc
-          ld de,"0"*&0100 + 150
+          ld de,kf*&0100 + kcf
 setfun_lp
           ld a,(hl):inc hl
           push hl
           ld c,a
           ld b,d
-          call ksetkey  ; fx == x so fun keys work to enter digits.
-; Sanity: we remap all ctrl-fx, even if firmware default.
-; We don't know if they have been remapped. 
-; Also, we don't want to use km_itialize (bb00) since it would
-; remove existing expansions.
+          call ksetkey
           ld a,c
           ld b,e
           call ksetctrl
@@ -46,19 +46,16 @@ setfun_lp
 
 ; --- key -> code ---------
 
-      IF 0:ld hl,keymap:END ; already placed
           ld ix,ksetkey
           call setkeymap
 
 ; --- shift+key -> code  ---------
 
-      IF 0:ld hl,keymap_shift:END ; already placed
           ld ix,ksetshift
           call setkeymap
 
 ; --- ctrl+key -> code  ---------
 
-      IF 0:ld hl,keymap_ctrl:END ; already placed
           ld ix,ksetctrl
           call setkeymap
 
@@ -80,32 +77,41 @@ setkey_lp
 
 jp_ix     jp ix
 
+; --------------------------
 ; Regroup all key codes.
 ; k: normal key
 ; kc: with ctrl
 ; ks: with shift
+; --------------------------
 
-; --- Default ones ---
+kreturn = &0D           ;default
 kc1   = &1B             ;defaut on AZERTY, set to QWERTY as well
-kc2   = &7E
-kc6   = &A6             ;defaut on AZERTY, set to QWERTY as zell
-kcenter = 140
-kcf0  = 150
-; CTRL-function key handled in /GERE_KEY/
-kcf1  = 151
-kcf2  = 152
-;kcf3  = 153
-;kcf4  = 154
-;kcf5  = 155
-;kcf6  = 156
-;kcf7  = 157
-;kcf8  = 158
-kcf9  = 159
+kc2   = &7E             ;default
+kdel  = &7F             ;default
+kcenter = 140           ;default
+kcreturn = 141
+kcdel = 142
+kcspc = 143
+kc4   = 144
+kcpercent = 145
+kcstar = 146
+kcm   = 147             ; remap from 13 (RETURN)
+kcp   = 148             ; remap from 10 (CLR)
+ktab  = 149             ; remap from  9 (CTRL-I)
+kcf   = 150
+; ... to 159 (ctrl-function keys)
+ksdel = 160             ; Mapping done here. Plugged in field.o
+ksclr = 161
+kc5   = 162
+kc6   = 166             ;defaut on AZERTY, set to QWERTY as zell
+;Map functions keys to custom code, so they are not interpreted
+;as numbers
+kf    = 170
+; ... to 179
 
-kreturn = &0D
-kdel  = &7F
-kcopy = &E0
+kcopy = &E0             ; default
 
+;--Same as default--
 kup   = &F0
 kdown = &F1
 kleft = &F2             ; For ayane's UI 
@@ -118,23 +124,17 @@ kcright = &FB
 
 kesc  = &FC
 
-; --- Custom ---
-
-kcreturn = 141
-kcdel = 142
-kcspc = 143
-kc4   = 144
-kcpercent = 145
-kcstar = 146
-kcm   = 147             ; remap from 13 (RETURN)
-kcp   = 148             ; remap from 10 (CLR)
-ktab  = 149             ; remap from  9 (CTRL-I)
-; 150-159 used for kcf0 kcf9
 ksdel = 160             ; Mapping done here. Plugged in field.o
 ksclr = 161
 kc5   = 162
 
+; --------------
+; Map tables
+; !! Must remain contiguous and in this order
+; --------------
+
 keyfunc
+; codse keyboard f0, f1, ...
       BYTE 15,13,14,5,20
       BYTE 12,4,10,11,3
 
@@ -175,28 +175,4 @@ keymap_ctrl_es
       BYTE 38,kcm
       BYTE 17,kcstar
       BYTE 0
-
-
-SCAN_KEY
-;In:  C=code cherch{, HL=table
-;Out: Si trouv{, Carry, HL=routine
-;     sinon, NC
-
-.lp
-          ld a,(hl)
-          inc hl
-          cp c
-          jr z,.found
-          inc hl        ; Saute la routine associ{e
-          inc hl
-          or a          ; Fin de table
-          jr nz,.lp
-          ret           ; Combinaison non g{r{e
-.found
-          ld e,(hl)
-          inc hl
-          ld d,(hl)
-          ex de,hl
-          scf
-          ret
 

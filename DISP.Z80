@@ -1,7 +1,10 @@
 ; Disp: Routines d'affichage text. Tirees de Orgams.
    ; Difference: status_*: same API than disp_* (e.g. BC for text)
 
-; 2025 Jun 9
+; 2025
+ ; Aug 2 Fix _status_num: must past buffer in BC
+       ; Add status_deci_a_pad0_at
+ ; Jun 9
   ; Adapt status_set_cursor and co to new bandeau (page &4000, r9=7)
 
 todo  = 1
@@ -21,6 +24,45 @@ enable = 1
       IMPORT "memmap.i"
 
       ORG disp_start
+; Subroutines common to normal disp (c7)
+;  and bandaya status (c1) must be out of bank 
+
+dpfig
+          ld c,-1
+.dpfigwf
+          inc c
+          sub b
+          jr nc,.dpfigwf
+          add b
+          ld b,a
+          ld a,c
+          or &30
+          ld (de),a
+          inc de
+          ld a,b
+          ret
+
+dpfigno0
+          ld c,-1
+.dpfn0wf
+          inc c
+          sub b
+          jr nc,.dpfn0wf
+          add b
+          ld b,a
+          ld a,c
+          and a
+          jr z,.dpfn0ret
+;
+          or &30
+          ld (de),a
+          inc de
+          or &30        ;force nz
+.dpfn0ret
+          ld a,b
+          ret
+
+      SKIP &4000 - $
 
 ; Files generated with ums:orgrel/#burnfnt.bas (using 'convfnt.o)
 fonte_gris
@@ -40,7 +82,10 @@ fonte
  !! review "disp-jp.o"
       END
 
-; Same order than orgams ROM.
+
+; -------------
+
+; Same order than disp-jp  (roughly follows orgams ROM).
           jp init_disp
           jp cls        ;!!To be called before disp_* (not _at)
           jp disp_locate_scr ;de:pos in screen (e.g.) &c000 
@@ -89,6 +134,7 @@ fonte
           jp disp_hexa_hl_shaded
 
           jp put_deci_a
+          jp put_deci_a_pad0
           jp put_deci_hl
           jp put_hexa_a
           jp put_hexa_hl
@@ -107,6 +153,7 @@ m         jp status_set_cursor
           jp status_str_at
           jp status_pad_at
           jp status_deci_a_at
+          jp status_deci_a_pad0_at
           jp status_deci_hl_at
           jp status_hexa_a_at
           jp status_hexa_hl_at
@@ -115,6 +162,7 @@ m         jp status_set_cursor
           jp status_str
           jp status_pad
           jp status_deci_a
+          jp status_deci_a_pad0
           jp status_deci_hl
           jp status_hexa_a
           jp status_hexa_hl
@@ -773,8 +821,13 @@ pwfn0wf
           or &30        ;force nz
           ret
 ;
+put_deci_a_pad0
+; for 00-99 deci: add 0 if < 10
+          cp 10:jr nc,put_deci_a
+          ex de,hl:ld (hl),"0":inc hl:ex de,hl
+;enchaine
 put_deci_a
-          push hl       ;not modified, but must mimic put_deci_hl
+          push hl       ;not modified, but mimic put_deci_hl for pop
           push bc
           ld b,100
           call dpfigno0
@@ -795,40 +848,6 @@ ddecunit
           ld (de),a
           pop bc
           pop hl
-          ret
-dpfig
-          ld c,-1
-dpfigwf
-          inc c
-          sub b
-          jr nc,dpfigwf
-          add b
-          ld b,a
-          ld a,c
-          or &30
-          ld (de),a
-          inc de
-          ld a,b
-          ret
-;
-dpfigno0
-          ld c,-1
-dpfn0wf
-          inc c
-          sub b
-          jr nc,dpfn0wf
-          add b
-          ld b,a
-          ld a,c
-          and a
-          jr z,dpfn0ret
-;
-          or &30
-          ld (de),a
-          inc de
-          or &30        ;force nz
-dpfn0ret
-          ld a,b
           ret
 
 ;-------
@@ -1003,6 +1022,7 @@ status_prelude
 status_str_at
           call status_set_cursor
 status_str
+;in: bc=str
           call status_prelude
 .lp
           ld a,(bc):inc bc:or a:jr z,_status_ret
@@ -1071,33 +1091,40 @@ status_clear_line_at
 status_deci_a_at
           call status_set_cursor
 status_deci_a
-          push ix:ld ix,put_deci_a
+          push ix:ld ix,put_deci_a + &8000
           jr _status_num
+
+status_deci_a_pad0_at
+          call status_set_cursor
+status_deci_a_pad0
+          push ix:ld ix,put_deci_a_pad0 + &8000
+          jr _status_num
+
 
 status_deci_hl_at
           call status_set_cursor
 status_deci_hl
-          push ix:ld ix,put_deci_hl
+          push ix:ld ix,put_deci_hl + &8000
           jr _status_num
 
 
 status_hexa_a_at
           call status_set_cursor
 status_hexa_a
-          push ix:ld ix,put_hexa_a
+          push ix:ld ix,put_hexa_a + &8000
           jr _status_num
 
 
 status_hexa_hl_at
           call status_set_cursor
 status_hexa_hl
-          push ix:ld ix,put_hexa_hl
+          push ix:ld ix,put_hexa_hl + &8000
 _status_num
           push de:push hl
           ld de,vo_status_tmp
           push de
-          call jp_ix
-          pop hl
+          call jp_ix_c1
+          pop bc
           call status_str
           pop hl:pop de
           pop ix
@@ -1155,8 +1182,25 @@ status_ret
           ld sp,(vo_status_savesp)
           ret
 
+jp_ix_c1
+      IF dev_checks
+          push af
+          ld a,ixh:and &C0:cp &C0:call nz,mess
+          pop af
+      END
+          jp ix
+
 vo_status_savesp WORD 
-vo_status_tmp WORD 
 vo_status_pos WORD 0    ; 0 for proper bin length
 ; Otherwise variables would overlap with what's loaded/imported next.
+vo_status_tmp SKIP &80  ; buffer tmp
 
+      IF $-&8000 != $$
+  !! error sync
+      END
+
+      ORG $$            ; restore
+
+      IF $ > disp_start'
+   !! overlap
+      END

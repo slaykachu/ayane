@@ -1,10 +1,20 @@
-; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  OvL!
+; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
+;Aug         
+  ; 5 multiline_up: fix invalid check
+  ; 4 toggle_char_off = " "  (less crowed in screen)
+  ; 3 Remove export flag (rotten code) 
+  ; 1 setup_widget: Remove test hl > end_of_ged since ged is 
+                      ; placed now at &8b00
+                  ; Allow w_brk to be (null) init
+                    ; Used to create an empty ui.
+; v0.ag 15 Remove unused widget (w_table, wc_frame, w_sprite)
+             ; - avoid mem full in orgams
+             ; - rotting code anyway
 ; v0.ae 14 Jun wv_tmp_buffer: reserve 80.
      ;  3 Jun s/CALL_STATE/call_state_on_exit and co
 
 dev_checks = 1
 dev_checks_display = 0  ; 0: let display fails, easier to see problem
-export = 0              ; 0: to be imported. 1: make lib (wip)
 need_room = 1
 todo  = 1
 hack  = 1
@@ -12,7 +22,7 @@ hack  = 1
 enable = 0
 
 ; ==== Shortcuts ========================
- ; - invariant
+ ; - invariant (now in journal.o)
  ; - memmap
  ; - widgets: define built-in widgets
    ; - main_state: variables current focus 
@@ -32,68 +42,6 @@ enable = 0
 
       IMPORT "field.o"
       IMPORT "conv.o"
-
-      IF need_room
- ; remove non-custom widgets:
-      ; - getters / setters versions are more generic and capable
-      ; - simpler and more consistent
-      END
-
-invariant
-; Invariants for internal consistancy. Users don't have to care!
-
-;1. /state_sp/ always point to "concrete" widget, not container such
-  ; as table or struct (but cell or field respectively)
-     ; -> e.g. struct_lft / rgt expect field entered
-  ; This also simplifies handling of intermediate state 
-  ; (e.g. '-' also in signed field). If we had pass through wrapping
-  ; widget, this we could neither validate nor refresh edit buffer,
-  ; conflicting with some current implementation choices.
-
-; !!! Exception: w_optional_readwrite: we cannot enter child if off,
-                ; as it would not display "-" (disabled_char)
-; !!! Exception 2: actually w_optional mustn't enter child either,
-          ; otherwise enable flag wouldn't be re-evaluated when 
-          ; changing line.
-
-;2. Numerical widgets: 
-     ; a. Fill /wv_edit_buffer/ on 'on_enter' stage
-     ; b. Key handler modify the buffer without validating
-            ; (E.g. can have a dangling "-" while editing)
-     ; c. Validation done on 'on_exit'
-
-      IF need_room
-; Could use invariant 2 to just use a common 'display_buffer' routine 
-; for numerical widgets' 'on_display'
-  ; For now we unnecessarily use wv_tmp_buffer for display and 
-  ; wv_edit_buffer for 'on_enter'
-      END
-
-memmap
-; humm
-
-      IF export
-      BYTE "Ovl!"
-      WORD codesize
-
-      IF $ - &2800
-  !! uipat expects jump table @ 2800
-      END
-jps
-
-          jp gedeihen_init
- ;          jp gedeihen_set_hooks_nrt
-          3 ** BRK
-          jp gedeihen_set_hooks
-          jp setup_widget
-          jp gedeihen_disp
-          jp gedeihen_process
-          jp gedeihen_enter
-          jp _test_disp
-          jp _test_disp_sprite
-          jp _test_run
-
-      END
 
 fail  = &BE00
 
@@ -201,20 +149,7 @@ scroll_offset = param4+1
 
           ASSERT_NOT(param - byte_setter) ; if <>, change wc_hexa_custom
 
-sprite = param
-sprite_size = param2    ; l=height, h=width
-
-          ASSERT_NOT(param - sprite) ; if <>, change wc_sprite
-
-sprite_getter = param
-
-          ASSERT_NOT(param - sprite_getter) ; if <>, wc_sprite_custom
-
 custom_handler = param2
-
-; !! Cannot reuse param for table,
-; !! because we use hydrid state to avoid push-pop. Cf disp_table.
-table_param = param3
 
 
 ; ==================================================================
@@ -350,15 +285,11 @@ state_ = $
 _check_address
           push af
           push hl
-      IF export
-;For now: adhoc for uipat.
-          ld hl,&1000:scf:sbc hl,bc:call nc,&BE00
-      ELSE
-          ld hl,hooks:scf:sbc hl,bc:call nc,&BE00
-      END
 ; hooks can be defined externaly (e.g instrui.o or gednrt.o),
 ; so we don't know what's the end address
-          ld hl,&4000:or a:sbc hl,bc:call c,&BE00
+          ld hl,&4000:scf:sbc hl,bc:jr nc,.ok
+          ld hl,&A200:or a:sbc hl,bc:call c,&BE00
+.ok
           pop hl
           pop af
           ret
@@ -375,10 +306,11 @@ _check_address
 _check_key_table
           push hl:push de
           ex de,hl
+   ; external tables, for now all ui < &4000
+          ld hl,&3FC0:or a:sbc hl,de:jr nc,.ok
           ld hl,keytables:scf:sbc hl,de:call nc,fail
-    ; Too strict for external tables
-    ;      ld hl,keytables_:or a:sbc hl,de:call c,fail
-          ld hl,&4000:or a:sbc hl,de:call c,fail
+          ld hl,keytables_:or a:sbc hl,de:call c,fail
+.ok
           pop de:pop hl
           ret
       END
@@ -627,11 +559,6 @@ _check_in_focus
           call read_table_param_com
       ENDM
 
-call_table_param_com
-          push hl
-          GET_STATE(table_param)
-          jr _cpc
-
 call_param_com
           push hl
           GET_STATE(param)
@@ -651,21 +578,13 @@ read_param_com_
           ld h,(hl):ld l,c
           ret
 
-
-read_table_param_com
-          GET_STATE(table_param)
-          ld b,0
-          add hl,bc
-          ld c,(hl):inc hl
-          ld h,(hl):ld l,c
-          ret
-
 ; ---------------------------
 ; Gedeihen entry points
 ; ---------------------------
 gedeihen_disp
 ; Display widget..
 ; In: gedeihen_init and setup_widget must have been called.
+    ; location for each widget has been set in setup_widget
 
 ; Temporarily use secondary stack, so that current state isn't touched
 ; (state will be updated by e.g. iterating on multiline, which setup 
@@ -781,7 +700,6 @@ setup_widget
 ; In: HL = widget description
       IF dev_checks
           ld de,&4000:or a:sbc hl,de:add hl,de:call nc,fail
-          ld de,end_of_ged:or a:sbc hl,de:add hl,de:call c,fail
       END
 
           call reset_widget_location_from_cursor
@@ -1228,44 +1146,21 @@ widgets
           ; wc_init_word
           ; wc_init_double_word
 
-w_null = 0
+w_brk = 0               ; for now used as w_null
 virt_start
       WORD 0
-      WORD disp_null
-      WORD get_0
-      WORD get_0
       WORD noevent
-      WORD set_null
+      WORD return_1     ; doesn't matter
+      WORD break
+      WORD noevent
+      WORD noevent      ; allow exit for null ui
       WORD h_null
-      WORD noop
+      WORD wc_null
       IF $-virt_start-2 - widget_virt_size
 !! error must correct widget_virt_size
       END
 
-w_frame = 1
-      WORD 0
-; Nb: No method is defined, since this widget is replaced
-    ; by sub widget passed as parameter.
-      WORD break
-      WORD break
-      WORD break
-      WORD break
-      WORD break
-      WORD h_null
-      WORD wc_frame
-
-w_brk = 2
-      WORD 0
-      WORD break
-      WORD break
-      WORD break
-      WORD break
-      WORD break
-      WORD h_null
-      WORD break
-
-
-w_text = 3
+w_text = 1
       WORD 0
       WORD disp_text
       WORD text_width
@@ -1275,7 +1170,7 @@ w_text = 3
       WORD h_null
       WORD wc_text
 
-w_text_dyn = 4
+w_text_dyn = 2
 ; getter return 
       WORD 0
       WORD disp_text_custom
@@ -1286,7 +1181,7 @@ w_text_dyn = 4
       WORD h_null
       WORD wc_text_custom
 
-w_deci_99_custom = 5
+w_deci_99_custom = 3
 ; 2-digits decimal value (e.g. for noise)
       WORD flag_readwrite
       WORD disp_deci_padded
@@ -1297,7 +1192,7 @@ w_deci_99_custom = 5
       WORD h_deci_field
       WORD wc_init_double_word
 
-w_deci_99_signed = 6
+w_deci_99_signed = 4
 ; Like w_deci_99_custom, but signed (e.g. for arp)
 ; Fixed witdh 3, for -99 to 99.
       WORD flag_readwrite
@@ -1309,7 +1204,7 @@ w_deci_99_signed = 6
       WORD h_deci_field_signed
       WORD wc_init_double_word
 
-w_deci_9999_signed = 7
+w_deci_9999_signed = 5
 ; Like w_deci_99_custom, but on 4 digits
 ; Fixed witdh 4, for -9999 to 9999.
       WORD flag_readwrite
@@ -1321,7 +1216,7 @@ w_deci_9999_signed = 7
       WORD h_deci_field_signed
       WORD wc_init_double_word
 
-w_hexa_digit_custom = 8
+w_hexa_digit_custom = 6
 ; 1 quartet (for volume or hard env type)
       WORD flag_readwrite
       WORD disp_hexa_digit_custom
@@ -1332,17 +1227,7 @@ w_hexa_digit_custom = 8
       WORD h_hexa_digit
       WORD wc_init_double_word
 
-w_hexa_byte = 9
-      WORD flag_readwrite
-      WORD disp_hexa_byte
-      WORD return_2
-      WORD return_1
-      WORD get_hexa_byte
-      WORD set_hexa_byte
-      WORD h_hexa
-      WORD wc_hexa_byte
-
-w_hexa_custom = 10      ; (setter byte, getter byte)
+w_hexa_custom = 7       ; (setter byte, getter byte)
 ; Rational: 1/ We want to reuse hexa input/output routines, 
           ;    but client should not have to know them.
           ; 2/ This widget allows to be notified at validation.
@@ -1357,7 +1242,7 @@ w_hexa_custom = 10      ; (setter byte, getter byte)
       WORD h_hexa
       WORD wc_hexa_custom
 
-w_struct = 11
+w_struct = 8
       WORD flag_readwrite ; in case one of field is rw
       WORD disp_struct
       WORD struct_width
@@ -1367,7 +1252,7 @@ w_struct = 11
       WORD h_kstruct
       WORD wc_struct
 
-w_multiline = 12
+w_multiline = 9
 ; Multi_line view
       WORD flag_readwrite ; in case wrapped is rw
       WORD disp_multiline
@@ -1378,19 +1263,7 @@ w_multiline = 12
       WORD h_kmultiline
       WORD wc_multiline
 
-; --- parameters 
-;n ** ui refs.
-w_table = 13
-      WORD flag_readwrite ; in case one of cells is rw
-      WORD disp_table
-      WORD break
-      WORD break
-      WORD table_on_enter
-      WORD set_null
-      WORD h_ktable
-      WORD wc_table
-
-w_optional = 14
+w_optional = 10
 ; param1: embedded ui
 ; param2: enabler getter (0: disable, non zero: enable)
       WORD flag_readwrite_dynamic
@@ -1402,7 +1275,7 @@ w_optional = 14
       WORD h_koptional
       WORD wc_optional
 
-w_optional_readwrite = 15
+w_optional_readwrite = 11
 ; Like w_optional, but we can still modify it even when deactivated
 ; E.G. Hard Env Type deactivated when volume <= 15, but we use
      ; this very field to activated it.
@@ -1417,7 +1290,7 @@ w_optional_readwrite = 15
       WORD h_koptional_readwrite
       WORD wc_optional  ; same: only change how 
 
-w_refresh = 16
+w_refresh = 12
 ; We'll refresh parent when child got validated.
 ; Typical nesting: 
    ; w_struct   <- also contains "dependent" widget
@@ -1434,38 +1307,7 @@ w_refresh = 16
       WORD h_krefresh
       WORD wc_refresh
 
-w_sprite = 17           ; !!! NOT TESTED (TODO) !!!
-      WORD 0
-      WORD disp_sprite
-      WORD break
-      WORD break
-      WORD noevent
-      WORD set_null
-      WORD h_null
-      WORD wc_sprite
-
-w_sprite_custom = 18
-      WORD 0
-      WORD disp_sprite_custom
-      WORD break
-      WORD break
-      WORD noevent
-      WORD set_null
-      WORD h_null
-      WORD wc_sprite_custom
-
-w_toggle_byte = 19
-; NOT DONE. TO BE REMOVED?
-      WORD flag_readwrite
-      WORD break        ; todo  
-      WORD return_1
-      WORD return_1
-      WORD noevent
-      WORD break        ; todo 
-      WORD break        ; todo
-      WORD break        ; todo
-
-w_toggle_custom = 20    ;
+w_toggle_custom = 13    ;
 ; Getter: Any non-zero returned in A means "set"
 ; Setter: Pass A=0 or &ff
       WORD flag_readwrite
@@ -1477,7 +1319,7 @@ w_toggle_custom = 20    ;
       WORD h_toggle
       WORD wc_toggle_custom
 
-w_key_handler = 21
+w_key_handler = 14
 ; Pseudo (non-visible) widget to catch keys. Bugged?
 ; Params: subwidget, handler
    ; Note: subwidget always placed first for consistency among wrappers
@@ -1495,7 +1337,7 @@ w_key_handler = 21
       WORD h_key_handler ; Delegate to passed param
       WORD wc_key_handler
 
-widgets_nb = 22
+widgets_nb = 15
 
 ; -------------------
 set_row = 0
@@ -1517,27 +1359,13 @@ cell  = 8
 
 hooks                   ; TODO: rename. Reachable routines
 
-wc_frame
-          DE_STATE_PNT(io_hooks)
-;TODO? Instead of fixed size, check for sentinel (at 00)
-     ; Would be more extensible.
-          ld bc,io_hooks_
-          ldir
-      IF todo
-; instead "embedded_ui" and  use setup child instead
-      END
-      BRK
-; This is a dummy wrapper widget to setup hooks,
-; so we construct passed subwidget instead.
-          ld c,(hl):inc hl
-          ld h,(hl):ld l,c
-          jp setup_widget
-
 wc_text
           ld (wv_text_pnt),hl
 skip_nt
           ld a,(hl):inc hl:or a:jr nz,skip_nt
-wc_null   ret
+wc_null
+any_ret
+          ret
 
 
 wc_hexa_byte
@@ -1599,13 +1427,6 @@ wc_sprite = wc_init_double_word
 wc_sprite_custom = wc_init_word
 wc_text_custom = wc_init_word
 
-wc_table
-          SET_STATE(table_param)
-          ld hl,0
-          SET_STATE(cur_row)
-          SET_STATE(cur_col)
-          jp setup_child
-
 wc_multiline
           DE_STATE_PNT(param)
           ld bc,8:ldir
@@ -1621,17 +1442,20 @@ wc_multiline
 get_0
           call &BE00
 
-table_get_width
-table_get_height
-      BRK:ld hl,&CAFA   ; TODO
-
 
 struct_on_enter
 ; (re)enter current field (concrete widget that must catch events)
 enter_child
 ; Go to child (already setup)
           call push_state
-          jr _recurse
+_recurse
+; For some reason, setup_widget wasn't done recursively
+      IF dev_checks
+          ld a,h:cp &40:call nc,fail
+      END
+          call enter
+          scf           ;no event
+          ret
 
 multiline_on_enter
 ; Enter wrapped widget   
@@ -1645,75 +1469,6 @@ multiline_on_enter
       END
           jp enter_child
 
-table_on_enter
-; Enter cell (for handling keys and stuff)
-
-; Set row and col (have been modified for display).
-          GET_STATE(cur_row):CALL_TABLE_PARAM(set_row)
-          GET_STATE(cur_col):CALL_TABLE_PARAM(set_col)
-
-      BRK
-;What the heck pushing state before reading param?!?
-; oh right, the state is cloned, so that works. Fishy tough.
-          call clone_state
-          READ_TABLE_PARAM(cell)
-_recurse
-; For some reason, setup_widget wasn't done recursively
-      IF dev_checks
-          ld a,h:cp &40:call nc,fail
-      END
-          call enter
-          scf           ;no event
-          ret
-
-table_up
-          GET_STATE(cur_row)
-          ld a,l:or h:ret z ;NC: key not handled
-          dec hl
-          SET_STATE(cur_row):JP_TABLE_PARAM(set_row)
-
-table_dwn
-          GET_STATE(cur_row)
-          inc hl
-          ld a,l:or h:ret z ;NC: key not handled
-          SET_STATE(cur_row):JP_TABLE_PARAM(set_row)
-
-table_lft
-          GET_STATE(cur_col)
-          ld a,l:or h:ret z ;NC: key not handled
-          dec hl
-      BRK
-;TODO: cf table_rgt
-          SET_STATE(cur_col):JP_TABLE_PARAM(set_col)
-
-table_rgt
-;Validate in any case
-          call validate
-
-          GET_STATE(cur_col)
-          inc hl
-      IF todo
-; proper end detection like in struct_rgt
-      END
-          ld a,l:or h:ret z ;NC: key not handled
-          SET_STATE(cur_col):CALL_TABLE_PARAM(set_col)
-          ret nc
-
-;CursorX += width
-;TODO: factorize with struct_rgt  
-          call get_width_common
-          CALL_STATE_EXT(get_cursor)
-          add h
-      IF dev_checks
-          call c,fail
-      END
-          ld h,a
-          CALL_STATE_EXT(set_cursor)
-
-;Focus on next cell
-          call enter
-          xor a:scf
-          ret           ; C Z: handled, nothing to do. 
 
 refresh_on_enter
 ; See /w_refresh/ for explanation.
@@ -2119,12 +1874,9 @@ multiline_up
           or a
           jr z,.okview
           GET_STATE_BYTE(scroll_offset)
-; Scroll if cur_y <= offset 
+; Scroll if offset >= cur_y 
           cp c
-          jr nc,_multiline_scroll_down
-      IF dev_checks
-          call c,fail   ; past scroll threshold
-      END
+          jr nc,.multiline_scroll_down
 .okview
           ld a,c
           or a
@@ -2132,11 +1884,8 @@ multiline_up
           dec a
           jr _multiline_update_cur_y
 
-_multiline_scroll_down
+.multiline_scroll_down
           GET_STATE_BYTE(line_at_top)
-      IF dev_checks
-          or a:call z,fail
-      END
           dec a
           jp _multiline_scroll_com
 
@@ -2482,7 +2231,7 @@ _setup_buffer
 disp_toggle_custom
           push af
           CALL_STATE(byte_getter)
-toggle_char_off = "."
+toggle_char_off = " "
 toggle_char = "x"
           or a:ld a,toggle_char_off
           jr z,$+4:ld a,toggle_char
@@ -2570,8 +2319,9 @@ disp_one_line
 
 .noline
           ld a,"-"      ; for better visuallisation
-; hack: erase all line, assuming standard width
-          ld b,80
+; hack: erase known line width for instrui
+      ; (if bigger: residues)
+          ld b,73
           call fill
       IF todo
 ; use widget's width instead
@@ -2592,75 +2342,6 @@ multiline_width
           ld hl,0
           ret
 
-disp_table
-; Optimized table display:
-    ; - Don't push/pop for each cell.
-    ;   -> Cheat instead. We setup cell widget, which doesn't touch
-         ; table parameters such as cur_col, set_col.
-         ; So we have hydrid state.
-    ; - Don't redisplay seperators. 
-    ;   (for now they are not displayed at all. TODO)
-
-          ld l,a
-          SET_STATE(focus)
-
-          READ_TABLE_PARAM(row_header):call display_child
-          GET_STATE(widget_pos):ex de,hl
-          ld hl,0
-dt_yloop
-          ex de,hl
-          CALL_STATE_EXT(set_cursor)
-          ex de,hl
-          push hl:push de
-          CALL_TABLE_PARAM(set_row)
-          jp nc,dt_yend
-
-          READ_TABLE_PARAM(col_header)
-          call display_child
-
-hack1
-; Hack: Setup hybrid state:
-    ;  - display cell (child)
-    ;  - set_row is still table's (parent)
-          call clone_state
-          READ_TABLE_PARAM(cell)
-          call setup_widget
-
-          ld hl,0
-dt_xloop
-          push hl
-          CALL_TABLE_PARAM(set_col)
-          jr nc,dt_xend
-
-          CALL_STATE_EXT(get_cursor)
-          ld a,l:push af ; Save Y in case multi-line cell
-          call call_display
-          CALL_STATE_EXT(get_cursor)
-          pop af:ld l,a
-      IF 0
-; discard separator:
-;   - we don't need them yet for instr editor.
-;   - we can instead introduce a wrapper with padding.
-
-          inc h         ; Skip separator
-      END
-          CALL_STATE_EXT(set_cursor)
-
-          pop hl:inc hl ; next col
-          jr dt_xloop
-dt_xend
-; cannot use rewind_state here, /state_sp_handler/ not set
-; replace pop_state by actually saving state?
-; see /pop_state/ note.
-          call pop_state:call z,&BE00
-          pop hl        ; discard col
-          pop de:inc e  ; next y
-          pop hl:inc hl ; next row
-          jp dt_yloop
-dt_yend
-          pop de        ; discard curpos
-          pop hl        ; discard row
-          ret
 
 disp_optional
 ; See API in /display/
@@ -2708,19 +2389,6 @@ disp_delegate
           CALL_STATE(display)
           pop hl
           jp set_state_sp_gen
-
-disp_sprite
-          GET_STATE(sprite_size)
-          ex de,hl
-          GET_STATE(sprite)
-          jr _disp_sprite_com
-
-disp_sprite_custom
-          CALL_STATE(sprite_getter)
-_disp_sprite_com
-          CALL_STATE_EXT(paint_sprite)
-          ret
-
 
 set_null  or a
 disp_null
@@ -3084,16 +2752,6 @@ set_byte
 null  BYTE 0
 
 
-; ------------------
-; Data
-; ------------------
-
-ui_null
-      BYTE w_null
-
-ui_brk
-      BYTE w_brk
-
 ; -------------------------
 ; Interfaces                                   
 ; -------------------------
@@ -3142,14 +2800,6 @@ h_hexa_digit
 
 h_toggle
       BYTE " ":WORD key_toggle
-      BYTE 0:WORD 0
-
-h_ktable
-      BYTE k_up:WORD table_up
-      BYTE k_dwn:WORD table_dwn
-      BYTE k_lft:WORD table_lft
-      BYTE k_rgt:WORD table_rgt
-      BYTE ev_child_exit:WORD table_rgt
       BYTE 0:WORD 0
 
 h_koptional
@@ -3504,8 +3154,6 @@ get_len
 
 esc_code = &FC
 
-      IF [1-export]
-
 ; 1/ Firmware version
 ; ...................
 
@@ -3516,7 +3164,6 @@ txt_get_cursor = &BB78
 txt_wr_char = &BB5D
 txt_place_cursor = &BB8A
 
-      END
 ; ---------------------------             
 
 ;-------------
@@ -3553,5 +3200,7 @@ wv_byte_pnt WORD
 wv_edit_buffer SKIP 8
 
 end_of_ged
+
+
 
 

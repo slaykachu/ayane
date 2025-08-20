@@ -17,67 +17,26 @@ need_room = 1
  ; See /track_stack/
 
 ; \/\/\/ 2025 \/\/\/\/\
+  ; Jun
+   ;15 Padding for fx.o
   ; Apr
    ;23 Re-put r7 first, to match instr.o
-
-; \/\/\/ 2024 \/\/\/\/\
-; ----- Ayane v0h -----
-  ; May 
-   ;14 When /hack_minimala/, open channels by default
-     ; Optimise /tick/ (and return it in HL)
-  ; Apr
-   ;24 For compiled minimala:
-     ; - Version use_flags = 0 
-; ----- Ayane v0g -----
-  ; Apr                            
-   ;22 Don't handle volume if use_volume = 0
-   ;21 track_loop: connect BK_TRACK  
-   ;15 Fix init_periods
-   ;11 evt_set_transpose: add check
-     ; read_instr: use instr header
-
-   ; 8 s/regs/psg_regs to avoid mixing up with aum_regs
-
-; ----- Ayane v0f -----
+; ----- Ayane v0l2 -----
   ; Mar
-   ; 31 Simplify init: we don't need empty phrase.
-       ; instead tool we'll make sure a phrase will be set at RDV 0
-   ; 14 Adapt evt_set_transpose to new code.
+; Mar 24: Handle constant /pattern_size/ 
+   ;21 Handle loop for compiled version  
+      IF todo
+         ; (in-tool use link, check if it's done properly)
+      END
+   ;19 De-unroll psg routine
+     ; Remove stop when ayane=0
+     ; kim= empty row encoded by instr lsb=0
+          ; (before: was replaced by instr null which stopped the instr:
+                   ; but note from last instr was still set)
+; -----------------------------
+n     = 20              ;a changer par TM correct au cas par cas
 
-; ----- Ayane v0d -----
-  ; Feb
-   ; 29 Amorce_song: adapt to real track index (track.tracks)
-; ----- Ayane v0c -----
-    ; 21 s/chunk_start/phrase_start (must skip clip_header_size)
-       ; Rewrite!!! See rationale in journal.o
-           ; - Same code for each channel 
-           ; - No delay (duration encoded with note/row)     
-           ; - No init fx, instead copy address routine and 1 word param
-                         ; systematically 
-                ; Pro:
-                    ; - faster
-                    ; - simpler
-                    ; - vibrato TM peak is smoothed:
-                           ; Before: both init and 1st iter
-                           ; Now: first iter do init (replace itself)
-                                ; but doesn't change pitch. 
-                ; Con:
-                    ; Plus gourmand a stocker dans phrase
-                       ; (use 1 word even for 1 byte param fx)
-                    ; -> nevermind, can be mitigated with custom players
-           ; - Don't jump to read_fx read_ins etc via stack!
-                   ; Did i do that for Sample code interleaving!?
-                   ; (aka ADD n:RET m:jp IY)
-                   ; Well, JP m,next  works as well!
-      ;OH FUCK NO that's not enough to jump back where we are
-      ;TODO: Make the stuff work without sfx
 
-         ; Oh no I see: was needed to jump back after random fx init
-         ; -> so, simplification made possible by previous point
-       ; Don't rewrite everything!!!
-           ; - Don't fix what isn't broken
-           ; - Some reasons of doing stuff i might have forgotten
-           ; - Takes too much time for nothing
 
       IMPORT "plyconf.i"
 
@@ -108,6 +67,7 @@ psg_regs = compiled_psg_regs
 
       IF nb_fx
       IMPORT "timer.o"
+      FILL -$ AND &0F,&F7 ; padding for confinement
       IMPORT "fx.o"
 
 fx_set_phrase
@@ -152,106 +112,6 @@ fx_set_phrase
  ; HL' and AF' freed if no SFX interleaved 
  ; ---------------------------------------
 
-hist
-; \/\/\/ 2025 \/\/\/\/\
-; ----- Ayane v0l2 -----
-  ; Mar
-; Mar 24: Handle constant /pattern_size/ 
-   ;21 Handle loop for compiled version  
-      IF todo
-         ; (in-tool use link, check if it's done properly)
-      END
-   ;19 De-unroll psg routine
-     ; Don't reset de if use_phrase_pitch=0
-     ; Remove stop when ayane=0
-     ; Add checks adr fx and instr
-     ; kim= empty row encoded by instr lsb=0
-          ; (before: was replaced by instr null which stopped the instr:
-                   ; but note from last instr was still set)
-; \/\/\/ 2024 \/\/\/\/\
-; ----- Ayane v0l -----
-  ; Jun     
-   ;17 Add type_evt_loop
-   ;12 Add SIGN_EVT for serialisation in salo.o
-
-; ----- Ayane v0h -----
-  ; May 
-   ;14 When /hack_minimala/, open channels by default
-     ; Optimise /tick/ (and return it in HL)
-  ; Apr
-   ;24 For compiled minimala:
-     ; - Version use_flags = 0 
-; ----- Ayane v0g -----
-  ; Apr                            
-   ;22 Don't handle volume if use_volume = 0
-   ;21 track_loop: connect BK_TRACK  
-   ;15 Fix init_periods
-   ;11 evt_set_transpose: add check
-     ; read_instr: use instr header
-
-   ; 8 s/regs/psg_regs to avoid mixing up with aum_regs
-
-; ----- Ayane v0f -----
-  ; Mar
-   ; 31 Simplify init: we don't need empty phrase.
-       ; instead tool we'll make sure a phrase will be set at RDV 0
-   ; 14 Adapt evt_set_transpose to new code.
-
-; ----- Ayane v0d -----
-  ; Feb
-   ; 29 Amorce_song: adapt to real track index (track.tracks)
-; ----- Ayane v0c -----
-    ; 21 s/chunk_start/phrase_start (must skip clip_header_size)
-       ; Rewrite!!! See rationale in journal.o
-           ; - Same code for each channel 
-           ; - No delay (duration encoded with note/row)     
-           ; - No init fx, instead copy address routine and 1 word param
-                         ; systematically 
-                ; Pro:
-                    ; - faster
-                    ; - simpler
-                    ; - vibrato TM peak is smoothed:
-                           ; Before: both init and 1st iter
-                           ; Now: first iter do init (replace itself)
-                                ; but doesn't change pitch. 
-                ; Con:
-                    ; Plus gourmand a stocker dans phrase
-                       ; (use 1 word even for 1 byte param fx)
-                    ; -> nevermind, can be mitigated with custom players
-           ; - Don't jump to read_fx read_ins etc via stack!
-                   ; Did i do that for Sample code interleaving!?
-                   ; (aka ADD n:RET m:jp IY)
-                   ; Well, JP m,next  works as well!
-      ;OH FUCK NO that's not enough to jump back where we are
-      ;TODO: Make the stuff work without sfx
-
-         ; Oh no I see: was needed to jump back after random fx init
-         ; -> so, simplification made possible by previous point
-       ; Don't rewrite everything!!!
-           ; - Don't fix what isn't broken
-           ; - Some reasons of doing stuff i might have forgotten
-           ; - Takes too much time for nothing
- ;---- In 2020 \/
- ; vav 03/02 [st] Fix stfx_vibrato smartass resolution. 
-           ; More lenient test: accept up to diff 3 for period
- ; vat 02/02 [st/prcb] Row 0: properly mask FX to detect 7 and 0.
-                     ; Fix call to set_row_vibrato_fx: a must be 0.
- ; vas 02/02 [st/prcb] Fix B after 6
-                     ; Fix typo ld (st_row),a vs ld a,(st_row)
- ; var 02/02 [st/prcb] Fix volume at F for empty pattern.
-                     ; -> Was typo in &d0 comparison (reset).
- ; vaq 01/02 [st] Fx B: Set volume. 
-                ; Fix fx 6.
- ; vap 01/02 [st] Reset vibrato conditionnaly (hack! assume sorted patt)
-                                    ; -> Not ok for Fanny late patterns 
- ; vao 01/02 [st] Reset vibrato unconditionnaly at pattern start
-                ; -> Not good, cannot handle other fx.
- ; van 26/01 WIP. [st-convert] Handle portamento for pcrb.128
- ; vam 25/01 Handle arpg+vol for pcrb.128
- ; val 20/01 Abs tune table for pcrb.128
-
-; -----------------------------
-n     = 20              ;a changer par TM correct au cas par cas
 
 r7    = psg_regs+7
       IF use_hard_env

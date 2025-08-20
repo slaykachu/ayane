@@ -75,44 +75,6 @@ r14   = psg_regs+14     ; Reset by ply before iteration
       ; default_use_hard_env
   ; Fix instr_default for kim compiled
 
-; \\\\\ 2024 ///
-; Jun
-; ---- v0l ----
-  ; 22 Add param# in signature
-  ; 11 Put signature before each instr
-     ; Reorder code so all amorces fit in &100 
-            ; Plus, compress better:
-               ; + similar code together
-               ; - JPs instead or similar JRs
-                   ; -> This one can change if we handle noise first
-                      ; and factorise vib/vib_noise (same for arp) 
-; ---- v0k ----
-  ;  3 Fix LSB static checks (handle when instr no assembled)
-     ; enable /instr_chip_down_arp/
-; May
-  ; 20 Add variants:
-           ; - instr_chip_down_arp
-           ; - instr_chip_down_vib_noise
-     ; Make instr_state_pnt a variable for better crunching
-; ---- v0h ----
-  ; 14 Fix 'table link' in compiled version
-     ; Optimise instr_chip_down_vib (no noise: no need to touch r7)
-; Apr            
-  ; 29 Add instr_chip_down_arp_noise
-; ---- v0g ----
-  ; 22 Don't handle volume if use_volume = 0
-  ; 14 Add instr_null
-  ; 11 Filter loop bit flag
-     ; instr_chip_down_vib: fix reg 7 handling
-
-; Mar 
-  ;31: instr_chip_down_vib: proper init
-  ; 30: Add amorce code
-      ; Use INC HL as rows aren't confined anymore.
-        ; We might revisit that if we really need speed.
-      ; Optimise instr_default!
-; Madram 25 Feb 2024. v0
-
 loop_bit = 7
 fail  = &BE00
 

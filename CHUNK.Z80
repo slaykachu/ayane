@@ -21,67 +21,6 @@ enable_free = 0
 ; ------ v0l2 -----------
 ; Mar
     ; 21 Next_node: must return Z if loop node
-; \/\/\/ 2024 \/\/\/\/\/\/\/\/\/\
-; ------ v0g ------------             
-; Apr
-    ; 11 Herica's birthday!
-       ; new_pool_chunk: fix stack issue when NC for mem full.
-       ; new_chunk* : assert in case of memory full
-
-    ; 10 Next_node: mustn't change hl when pnt is zero
-       ; Insert_new_node: add checks
-       ; Disable 'free' code (must be re-viewed)
-
-    ;  8 Introduce v_free5_list, v_free6_list.
-           ; Not used right now, but avoid assert in get_node_list
-
-; ------ v0f ------------             
-    ;  3 Fix new_chunk_no_init computation:
-            ; Mustn't use static MAX_CHUNKS value   
-            ; -> depends on bank ('HIMEM' can vary)
-       ; Allocate chunks in decreasing order to simplify code.
-       ; __plugtail: fix v_free_chunks handling (now in 8 bits)
-    ;  1 Init_chunk_module: clear banks for easier debugging
-; Mar 
-    ; 21 Init_chunk_module: custom init for BK_BASE
-       ; Introduce Insert_new_node
-       ; New_node_x and co: 'link' now 16 bits instead of 24 bits
-                  ; (since no cross-banks pointers) 
-            ; Note: links for chunks themselve still can be crossbank
-                  ; -> we don't want to change that, as chunks 
-                     ; might become cross banks again (for phrases)
-
-; Feb 
-; ------ v0c ------------             
-  ; 27 ap. Work bank by bank (since each kind of chunks has dedicated bk
-         ; Replace vo_max_chunks by MAX_CHUNKS (since static)
-         ; Remove orgams-specific variables
-               ; -> less code
-               ; -> 7Cxx is now free
-
-; ------ v0b ------------             
-  ; 25 ao. Remove orgams-specific header 
-  ; 21 an. Taken from ums:lib/
-         ; Make version ayane specific.
-
-; \/\/\/ 2023 \/\/\/\/\/\/\/\/\/\
-; Nov
-  ; 27 am. [ayane] Connnect bk base in /init_chunk/
-                 ; Don't use vo_basebk (since static: &c6)
-; Jun            
-  ;  5 al. [ayane] /BK_SOURCE/ = bk base - 1
-; May            
-  ;  9 ak. Use memcpc.o   (no more OUT (c),x here)
-            ; For orgams: cosmetic change.
-            ; For ayane: consolidation with liszt and chung
-                       ; Hence bk_connected stays up-to-date.
-         ; Cleanup: Remove flag failhard.
-  ;  8 aj. [ayane] /new_chunk/ Don't return chunk_start anymore:
-             ; -> was returning 32 for org, but org didn't use it
-             ; Since it depends on the type of node, it's better
-             ; to let the client set it (or to introduce dedicated
-             ; routine like new_chunk_org).
-  ;  5 ai. [ayane] /new_node_x_no_init/ Also handle 9-sized nodes. 
 
 design_doc
 ; See :lib/chunk.o

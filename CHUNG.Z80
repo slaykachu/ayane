@@ -1,68 +1,30 @@
 ; <<<<< chung: gestion chunk? + instr >>>>>
 ; TODO: see what's up with firmware, since we use EXX.
-; 2025 Jun 14. Add instr_does_exist
+; 2025 Aug 9. Remove st-related code:
+                   ; - dead code
+                   ; - can pick it up from older chung versions
+                   ; - i need memory
+         ; 8. Deactivate st-related code
+         ; 7. Move column_type_default & co in salo 
+            ; get_column: return size
+         ; 4. add instr_remove_loop
+
+     ; Jun 20. Jump table
 ; hist in journal.o
+; ------ For v0l2 -------
+; Mar   
+  ; 20 Remove check instr_null (which has been removed as useless)
+  ; 18 Use use_instr_chip_down_vib_noise
 dev_checks = 1
 todo  = 1
 todo_later = 1          ; non urgent/critical todo
 makeroom = 1
-st    = 0               ; disabled for now
-
-; We don't discriminate tables: arpegio, volume, ...
-type_table_empty = 0
-type_table_byte = 1
-type_table_word = 2
-
-table_header_size = 3   ; type, size in bytes, loop len
-
-; Poc (to be completed)
-
-; Setup ---------------
-    ; Init_chung 
-
-; Instr creation ------
-    ; New_instr
-    ; New_instr_ayane
-    ; New_instr_ayane
-    ; New_instr_chp_down_vib
-    ; New_instr_chp_down_vib_noise
-    ; New_instr_chp_down_arp
-    ; New_instr_chp_down_arp_noise
-    ; Song_select_instr
-    ; Song_get_instr
-    ; Setup_row_r7      
-    ; instr_does_exist
-    ; instr_ayane_append_rows
-    ; instr_get_rows#         
-    ; instr_set_rows#         
-    ; instr_set_loop
-    ; instr_get_loop 
-    ; set_flags    
-
-; Instr edition for instrui ----
-    ; insert_empty_row
-    ; instr_append_empty_row
-    ; del_row
-    ; select_row
-    ; get_row
-    ; set_row
-
-    ; --- Helper (salo / compile) ------
-    ; is_last_row
 
 row_link = 2
 
-; How each instr column (flags, arp, ...) is encoded
-; Will allow:
-   ; - indirection (table) like in 
-   ; - mix-in special handling (like chipnsfx's 
-; For now only used for future-proof serialisation.
-column_type_default = 0 ; only used for special fx as sentinelle
-column_type_const = 1   ; not used
-column_type_table = 2   ; not used
-column_type_table' = 3  ; table with special modulo
-column_type_custom = 4  ; only type used (for serialization)
-column_type_ramp = 5    ; not used (future: mimick chipnsfx)
+      MACRO PAD
+      FILL -$ AND &1F,&F7
+      ENDM
 
       IMPORT "const.i"
       IMPORT "memmap.i"
@@ -75,7 +37,45 @@ column_type_ramp = 5    ; not used (future: mimick chipnsfx)
       IMPORT "chunk.o"  ; new_chunk 
       IMPORT "memcpc.o"
 
-bk_connected = &3C      ; hack: avoid "ambiguous label"
+      IF 0
+;Doesn't need JPs for now
+
+; Setup ---------------
+          jp Init_chung
+
+; Instr creation ------
+          jp New_instr
+          jp New_instr_ayane
+    ; New_instr_ayane
+    ; New_instr_chp_down_vib
+    ; New_instr_chp_down_vib_noise
+    ; New_instr_chp_down_arp
+    ; New_instr_chp_down_arp_noise
+          15 ** BRK
+          jp Song_select_instr
+          jp Song_get_instr
+          jp instr_does_exist ; instrsel
+; Instr edition for instrui ----
+
+          jp instr_get_rows#
+          jp instr_set_rows#
+          jp instr_set_loop
+          jp instr_get_loop
+          jp instr_remove_loop
+          jp set_flags
+          jp instr_ayane_append_rows
+
+          jp insert_empty_row
+          jp instr_append_empty_row
+          jp del_row
+          jp select_row
+          jp get_row
+          jp set_row
+
+; --- Helper (salo / compile) ------
+          jp is_last_row
+          jp Setup_row_r7
+      END
 
 ; !!!! TODO? [Optim]: to save bk connection for fx signature,
                     ; we might compile (or copy) player out of bank
@@ -98,15 +98,9 @@ bk_connected = &3C      ; hack: avoid "ambiguous label"
   ; dynamically.
       END
 
-
 hist
 ; TODO: see what's up with firmware, since we use EXX.
 
-; //// 2025 /////////////////
-; ------ For v0l2 -------
-; Mar   
-  ; 20 Remove check instr_null (which has been removed as useless)
-  ; 18 Use use_instr_chip_down_vib_noise
 
 ;==============================================
       MACRO EXPECT_EQUAL x,y
@@ -147,6 +141,13 @@ hist
       END
       ENDM
 
+      MACRO CHECK_INSTR_SETUP
+      IF dev_checks
+          call _check_instr_setup
+      END
+      ENDM
+
+
       MACRO CHECK_SFX
 ;Check sfx fields n**sync_buzzer, then sfx null
 ;In: HL= start row instr
@@ -182,6 +183,16 @@ _check_instr_pnt
           ld de,tables:or a:sbc hl,de:add hl,de:call c,fail
           ld de,tables_:or a:sbc hl,de:add hl,de:call nc,fail
           pop de
+          ret
+
+_check_instr_setup
+; instr must have been created
+          push af:push hl
+          call get_instr_pnt
+;For now, just one type of instr
+          ld a,(hl):cp instr_default AND &FF
+          call nz,fail
+          pop hl:pop af
           ret
 
 _check_sfx
@@ -605,6 +616,14 @@ instr_set_loop
           ld (hl),d
           ret
 
+instr_remove_loop
+;----------------
+          call instr_goto_last_row
+          xor a
+          ld (hl),a:inc hl
+          ld (hl),a
+          ret
+
 instr_get_loop
 ;-------------
 ; Get at which row the instr loops
@@ -685,6 +704,7 @@ instr_append_row
     ; a, bc preversed
           CHECK_SFX()
 instr_append_row_       ; <- access when partial row input
+          CHECK_INSTR_SETUP()
           call instr_append_empty_row
       IF dev_checks
           push af
@@ -730,6 +750,7 @@ instr_set_rows#
 ; Create A* empty rows (used by salo)
 ; In: B = nb rows
           call _prelude
+          CHECK_INSTR_SETUP()
       IF dev_checks
 ; For now just used by salo: we assume there is no rows already there
 ; Check this assumption
@@ -767,6 +788,7 @@ instr_goto_row
 ; E.g., for b=0  hl=  instr_head_rows  (e.g link field of header)
           ; b=1  hl= (instr_head_rows) (e.g link field of row 0)
 
+          CHECK_INSTR_SETUP()
           push af
           call get_instr_pnt
           instr_head_rows ** inc hl
@@ -830,7 +852,7 @@ set_column
           push af
           add l:ld l,a:jr nc,$+3:inc h
       IF dev_checks
-          inc c:dec c:call nz,unexpected
+          inc c:dec c:call z,unexpected
       END
 .copy     ld a,(de):inc de
           ld (hl),a:inc hl
@@ -871,10 +893,11 @@ get_column
 ; In:hl=dest
     ; b=offset (field)
     ; c=width (1 to 3 bytes)
-;Out: a=nb rows# (for convenient)
+;Out: a=size (width * rows#)  0 = 256
     ;hl preserved
-          ex de,hl
           call _prelude
+          ex de,hl
+          push de
           call get_instr_rows
           jr z,.okrows
           ld a,b
@@ -898,8 +921,9 @@ get_column
           call ld_hl_link
           jr rowlp
 .okrows
-          call instr_get_rows#
-          ld a,c
+          ld a,e
+          pop de
+          sub e
           jp _postlude
 
 
@@ -936,125 +960,6 @@ _get_instr_pnt
           3 ** add hl,hl
           ret
 
-      IF 0
-song_clone_instr
-;--------------
-;in: A source instr
-;out: A new instr
-
-;TODO: what if error ?                 
-          push hl:push de:push bc
-          call Song_select_instr
-          ld hl,(va_instr_pnt)
-          push hl
-          call song_select_new_instr
-          pop hl
-          ld de,(va_instr_pnt)
-          ld c,(hl):sl1 c:call z,&BE00
-          ld b,0
-          ldir
-
- ; !! use bk connected by previous routines
-          ld a,(va_current_instr)
-          pop bc:pop de:pop hl
-          ret
-
-
-instr_get_table_com
-;------------------
-; in: bc= wanted fx
-;out: hl= associated table
-
-          ld hl,(va_instr_pnt)
-          ld a,l:or h:call z,err_no_instr
-          ld a,(hl)     ;nb word
-          inc hl
-      IF dev_checks
-          or a:call z,&BE00
-      END
-
-          ld ixl,a
-igtc_lp
-          call instr_get_fx_and_signi
-; searched fx?
-          ex de,hl:or a:sbc hl,bc:ex de,hl
-          scf
-          jr z,igtc_ok
-
-igtc_skip
-;00: no more param
-;01: unused
-;10: word
-;11: table
-          or a:jr z,igtc_skip_
-          2 ** inc hl
-          2 ** srl a
-          dec ixl
-      IF dev_checks
-          call z,&BE00  ; sign must be consistent with nb words
-      END
-          jr igtc_skip
-
-igtc_skip_
-          dec ixl       ; word associated to adr
-
-          jr nz,igtc_lp
-
-          xor a         ; for NC
-          ld l,a:ld h,a
-
-igtc_ok
-          call c,get_param
-          pop bc        ;discard push hl
-          jp _postlude_
-
-
-param_offset = 5
-  ; Pos of fx signature (for digging, cf instr_get_table_com)
-  ;   (skip jp init_fx and signature)
-
-instr_get_fx_and_signi
-          ld e,(hl):inc hl
-          ld d,(hl):inc hl
-          push de
-          ld a,e:sub param_offset:ld e,a
-          ld a,(de)
-          pop de
-          ret
-
-instr_get_signi
-; out: adr *non consumed*
-          push de
-          ld e,(hl):inc hl
-          ld d,(hl):dec hl
-          ld a,e:sub param_offset:ld e,a
-          ld a,(de)
-          pop de
-          ret
-
-      END
-
-get_fx_sign
-; here we already point to fx_init
-; out: hl+=2 (addr fx consumed)
-
-          push de
-          ld e,(hl):inc hl
-          ld d,(hl):inc hl
-          dec e
-
-      IF dev_checks
-;Player (and then fxs) out of bank.
-          ld a,d:cp &40:call nc,mess
-      END
-          ld a,(de)
-          pop de
-          ret
-
-get_param
-          ld a,(hl):inc hl
-          ld h,(hl):ld l,a
-          ret
 
 allocate_new_row
 ;...............
@@ -1137,134 +1042,12 @@ Setup_row_r7
           jr nz,.lp
           ret
 
-set_new_arpg
-;........... 
-;in: BC= table arpg in ram. (might be 0 --why???)
-          call _prelude ; connection to bank not needed
-          ld hl,va_arpgs#
-          ld a,(hl)
-          add a
-          call c,memory_full
-          inc (hl)
-          ld l,a
-          ld h,arpg_idx/&0100
-          ld (hl),c:inc l
-          ld (hl),b
-          jp _postlude
-
-
-get_arpg_from_index
-;..................
-;In: C=arpg idx
-   ; base bk connected
-          sla c:call c,err_invalid_arpg
-          ld l,c
-          ld h,arpg_idx/&0100
-          ld c,(hl):inc l
-          ld b,(hl)
-          ret
-
-      IF st
-; TODO: reactivate for st128
-create_arpeggio_0xy
-;-------------------
-;in: A= valeurs arpege 0 X Y   ;TODO: C instead?
-;out: A= index table arpegio 
-
-          call _prelude
-
-          ld hl,buf_tmp
-          push hl
-          ld (hl),type_table_byte:inc l
-          ld (hl),3:inc l
-          ld (hl),3:inc l
-          ld (hl),0:inc l
-          ld b,a:and &0F
-          ld c,a:xor b
-          4 ** rrca
-          ld (hl),a:inc l
-          ld (hl),c
-
-          pop hl
-          call register_table
-          call set_new_arpg ; TODO:what if mem full ?
-
-          call check_bk_base
-          ld a,(va_arpgs#) ; current arpg+1
-          dec a
-          jp _postlude
-
-_new_table
-; - Store passed array in bank.
-
-;  in: HL: Data to copy.  (including header)
-     ;  C: Length to copy (including header)
-     ; Base bk connected
-; out: Table added in stored_table_idx
-     ; HL: Post data (HL+C)
-     ;  A: Idx table
-
-; Not meant to be used externally.
-; Use register_table & higher level routines (st_make_table_byte...)
-     ;     call _prelude
-     ;     push af
-
-;-- Store in bank 
-          push ix
-          push hl
-          push bc
-          call check_bk_base
-          ld de,(stored_table_back)
-          ld b,e
-          ld ix,new_chunk_ext
-          call append_raw_in_chunk:call nc,memory_full
-          call connect_bk_base
-          ld (stored_table_back),hl
-;-- Update index
-          ld hl,va_table#
-          ld a,(hl):inc (hl)
-          call _get_stored_idx
-          ld (hl),e:inc hl
-          ld (hl),d:inc hl
-          ld (hl),b
-          pop bc
-          pop hl
-          ld b,0:add hl,bc
-          pop ix
-          ret
-
-
-_linked_copy_byte
-; In: HL: source
-    ; DE: dest
-    ;  B: size
-          push hl
-          push bc
-scp_lp
-          ld a,e:inc a
-          ld (de),a:inc e ;link
-          ld a,(hl):inc hl
-          ld (de),a:inc e ;value        
-          djnz scp_lp
-
-          pop bc
-          pop hl
-          ret
-
-_linked_copy_word
-          push bc:push hl
-stcp2_lp
-          ld a,e:inc a:ld (de),a:inc e ;link
-          ld a,(hl):inc hl:ld (de),a:inc e ; LSB value        
-          ld a,(hl):inc hl:ld (de),a:inc e ; MSB value        
-          djnz stcp2_lp
-
-          pop hl:pop bc
-          ret
-      END
+err_no_instr
+      BRK
 
 new_chunk_ext
 ;------------
+; !!! Used by phrase.o
 ; Like new_phrase_chunk, but no phrase header needed or desirable:
 ; it wouldn't make sense, as it is just an extension of the phrase.
 ; Also: Out:  A= chunk start (needed by insert_in_chunk)
@@ -1295,7 +1078,7 @@ _install_ext
           ld hl,chunk_def
           ld bc,chunk_def_
 ;enchaine
-_install_com
+_install_com            ; !!! Used by phrase.o
 ;header
           ld e,chead_last
           ldir
@@ -1321,17 +1104,6 @@ _install_com
           scf
           ret
 
-
-err_invalid_arpg
-      BRK
-assert_fail
-      BRK
-err_invalid_ins
-      BRK
-err_no_instr
-      BRK
-
-
 _prelude
 ; save registers and sp (for 'exception mechanisme)
 ; then connect work bank
@@ -1350,114 +1122,6 @@ _prelude
           call connect_bk_base
           jp jp_ret
 
-;-------------------------------------------
-      IF st
-st_make_table
-; in: hl =source     (must be connected)
-    ; a  =longueur
-    ; b  =repeat pos (and flag unused here)
-    ; c  =repeat length
-; out: bc=address table in ram (to be plugged with fx)
-     ; hl=source+longueur (post table)
-     ; de trashed
-
-          ld e,c
-          ld d,type_table_byte
-          jr _st_table_com
-
-
-st_make_table_word      ;copy/paste word 16 bits value
-;-----------------
-; in: hl =source
-    ; a  =longueur  (en mots !)
-    ; b  =repeat pos
-    ; c  =repeat length
-; out: bc=new table start
-     ; hl=source+longueur  
-
-;convert ticks -> bytes
-          add a
-          sla b
-          ld e,c
-          sla e
-          ld d,type_table_word
-;enchaine
-_st_table_com
-; Here a=length in bytes  
-     ; b=start loop in bytes
-     ; e=loop len in bytes
-     ; d=type    
-          or a:call z,unexpected
-          bit 7,b:call nz,unexpected ;TODO: handle flag
-
-;Create header, and copy data + loop
-;TODO: Optimize if loop reaches end
-
-          push hl
-          ld hl,buf_tmp
-          ld (hl),d:inc l
-          add e:call c,unexpected ; length + loop > 256
-          ld (hl),a:inc l ; size with loop due to hack
-          sub e         ; size to copy (no loop)
-          ld (hl),c:inc l
-          ld c,e
-          ex de,hl
-          pop hl
-          push bc
-          ld c,a:ld b,0
-          ldir
-          pop bc
-          push hl       ; post table for caller
-
-          inc c:dec c:jr z,_st_noloop
-          ld l,b        ; start loop 
-          table_header_size ** inc l ; in buffer
-          ld h,d
-          ld b,0
-          ldir
-_st_noloop
-          ld hl,buf_tmp
-          call register_table
-          pop hl
-          ret
-
-register_table_from_bank
-; Like register table, when source is from bank
-          ld a,h:cp buf_tmp/&0100:call nz,unexpected ; sanity check
-          call _table_full_len
-          ld de,buf_tmp
-          push de
-          ldir
-          ex (sp),hl
-          call register_table
-          pop hl
-          ret
-
-register_table
-; - Store table in bank
-; - Create ram version
-; in:  hl = table header !! OUT OF BANK !!
-; out: hl = post table
-;    ; bc = address table in ram (to be plugged with fx)
-     ; a, de trashed
-
-          or a:call z,to_be_implemented ; Don't support empty table yet.
-!!! review this
-          call connect_bk_base ; why not _prelude?
-          call _table_full_len
-          call _new_table
-          push hl
-      BRK
-
-_table_full_len
-; In:  hl=table header
-; out: bc=len
-     ; a trashed
-          inc hl:ld a,(hl):dec hl
-          add table_header_size:call c,unexpected
-          ld c,a:ld b,0
-          ret
-      END
 
 ;-------------------------------------------
 
@@ -1537,7 +1201,6 @@ zero_start              ; Not loaded, must follow def (see check below)
  !! must be contiguous to simplify init code
       END
 va_current_instr BYTE 
-va_arpgs# BYTE 
 va_table# BYTE 
 selected_row WORD 
 
@@ -1553,18 +1216,12 @@ zero_chung_ = $-zero_chung
 stored_table_back WORD  ; ID of last chunk for append_raw_in_chunk
 
 
-      ORG buf_chung
-
-arpg_idx SKIP &0100     ; &80 words: &100.
-buf_tmp SKIP &0100      ; Out of bank exchange buffer
-
-      SKIP buf_chung_ - $ ; poor's man limit (defined in memmap.i)
-
       ORG save_pc       ; for host
 ; Align, for more stable addresses
 ; -> ease debugging
 ; -> less re-assembling when we change just one module
       SKIP -$ AND &FF
+
 
 
 

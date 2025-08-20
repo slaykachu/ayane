@@ -1,6 +1,12 @@
 dev_checks = 1
 todo  = 1
 makeroom = 1
+
+; 2025 Aug 9: Add Set_last_hook_duration
+         ; 8: s/Reset_tracks/Reset_tracks_and_subsongs
+            ; Do set loop for chipn import (not handled by salo yet) 
+do_set_loop = 0
+
 ; ----------------------------------------------------------------
 ; Song & Track handling for ayane (replace map/songlist concept)
 ; ----------------------------------------------------------------
@@ -116,14 +122,6 @@ reg_size = 4
       ELSE
 reg_size = 3
       END
-
-;2025
-; --- For v0l2 ---- 
-  ; Mar      
-   ; 21 + Clip_set_duration
-      ; + Set_track_loop
-      ; Song_add_map: use those
-   ; 20 Remove temporary dbg
 
 scr_set_border = &BC38
 
@@ -2183,14 +2181,21 @@ track_get_event_hook_at
           ld hl,get_hook_at
           jp eval
 
-Clip_set_duration
+Set_hook_duration
 ;----------------                
-; Needed by chipn
-; Usually a clip duration is set when adding a new 
-; That doesn't work for last clip
-; In; hl = pnt to clip timestamp
+; Needed by chipn 
+; Usually a hook duration is set when adding a new one
+; That doesn't work for last hook
+; In; hl = pnt to hook timestamp
     ; de = duration (0 for 65536) 
           call track_get_hook_at
+          jr _set_duration_com
+
+Set_last_hook_duration
+;---------------------
+; Needed by salo. Same rationale than Set_hook_duration
+          call track_get_last_hook
+_set_duration_com
           idsz ** inc hl
           ld (hl),e:inc hl
           ld (hl),d
@@ -2220,10 +2225,12 @@ track_get_hook_at
 ;----------------
  ;In: hl = pnt to t
 ;Out: hl = hook structure
+    ; (on hold) de = pnt to timestamp start hook
           call connect_bk_track
           call setup_track_t
           ld hl,get_hook_at
           call eval
+;          ld de,aum_regs + t0*4
           ret
 
 setup_track_t
@@ -2345,8 +2352,8 @@ Init_track_module
   ; what would be the best when multiple modules?
       END
 ;enchaine
-Reset_tracks
-;-----------    
+Reset_tracks_and_subsongs
+;------------------------
 ; No tracks, no subsong.
 
           call connect_bk_track
@@ -2373,7 +2380,7 @@ Reset_tracks
 New_module
 ;---------
 ; Create 3 track (one for each channel). Good default.
-          call Reset_tracks
+          call Reset_tracks_and_subsongs
 ;enchaine
           xor a
       IF todo
@@ -2500,12 +2507,17 @@ Song_add_map
       IF dev_checks
           inc c:dec c:call nz,mess ; must be < &10000
       END
+      IF todo OR makeroom
+; use Set_last_hook_duration
+      END
           ld hl,previous_timestamp
-          call Clip_set_duration
+          call Set_hook_duration
 
-;Set loop to 0 (good default)
+      IF do_set_loop
+;Set loop to 0 (good default). !! not handled by salo yet
           ld hl,time_zero
           call Set_track_loop
+      END
 
           pop hl:pop bc:pop af
           inc a

@@ -1,4 +1,6 @@
 ; ========= Shared buffers and variables ==========
+; 2025 Aug  8  Cleanup unused buffers
+     ; Jun 23  Move disc_buffer at &4000
 todo  = 1
 need_room = 1
 
@@ -16,11 +18,12 @@ BK_INSTR = BK_BASE
 ;&c6 = free
 BK_DISP = &C7           ; Static for now (for connection &c1)
 
-bk_connected = &3C      ;!!! Hardcoded in liszt. 
+bk_connected = &3C
 ;!!! 3e: vo_thisbk for ayane. See rationale in memcpc.o
-code_start = &40        ;max 18*16  (for st). What about starkos?
+code_start = &40
 
-ramlimit = &4000
+code_main = &3C00       ; ayane.o
+ramlimit = &3FC0
 
 ; ---------- C0 -----------------
       ORG &4000
@@ -103,33 +106,38 @@ chunk_var_ = &8000
 ; ----------------------------------------------
 ; --------- IO BK --------------
 ; ----------------------------------------------
-st_module = &4000
+disc_buffer = &4000
+st_module = &4800
 
 ; ----------------------------------------------
 ; ---------- Disp BK ------------
 ; ----------------------------------------------
-      ORG &4000
-disp_start              ; loaded in disp.o
+disp_start = ramlimit   ; disp.o (out of bank routs, fonte, )
 ; Setup by init.o, which imports disp.o or disp.bin
+disp  = &4800
+
+disp_start' = &4F00     ; status/help/pianoui + routines in ayane
 
       ORG &8000
-disc_buffer             ; In central RAM for easier loading in banks
-      SKIP &0800
-      SKIP &0100        ; Temp buffer in salo, and ???
-      SKIP &0100        ; BUF_TMP in status.o  and salo.
-bandaya SKIP &0300      ; Code: out of page 0 and bank (since under int)
-; -> could be mitigated: int hook saving and connecting bank.
-psg_regs SKIP &0100     ;  Room for pseudo registers and ??? 
-workzone SKIP &0600     ; Sharable. Used by st128
+psg_regs                ;  Room for pseudo registers and ??? 
+;!! Shared with other buf, as we never play while loading or saving!
+workzone SKIP &0600     ; chipn 
 workzone_size = $ - workzone
-buf_chung SKIP &0200
-buf_chung_
-free_ram_for_nrt = buf_chung_
-ramlimit' = &A000
+salo_buf1 = workzone
+salo_buf2 = workzone + &0100
+; Deactivated for now (was for st conv)
+;buf_chung SKIP &0200
+;buf_chung_
+
+free_ram_for_nrt
+code_start'
+bandaya = &9E30
+
+ramlimit' = &A200
       IF todo
 ; Replace ramlimit by himem
-; -> More ram  if himem > &a000 (typical)
-; -> No corruption if " < &a000 
+; -> More ram  if himem > &a200 (typical)
+; -> No corruption if " < &a200 
 ; Note, when detecting himen, check it is > tables
       END
 
@@ -144,8 +152,6 @@ ramlimit' = &A000
 ; !! No need to reserve room 
 ;vars_chung SKIP 32      ; some room
 ;vars_chung_
-
-  ;    SKIP &9E00 - $    ; Reusable buffer (status.o)
 
       ORG savepc,saveobj
 

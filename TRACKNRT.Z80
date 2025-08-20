@@ -3,6 +3,10 @@ todo  = 1
 do_brittle = 0
 
 ; ----- 2025 ----------
+; -- v0ai --
+ ; Aug
+     ;  8 Use test_lib for init 
+        ; Add test_subsong_add_track
 ; -- v0ae --
  ; May
      ; 29 test_get_phrase_implicit_repeat
@@ -22,7 +26,7 @@ do_brittle = 0
          ; LINK(): don't store BK anymore
 
 enable_track_get_clip_at = 0
-enable = 0
+enable = 0              ; test ui
 
 ; Now chunks are stored backward
 chunk0 = track_events_/&0100 - 1
@@ -44,18 +48,17 @@ chunk0 = track_events_/&0100 - 1
       IMPORT "track.o"
       IMPORT "widget.o" ; for init_widget
       IMPORT "chung.o"  ; For creating clips via public API
-      IMPORT "init.o"
       IMPORT "memcpc.o" ; for connect_a, bk_connected
       IMPORT "phrase.o" ; song_select_new_phrase
       IMPORT "ply.o"    ; for evt_* (evt_set_transpose & co)
+      IMPORT "testlib.o"
 
 tests
           call nrt_init
 
 ; ---- Recent
-          call test_set_transpose
-          call test_flag_lifted
-          call test_set_phrase_far
+          call test_subsong_add_track
+      BRK
 
       IF enable
           call test_ui
@@ -109,14 +112,19 @@ tests
           call test_set_phrase_after
           call test_set_phrase_far
           call test_get_phrase_implicit_repeat
+
+; ---- Test subsong -----
+          call test_subsong_add_track
           ret
 
 nrt_init
+          ld a,".":call &BB5A
 ;--- Clear bank for easier debug
           ld bc,&7F00 + BK_TRACK:out (c),c
           ld hl,&4000:ld de,&4001:ld bc,&3FFF:ld (hl),l:ldir
 
-          call full_init
+          call init_for_test
+          call song_reset
 ; as convienence for tests, create module and select first track
           call New_module
           ld a,1:call Song_select_track
@@ -1378,6 +1386,19 @@ check_
           call goto_event
           call nz,fail
           ret
+
+test_subsong_add_track
+;---------------------
+          call nrt_init
+          call song_reset
+          xor a:call Subsong_add
+      BRK
+          ld a,1:call Subsong_add_track
+          call Song_get_first_track:call z,fail
+          cp 1:call nz,fail
+          call Song_get_next_track:call nz,fail
+          ret
+
 
       IF enable
 test_ui

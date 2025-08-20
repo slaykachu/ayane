@@ -6,16 +6,24 @@ todo_wrong_chr = 0
 ; TODO???? refresh_focus in gedeihen_enter?
 
 ; -- 2025 --       
+ ; --- Ayane 0ai ----
+; Aug:                       
+  ; 5: Add test_multiline_margin
+  ; 4: Celebration! Add test_disp_sep
+ ; --- Ayane 0ah ----
+; Jul:
+  ;15: Deactivate tests about removed code
  ; --- Ayane 0ae ----
 ; Jun:
   ; 2: Add test_multiline_goto_top
   ; 1: Add test_multiline_scroll0 and co
 key_under_multiline = 0
+do_test_hexa = 0
 do_test_cursor = 0
 do_test_handler = 0
 do_test_all_fields_refreshed = 0
-do_test_table = 0
-do_test_disp_table = 0  ; Table code to review anyway
+do_test_table = 0       ; removed for now
+do_test_disp_table = 0
 do_test_frame = 0
 
       ORG &0100
@@ -51,25 +59,8 @@ tests
 ; Otherwise, a BRK is trigerred.
 
           ld a,&F7:ld (0),a
-          call test_focus_struct_ctrl_right
-          call test_focus_struct_ctrl_right'
-          call test_multiline_goto_top
-          call test_multiline_goto_bottom
-          call test_multiline_scroll0
-          call test_multiline_scroll1
-          call test_multiline_scroll2
-          call test_multiline_scroll3
-          call test_multiline_scroll4
-          call test_multiline_scroll5
-          call test_multiline_scroll6
-          call test_multiline_scroll7
-
-     ;     call test_set_multiline_refresh'
-    ;  BRK
-          call test_set_multiline_refresh
-          call test_focus_multiline_struct_refresh
-          call test_set_optional_disabled
-          call test_focus_auto_validate
+          call test_multiline_margin
+      BRK
 
 ; --- test helpers ---
           call test_field_editing
@@ -87,7 +78,9 @@ tests
           call test_text_dyn
           call test_disp_deci_custom
           call test_disp_deci_word_custom
+      IF do_test_hexa
           call test_disp_hexa
+      END
       IF do_test_disp_table
           call test_disp_table
           call test_disp_table_of_sprite
@@ -96,6 +89,7 @@ tests
           call test_disp_struct
           call test_disp_struct_deci
           call test_struct_display
+          call test_disp_sep
       IF do_test_disp_table
           call test_mem_dump
       END
@@ -142,7 +136,9 @@ tests
       IF todo_wrong_chr
           call test_set_deci2_wrong_chr
       END
+      IF do_test_hexa
           call test_set_hexa
+      END
           call test_set_hexa_digit
           call test_set_hexa_digit'
           call test_set_hexa_digit_wrong_chr
@@ -192,14 +188,16 @@ tests
           call test_set_multiline_refresh''
           call test_set_multiline_optional
           call test_multiline_scroll0
-          call test_multiline_scroll0
           call test_multiline_scroll1
           call test_multiline_scroll2
           call test_multiline_scroll3
           call test_multiline_scroll4
           call test_multiline_scroll5
           call test_multiline_scroll6
-          call test_multiline_scroll7
+          call test_multiline_margin
+          call test_multiline_goto_top
+          call test_multiline_goto_bottom
+
           call test_random_keys
 ; Not handled !!
 ;          call test_set_nested_struct
@@ -225,6 +223,7 @@ tests
           call test_autofocus_hexa_digit
           call test_focus_auto_validate
           call test_focus_struct_ctrl_right
+          call test_focus_struct_ctrl_right'
           call test_focus_multiline_refresh
           call test_focus_multiline_optional_readwrite
           call test_focus_multiline_optional_readwrite_dynamic
@@ -453,7 +452,6 @@ test_disp_frame
           TEST_DISP(nrt_frame_ui,nrt_text_expected)
           ld a,(test_frame_flag):cp "!":call nz,&BE00
           ret
-      END
 
 nrt_frame_ui
 ; Same hooks except for write_char and paint_sprite
@@ -471,6 +469,8 @@ nrt_frame_write_char
 ; mini mock
           ld (test_frame_flag),a
           jp nrt_write_char
+
+      END
 
 test_disp_key_handler
 ; Check subwidget is displayed and that handler is NOT invoked. 
@@ -929,6 +929,7 @@ test_disp_deci_word_custom
 ui_deci BYTE w_deci_99_custom:WORD noop,nrt_deci_3
 ui_deci_word BYTE w_deci_9999_signed:WORD set_word,get_word
 
+      IF do_test_hexa
 test_disp_hexa
 ; Check that hexa  is displayed.
           ld a,&AB:ld (nrt_hexa_byte),a
@@ -937,6 +938,17 @@ test_disp_hexa
 
 ui_hexa BYTE w_hexa_byte:WORD nrt_hexa_byte
 nrt_hexa_ref BYTE "AB",nrtend
+      END
+
+ui_hexa_custom
+      BYTE w_hexa_custom
+      WORD set_hexa_byte
+      WORD get_hexa_byte
+
+ui_hexa_custom2
+      BYTE w_hexa_custom
+      WORD set_hexa_byte2
+      WORD get_hexa_byte2
 
 ui_hexa_digit
       BYTE w_hexa_digit_custom
@@ -950,6 +962,15 @@ ui_multiline
       WORD nrt_select_line
       BYTE 2            ; Height
       BYTE 0            ; scroll offset (margin)
+
+ui_multiline'
+      BYTE w_multiline
+      WORD ui_toggle
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      BYTE 6            ; Height
+      BYTE 2            ; scroll offset (margin)
+
 
 ui_multiline_refresh
       BYTE w_multiline
@@ -1073,6 +1094,7 @@ nrtend = &FF
 nrt_nl = 13
 nrt_width = &10
 
+      IF do_test_table
 test_disp_table
 ; Check initial table is displayed.
           TEST_DISP(nrt_table_ui,nrt_table_expected)
@@ -1100,6 +1122,7 @@ nrt_max_col = 3
       WORD nrt_max_row  ; max_row. 0..255 included   !! unused now
       WORD nrt_max_col  ; max_col. 0..10  included   !! unused now
 ;---
+      END
 
       MACRO NRT_PAD ref
       FILL nrt_width - [$-ref],mockspace
@@ -1110,6 +1133,7 @@ nrt_max_col = 3
       FILL 2*nrt_width - [$-ref],mockspace
       ENDM
 
+      IF do_test_table
 nrt_table_expected
       BYTE "OvL!ABABABAB":NRT_PAD(nrt_table_expected)
       BYTE "OvL!ABABABAB",nrtend
@@ -1142,6 +1166,7 @@ nrt_cell_ui
 nrt_table_expected2
       BYTE "00010203":NRT_PAD(nrt_table_expected2)
       BYTE "10111213",nrtend
+
 
 test_mem_dump
 ; Check table with custom cell reading memory.   
@@ -1217,6 +1242,7 @@ nrt_table_expected3
       4 ** [3 ** WORD ##+&0201]:NRT_PAD2(nrt_table_expected3)
       4 ** [3 ** WORD ##+&0211]:BYTE nrtend
 
+      END
 ; -----------------------------
 test_disp_struct
           ld a,&AB:ld (nrt_hexa_byte),a
@@ -1224,10 +1250,9 @@ test_disp_struct
           ret
 
 .nrt_struct_ui
-
       BYTE w_struct
       WORD nrt_field0_ui
-      WORD ui_hexa
+      WORD ui_hexa_custom
       WORD nrt_text_ui
       WORD 0
 
@@ -1282,13 +1307,13 @@ sentinelle = 0
 test_null_sequence
 ;-----------------
 ; Sanity check: we just exit.
-          ld a,&AB:ld (nrt_hexa_byte),a
-          TEST_RUN(ui_hexa,t_null_sequence)
+          ld a,&07:ld (nrt_hexa_digit),a
+          TEST_RUN(ui_hexa_digit,t_null_sequence)
           ret
 
 t_null_sequence
           END_OF_NRT_SEQUENCE()
-      BYTE "AB",nrtend
+      BYTE "7",nrtend
       BYTE nrtend
 
 test_cursor_deci
@@ -1464,6 +1489,7 @@ test_set_deci2_wrong_chr
 ;cursor: todo?
       END
 
+      IF do_test_hexa
 test_set_hexa
           TEST_RUN(ui_hexa,t_set_hexa)
 ; additional check: no field overflow.
@@ -1476,6 +1502,7 @@ t_set_hexa
           END_OF_NRT_SEQUENCE()
       BYTE "C5",nrtend
       BYTE 1,1,1,2,nrtend ; 2-char width cursor from (1,1) 
+      END
 
 test_set_hexa_digit
 ; digit must be set and displayed even without validation
@@ -1512,6 +1539,7 @@ test_set_hexa_digit_wrong_chr
           FOCUS("4")
       BYTE nrtend
 
+      IF do_test_table
 test_set_first_cell
           call nrt_mdump_reset
           TEST_RUN(nrt_mdump_ui,t_set_first_cell)
@@ -1541,24 +1569,32 @@ t_ssc BYTE "CA59DEAD":NRT_PAD(t_ssc)
       BYTE "12345678",nrtend
 ;-- nevermind cursor
       BYTE nrtend
-
+      END
 
 test_struct_display
 ; Check initial display
           ld a,&C9:ld (nrt_hexa_byte),a
+          ld a,&DA:ld (nrt_hexa_byte2),a
           TEST_DISP(nrt_struct_ui2,nrt_struct_exp)
           ret
+
+test_disp_sep
+          ld a,&BA:ld (nrt_hexa_byte),a
+          TEST_DISP(nrt_struct_sep_ui,.ref)
+          ret
+.ref  BYTE "BA <> BA",nrtend
 
 test_struct_setup
 ; Check initial state 
           ld a,&C9:ld (nrt_hexa_byte),a
+          ld a,&DA:ld (nrt_hexa_byte2),a
           TEST_RUN(nrt_struct_ui2,t_struct_setup)
           ret
 
 t_struct_setup
           END_OF_NRT_SEQUENCE()
 nrt_struct_exp
-      BYTE "C9 Piou CA ",nrtend ;TODO: last separator should be removed
+      BYTE "C9 Piou DA ",nrtend ;TODO: last separator should be removed
       BYTE 1,1,1,2,nrtend
 
 
@@ -1597,21 +1633,30 @@ test_set_first_field
 ;-------------------
 ; Check 1/ field inside struct is refreshed,
       ; 2/ Cursor points to second  
+          ld a,&CA:ld (nrt_hexa_byte2),a
           TEST_RUN(nrt_struct_ui2,t_set_first_field)
           ret
 
 nrt_struct_ui2
       BYTE w_struct
-      WORD ui_hexa
+      WORD ui_hexa_custom
       WORD nrt_field0_ui ; Read Only
 ; NB: shared hexa byte would no be not refreshed.
 ; TODO: is it expected? Test that separately.
       ; in the meantine, we use a distinct one.
-      WORD nrt_hexa_ui2
+      WORD ui_hexa_custom2
       WORD 0
 
-nrt_hexa_ui2 BYTE w_hexa_byte:WORD nrt_hexa_byte2
-nrt_hexa_byte2 BYTE &CA
+nrt_struct_sep_ui
+      BYTE w_struct
+      WORD ui_hexa_custom
+      WORD ui_sep
+      WORD ui_hexa_custom
+      WORD 0
+
+ui_sep
+;use text for now: more versatile
+      BYTE w_text,"<>",0
 
 t_set_first_field
       BYTE "9f"
@@ -1702,7 +1747,7 @@ ui_struct_optional
       BYTE w_struct
       WORD ui_toggle
       WORD ui_optional
-      WORD ui_hexa
+      WORD ui_hexa_custom
       WORD 0
 
 ui_struct_optional'
@@ -2036,7 +2081,21 @@ test_set_struct_optional_readwrite'
 
 .seq  BYTE k_rgt
           END_OF_NRT_SEQUENCE()
-      BYTE "8 .",nrtend
+      BYTE "8 ",toggle_char_off,nrtend
+
+test_multiline_margin
+;--------------------
+          ld a,5:ld (nrt_lines#),a ; = height - 1
+          ld a,&FF:ld (dummy_byte),a
+          TEST_RUN_FOCUS(ui_multiline',.seq)
+          ret
+.seq      4 ** BYTE k_dwn
+      BYTE k_up
+          END_OF_NRT_SEQUENCE()
+      BYTE toggle_char,nrt_nl
+      BYTE toggle_char,nrt_nl
+          FOCUS(toggle_char):BYTE nrt_nl
+      BYTE toggle_char,nrtend
 
 test_set_multiline_refresh0
 ;--------------------------
@@ -2383,7 +2442,7 @@ test_run_handler
           ret
 
 nrt_hui BYTE w_key_handler
-      WORD ui_hexa,nrt_handler_mock
+      WORD ui_hexa_custom,nrt_handler_mock
 nrt_handler_mock
           cp ev_child_exit:jr nz,nhmok
           inc a:ret     ; Set back nc nz for parent handler
@@ -2571,7 +2630,7 @@ test_focus_struct_ctrl_right
           ret
 .seq  BYTE kc_rgt
           END_OF_NRT_SEQUENCE()
-      BYTE ". +28 "
+      BYTE toggle_char_off," +28 "
           FOCUS("B")
       BYTE nrtend
 
@@ -2583,8 +2642,8 @@ test_focus_struct_ctrl_right'
           ret
 .seq  BYTE kc_rgt
           END_OF_NRT_SEQUENCE()
-          ctrl_rgt_nb_fields ** BYTE ". "
-          FOCUS(".")
+          ctrl_rgt_nb_fields ** BYTE toggle_char_off," "
+          FOCUS(toggle_char_off)
       BYTE nrtend
 
 test_focus_multiline_refresh
@@ -3069,7 +3128,7 @@ iotest_drawncursor_p WORD 0
 ; Ovl!  10 11 12 13 14 15 16 17 18 19 1a
 ; -------------------------
       IF nrt
-
+      IF do_test_table
 set_dummy_row
 ; Cf set_row   
           ex de,hl
@@ -3120,11 +3179,14 @@ get_mdumpdummy_pnt
           add nrt_mdumpmem AND &FF:ld c,a
           ld b,nrt_mdumpmem/&0100:ret nc:inc b
           ret
+      END
 
 get_dummy_byte ld a,(dummy_byte):ret
 set_dummy_byte ld (dummy_byte),a:scf:ret
 get_hexa_byte ld a,(nrt_hexa_byte):ret
 set_hexa_byte ld (nrt_hexa_byte),a:scf:ret
+get_hexa_byte2 ld a,(nrt_hexa_byte2):ret
+set_hexa_byte2 ld (nrt_hexa_byte2),a:scf:ret
 get_hexa_digit ld a,(nrt_hexa_digit):ret
 set_hexa_digit ld (nrt_hexa_digit),a:scf:ret
 get_hexa_digit_line call get_line_pnt:ld a,(hl):ret
@@ -3184,6 +3246,7 @@ _get_env_type ld a,(tmp_env_type):ret
 
 dummy_byte BYTE 
 nrt_hexa_byte BYTE 
+nrt_hexa_byte2 BYTE 
 nrt_hexa_digit BYTE 
 nrt_hexa_digit_lines SKIP 8 ; room for 8 "lines"
 nrt_deci99_lines SKIP 8
@@ -3192,11 +3255,13 @@ tmp_vol BYTE
 tmp_env_type BYTE 
 ;--- must be before hooks_ for internal checks.
 
+      IF do_test_table
 ntr_get_sprite
           call get_dummy_cell
           inc a:ld l,a:ld h,2 ; Sprite source (avoid 0 as byte)
           ld de,&0302   ;w*h
           ret
+      END
 
 nrt_text_getter
           ld hl,nrt_text_dynamyte
@@ -3300,7 +3365,9 @@ nrt_set_cursor
           ld a,h:or a:call z,fail
           cp 80:call nc,fail
           ld a,l:or a:call z,fail
-          cp 5:call nc,fail ; For now tests only use 4 lines max
+ ; For now tests only use 6 lines max (test_multiline_margin)
+ ; before it was 4 
+          cp 7:call nc,fail
           ld (iotest_cursor),hl
           ld hl,&CACA   ; mimic firmware trashing hl
           scf

@@ -27,7 +27,7 @@ full_init
 ; in:  N/A     
           call Init_chunk_module
           call Init_chung
-          call song_reset
+          call phrase_reset
           call Init_track_module
           call setup_keys
           call init_widget ; compute RGB so we see the boxes

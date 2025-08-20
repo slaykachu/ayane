@@ -1,6 +1,8 @@
 dev_checks = 1
 todo  = 1
 need_speed = 1
+border_col = &54
+border_col' = &44
 
 ; //////// Timer emulation  //////////////
 ; For special fx (sync buzzer, Square Ring Modulation, minisamples...)
@@ -791,7 +793,7 @@ vsync_timed_lp_tm = 10
           jr nc,.lp
           ret
 
-waitlines
+waitlines_tm
 ; Wait B lines + 3 NOPs (final RET_ROUT)
 ; IN: B = nb lines
     ; A = TM
@@ -807,7 +809,7 @@ waitlines
           2 ** ld a,a
           SUB_TM(13-1+2) ; -1 last djnz, +2: padding 
           pop bc
-          djnz waitlines
+          djnz waitlines_tm
           RET_ROUT(-1)  ;-1 last djnz
 ;-----------------------------
 
@@ -815,7 +817,7 @@ waitlines
 rasters
 ;  78 ** BYTE # AND &1F OR &40
 ;          39 ** BYTE &5C,&4C
-      FILL 78,&40
+          39 ** BYTE border_col,border_col'
 ;          20 ** BYTE &54,&44,&58,&5D
       FILL -$ AND &FF,&4C ; safety
       IF rasters AND 3

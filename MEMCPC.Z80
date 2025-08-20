@@ -1,6 +1,6 @@
 ; << Memory bank handling for ayane >>
 ; CPC specific PAGING (out &7fxx,&cX)
-; 2025 Jun 9: Allow C1 connection
+; 2025 Jun 20: jump table
 
 dev_checks = 1
 todo  = 1
@@ -14,6 +14,28 @@ mess  = &BE00
 bk_connected = &3C
 ;3d reserved (MSB bk).  !!!! Not used for now.
 ;3e 3f free
+
+memcpc_code
+          jp set_sp_backup
+          jp reset_sp
+          6 ** BRK
+          12 ** BRK
+      IF 0
+          jp connect_bk_base
+          jp connect_bk_track
+          jp connect_bk_phrase
+          jp connect_bk_instr
+          jp connect_bk_io
+          jp connect_a
+          jp connect_b
+          jp connect_c
+          jp connect_l
+          jp scope_bk_base
+          3 ** BRK
+          jp scope_bk_phrase
+          6 ** BRK
+          jp get_bk_connected
+      END
 
 ;----------------------------
 ; ---- Main work bank ------
@@ -125,6 +147,25 @@ scope_bk_phrase
           call connect_bk_phrase
           jr _jump
 
+
+set_sp_backup
+;------------
+; Must be called at init time
+          pop hl        ; correct sp (caller's value)
+          ld (save_sp+1),sp
+          jp hl
+
+reset_sp
+;------- 
+          pop hl
+      IF dev_checks
+          push af
+          ld a,(save_sp+2)
+          cp &BF:call nz,mess ; set_sp_backup must have been called
+          pop af
+      END
+save_sp   ld sp,0
+          jp hl
 
 ;----------------------------------------
 ; ---- Checks related to CPC Paging ----

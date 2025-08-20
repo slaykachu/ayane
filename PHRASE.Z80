@@ -1,21 +1,17 @@
 ; ====== Handling of phrases and rows ======
+; 2025
+; Aug 8 v0.0ai set row_set_vol_encoded     ; for salo
+             ; s/song_reset/phrase_reset
 ; v0.0ac 5 Mar 2025
 dev_checks = 1
 todo  = 1
 makeroom = 1
 
-; 2025
-  ; Mar 29: Add song_get_phrases#
-  ; Mar 18: Remove tmp dbg
-
-; Table Of Content (to be completed). 
-; In Orgams: Use CONTROL-ENTER to jump to routine and see I/O API.
-
 ; -------------------------------------------------------------
 ; --- Song handling ---
 ; This are the highest level routines
 ; -------------------------------------------------------------
-  ; song_reset
+  ; phrase_reset
   ; song_select_new_phrase
   ; song_select_phrase
   ; Get_phrase
@@ -47,39 +43,6 @@ makeroom = 1
   ; row_get_vol
   ; row_set_instr
   ; row_get_instr
-
-; 2024                  
-; ----- v0l ------
-  ; Jun  
-    ;24 Add /row_get_instr/
-          ; /phrase_get_row_position/
-    ;17 Add /phrase_set_params/
-    ;13 phrase_def: adapt to new header packing, add checks
-; ----- v0i ------
-  ; Mai
-    ;15: fix phrase_get_row_at
-       ; Add /phrase_select_row_at/ Simpler API:
-           ; - Allow to introduce first row at tick > 0
-           ; - Simpler for chip.o to set single row whose duration
-                 ; is the whole phrase (we juste leave duration 0)
-       ; [cosmetic] Remove /va_current_row/: ill defined, and not used!
-       ; [cosmetic] Remove /va_row_bk/, since all phrases in same bank.
-
-; ----- v0h ------
-  ; Apr  
-    ;29: Get_phrase: don't assert for non-existing phrase.
-    ;12: song_select_phrase: clarify API and allow non-existing phrase.
-       ; Get_phrase: idem
-    ;11: Get_phrase: return pointer instead of ID with bank
-       ; song_select_new_phrase: register passed phrase#
-       ; remove va_phrases#: YAGNI.
-    ; 8: Move ayane_init in init.o
-    ; 3: song_select_new_phrase: take A= ID
-       ; is_end_of_phrase: fix test.
-       ; phrase_get_duration: cannot use _postlude as we must return BCD
-    ; 1: Extract from chung
-       ; -> Clearer, notably regarding bank connection
-           ; (we must connect BK_PHRASE, not BK_BASE)
 
       IMPORT "const.i"
       IF todo
@@ -131,6 +94,7 @@ va    = &7C00
   ; dynamically.
       END
 
+     ;     60 ** BRK     ; room for JPs
 
 ;==============================================
       MACRO INIT_LENGTH
@@ -170,8 +134,8 @@ not_supported = &BE00
 to_be_implemented = &BE00
 ;==============================================
 
-song_reset
-;---------
+phrase_reset
+;-----------
           call connect_bk_phrase
           ld a,delai_ui_default
           call set_delai_ui
@@ -625,13 +589,14 @@ row_get_note
           jp _postlude
 
 row_set_vol
-;-----------
+;----------
 ; in: A= volume (F=max)
 ;out: A as encoded
-
+          cpl:add 15+1  ; Negative. 0=max 15=mute
+row_set_vol_encoded     ; for salo
+;------------------
           call _prelude
           call connect_current_row_skip_length
-          cpl:add 15+1  ; Negative. 0=max 15=mute
           bit bit_vol,(hl)
           push af
           call skip_fx_ins
@@ -1783,6 +1748,7 @@ _header
           CHECK_FIELD(_header,fc_index)
 phrase_idx BYTE 
           CHECK_FIELD(_header,fc_type)
+type_phrase = 1
       BYTE type_phrase
           CHECK_FIELD(_header,fc_name)
       WORD 0            ; Pnt name. Unused for now
