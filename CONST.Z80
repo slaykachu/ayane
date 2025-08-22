@@ -169,6 +169,56 @@ y_pos_instr_ed = 6
 x_pos_instr_ed = 8
 ;-------------------------
 
+; --------------------------
+; Key codes.
+; k: normal key
+; kc: with ctrl
+; ks: with shift
+; --------------------------
+
+kreturn = &0D           ;default
+kclr  = &10
+kc1   = &1B             ;defaut on AZERTY, set to QWERTY as well
+kc2   = &7E             ;default
+kdel  = &7F             ;default
+kcfdot = &8A            ;default?
+kcenter = 140           ;default
+kcreturn = 141
+kcdel = 142
+kcspc = 143
+kc4   = 144
+kcpercent = 145
+kcstar = 146
+kcm   = 147             ; remap from 13 (RETURN)
+kcp   = 148             ; remap from 10 (CLR)
+ktab  = 149             ; remap from  9 (CTRL-I)
+kcf   = 150
+; ... to 159 (ctrl-function keys)
+ksdel = 160             ; field.o
+ksclr = 161
+kc5   = 162
+kc6   = 166             ;defaut on AZERTY, set to QWERTY as zell
+;Map functions keys to custom code, so they are not interpreted
+;as numbers
+kf    = 170
+; ... to 179
+
+kcopy = &E0             ; default
+
+;--Same as default--
+kup   = &F0
+kdwn  = &F1
+klft  = &F2
+krgt  = &F3
+
+kcup  = &F8
+kcdwn = &F9
+kclft = &FA
+kcrgt = &FB
+
+kesc  = &FC
+
+
 ;---
 km_wait_key = &BB18
 

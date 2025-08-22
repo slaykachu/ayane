@@ -1,5 +1,12 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
-;Aug         
+;Aug       
+; -- v0al -- 
+  ;22 multiline_top: don't refresh if line_at_top already 0
+    ; multiline_bottom: don't scroll if line reachable
+  ;21 Don't validate if not modified
+    ; Add multiline_del to handle scroll up when last line
+    ; Remove check Z when event returns Carry
+; -- v0ak --  
   ; 5 multiline_up: fix invalid check
   ; 4 toggle_char_off = " "  (less crowed in screen)
   ; 3 Remove export flag (rotten code) 
@@ -40,6 +47,7 @@ enable = 0
 ; key_* Key handlers              
 ; ---------------------------------------
 
+      IMPORT "const.i"
       IMPORT "field.o"
       IMPORT "conv.o"
 
@@ -57,19 +65,7 @@ fail  = &BE00
 ev_child_exit = &80     ; Warning might conflict with shortcuts
 ev_refresh = &81
 ;Note: they are defined in shortcut.o but we don't import that!
-k_esc = &FC
-k_up  = &F0
-k_dwn = &F1
-k_lft = &F2
-k_rgt = &F3
-k_del = &7F
-k_clr = &10
-kc_up = &F8
-kc_dwn = &F9
-kc_lft = &FA
-kc_rgt = &FB
-kc_f0 = 150
-kc_fdot = &8A
+; k_esc and co in const.i
 
 break = &BE00
 
@@ -209,7 +205,7 @@ on_enter WORD
      ; Carry: Do nothing
      ; NC, A=event to trigger.
 
-on_exit WORD 
+on_validate WORD 
  ; Push changed value into 'model', via /validate/. ?NOT?? called if ESC
  ;   in: hl= nt string
  ;   rational: - simplest common interface
@@ -240,6 +236,7 @@ handler_table WORD
       ENDM
 
       MACRO ENTER_COMMON
+          xor a:ld (is_modified),a
           call clean_edit_buffer
           call setup_field_editor
           call call_state_on_enter
@@ -337,8 +334,8 @@ call_state_on_enter
 call_state_get_width
           ld c,get_width
           jr _call_state
-call_state_on_exit
-          ld c,on_exit
+call_state_on_validate
+          ld c,on_validate
           jr _call_state
 call_state_get_line#
       IF get_line# - param2
@@ -558,6 +555,10 @@ _check_in_focus
           ld c,idx
           call read_table_param_com
       ENDM
+
+; Hack: needed to reset X position (at start of field)
+      ; Note: updated in update_cur_y
+          call reset_cursor_from_widget_location
 
 call_param_com
           push hl
@@ -798,16 +799,24 @@ gedeihen_process
           jr nc,.ti_unhandled
 ; Cf /handler_table/ for flags API
       IF todo
-; According to new api, we should RET unconditionaly
-      END
+;Cleanup
+      IF 1
+          ret
+      ELSE
+; placeholder for considering API:
+; C + Z : handled
+; C + NZ : handled, but pass to parent
+; YAGNI 
           ret z
       BRK
           cp ev_child_exit:call nz,&BE00
+      END
 
 ; Pass event to parent, avoid infinite loop in case of misconfiguration.
 ; Also, self-event can be handled directly.
           ld e,a
           jr .ti_parent
+      END
 
 .ti_unhandled
 ; Exit. Needed to e.g. validate cell before going down next line.
@@ -821,7 +830,7 @@ gedeihen_process
           ld hl,(state_sp)
           ld de,(state_sp_handler)
           or a:sbc hl,de:add hl,de
-          call z,validate ; on_exit + refresh without focus
+          call z,maybe_validate ; validate + refresh without focus
           pop af
 ; Try parent                    
 .ti_parent
@@ -886,6 +895,13 @@ process_key_custom
           ld a,e
           ret
 
+maybe_validate
+          ld a,(is_modified)
+          or a
+          jr nz,validate
+          call clean_edit_buffer
+          jp refresh_nofocus ;Todo here?
+
 validate
 ; Must only be called for widget in focus:
   ; - I don't see any use case where we should validate wrapper
@@ -902,7 +918,7 @@ validate
  ; We could temporarily set state_sp_handler to state_sp,
  ; but that adds unnecessary code.
  ;       CHECK_IN_FOCUS()
-          call call_state_on_exit
+          call call_state_on_validate
 ;We reset the buffer to display from model, not from existing field
 ;Otherwise when entering out-of-range value (e.g. 5000 for pitch),
 ;it would still display 5000 instead of the clipped value (4095)
@@ -912,6 +928,7 @@ validate
 validate_hook jp noop
 
 display_child
+;------------
 ; In: hl = child description pnt
           push hl
           ld hl,(state_sp)
@@ -1854,19 +1871,35 @@ struct_sub_width
 
 multiline_up
 ;-----------
-          ld hl,(state_sp)
+          call _ml_prelude
           push hl
+          call _ml_up
+          jr z,multiline_stay
+          jr nc,_multiline_reenter
+;scroll down
+          GET_STATE_BYTE(line_at_top)
+          dec a
+          jp _multiline_scroll_com
+
+_ml_prelude
+;Out: hl = cur state of focus 
+          ld hl,(state_sp)
 ; Hack: needed to reset X position (at start of field)
       ; Note: updated in update_cur_y
           call reset_cursor_from_widget_location
           call rewind_state
+          ret
+
+_ml_up
+; OUT: Z: nothing more to do
+     ;NZ, NC: just update y  (A = new value)
+     ;NZ,  C: must scroll
+
 ;Decrement model's line
           call get_current_line_number
           or a
-          jr z,multiline_stay
+          ret z
 ;ok line      
-          dec a
-          call call_state_select_line
 ;Now view itself    
           GET_STATE_BYTE(cur_y)
           ld c,a
@@ -1876,18 +1909,21 @@ multiline_up
           GET_STATE_BYTE(scroll_offset)
 ; Scroll if offset >= cur_y 
           cp c
-          jr nc,.multiline_scroll_down
+          jr c,.okview
+
+; must scroll
+          scf:sbc a     ; NZ, C
+          ret
+
 .okview
           ld a,c
           or a
-          jr z,multiline_stay
+          ret z         ; can it happen?
+;just update y     
           dec a
-          jr _multiline_update_cur_y
-
-.multiline_scroll_down
-          GET_STATE_BYTE(line_at_top)
-          dec a
-          jp _multiline_scroll_com
+          call update_cur_y
+          xor a:inc a   ; NZ, NC
+          ret
 
 
 multiline_stay
@@ -1898,12 +1934,8 @@ multiline_stay
           ret
 
 multiline_dwn
-          ld hl,(state_sp)
+          call _ml_prelude
           push hl
-; Hack: needed to reset X position (at start of field)
-      ; Note: updated in update_cur_y
-          call reset_cursor_from_widget_location
-          call rewind_state
 ;Increment model's line    
           call call_state_get_line#
           ld b,a
@@ -1957,44 +1989,52 @@ _multiline_scroll_com
           jr _multiline_reenter
 
 multiline_ctrl_up
-          ld hl,(state_sp)
+          call _ml_prelude
           push hl
           call reset_cursor_from_widget_location
           call rewind_state
-          GET_STATE_BYTE(line_at_top)
-          ld b,a
-          GET_STATE_BYTE(view_height)
+          call _ml_ctrl_up
+          jr _multiline_scroll_com
+
+_ml_ctrl_up
+; A = line_at_top - height, witch clipping and may move cursor:
+                    ; e.g. to top if line_at_top was 0
+;Out: A = new line_at_top
+
+          call get_top_and_height
           ld c,a
-; If top < h, cur_y -= h-top (clipped)   (also work if top = h)
-          sub b
+          ld a,b
+; If top (c) < hei (b), cur_y -= hei-top (clip) (also work if top = hei)
+          sub c
           jr c,.oky
           ld l,a
           GET_STATE_BYTE(cur_y)
           sub l:jr nc,$+3:xor a
           call update_cur_y
 .oky
-          ld a,b
-          or a
+          ld a,c
+          sub b
+          ret nc
+          xor a         ; clip
+          ret
 
-          sub c
-          jr nc,$+3:xor a ; clip
-
-          jr _multiline_scroll_com
+get_top_and_height
+;Out: A=top  B=height
+          GET_STATE_BYTE(view_height)
+          ld b,a
+          GET_STATE_BYTE(line_at_top)
+          ret
 
 multiline_ctrl_dwn
-          ld hl,(state_sp)
+          call _ml_prelude
           push hl
-          call reset_cursor_from_widget_location
-          call rewind_state
           call call_state_get_line#
       IF dev_checks
           or a:call z,fail ; We don't handle empty structure
       END
           dec a
           ld c,a
-          GET_STATE_BYTE(view_height)
-          ld b,a
-          GET_STATE_BYTE(line_at_top)
+          call get_top_and_height
           cp c
           jp z,multiline_stay
           add b
@@ -2003,32 +2043,79 @@ multiline_ctrl_dwn
           jr _multiline_scroll_com
 
 multiline_top
-          ld hl,(state_sp)
+          call _ml_prelude
           push hl
-          call reset_cursor_from_widget_location
-          call rewind_state
+          GET_STATE_BYTE(line_at_top)
+          or a
+          jr z,_multiline_update_cur_y ; Send a=0
+;scroll
           xor a
           call update_cur_y
-          xor a
           jr _multiline_scroll_com
 
 multiline_bottom
-          ld hl,(state_sp)
+; If bottom reachable, just update cur_y
+; Otherwise, scroll such that 
+          call _ml_prelude
           push hl
-          call reset_cursor_from_widget_location
-          call rewind_state
-          GET_STATE_BYTE(cur_y)
-          ld b,a
-          push bc
           call call_state_get_line#
-          pop bc
-          scf:sbc b
-      IF dev_checks
-;We cannot have cur_y >= line#
-          call c,fail
-      END
+          ld c,a        ; line to reach + 1
+          call get_top_and_height
+          add b         ; last line in view + 1
+;reach < last+1  equilavent to last+1 >= reach+1
+          sub c
+          jr c,.scroll
+;We want cur_y := reach-top = reach-(last+1-hei)
+;here A = (last+1) - (reach+1)
+          cpl           ; neg:dec a
+          add b
+          jp _multiline_update_cur_y
+.scroll
+;We want cur = hei-1
+          ld a,b:dec a
+          SET_STATE_BYTE(cur_y)
+       ; top = reach+1 - hei
+;hence top+cur = reach (invariant)
+          ld a,c:sub b
           jp _multiline_scroll_com
 
+
+multiline_del
+;Handle the UI part of del: cursor up if last line
+          call _ml_prelude
+          push hl
+          call get_current_line_number
+          push af
+          call call_state_get_line#
+      BRK
+          pop bc
+          inc b
+          cp b
+          jr nz,.oklast ; not last!
+
+;Like multiline_up, without refresh if scroll
+          call _ml_up
+          jr z,.oklast
+      IF 0
+; prev page
+; oups, no, cannot do that, as we use /scroll_offset/ to detect if we
+; must scroll. Going to prev page before line_at_top
+; we may not be able to reach cur line
+          call c,_ml_ctrl_up
+      ELSE
+; scroll down
+          jr nc,.oklast
+          GET_STATE_BYTE(line_at_top)
+          sub 1:adc 0   ; dec a with clip
+          SET_STATE_BYTE(line_at_top)
+      END
+.oklast
+          pop hl
+          call set_state_sp
+;Model change and refresh still by client, so we must pass the code
+          ld a,kcdel
+          or a
+          ret
 
 update_cur_y
 ; Update cur_y and cursor Y (hack)
@@ -2050,9 +2137,9 @@ update_cur_y
           CALL_STATE_EXT(set_cursor)
 
 ; Updated embedded widget's Y location 
+; Necessary when refresh is used (other wrong line got refreshed)
 ; Not sufficient: we should update all nested widgets
                 ; e.g. struct, refresh, field.
-; Necessary when refresh is used (other wrong line got refreshed)
           call push_state
           pop af
           SET_STATE_BYTE(widget_pos_y)
@@ -2090,7 +2177,7 @@ delegate_set
           GET_STATE(embedded_ui)
           call clone_state
           call _setup_widget
-          call call_state_on_exit
+          call call_state_on_validate
           pop hl
           call set_state_sp
           pop hl
@@ -2510,6 +2597,8 @@ set_deci_custom
         ; would cause an asset in field_editor
     ; (well, tbh, the solution to that would be to reset cursor as well)
        ;   call clean_edit_buffer
+;Enchaine
+do_set_byte
           JP_STATE(byte_setter)
 
 set_deci_word_custom
@@ -2517,8 +2606,15 @@ set_deci_word_custom
 ; todo: _buffer_to_deci_byte must handle "-"
           call _buffer_to_deci_word
           ret nc
+;enchaine
+do_set_word
           JP_STATE(word_setter)
 
+set_modified
+          push af
+          ld a,1:ld (is_modified),a
+          pop af
+          ret
 
 set_hexa_byte
           call _buffer_to_hexa_byte
@@ -2531,7 +2627,7 @@ set_hexa_custom
           call _buffer_to_hexa_byte
           ret nc
           ld a,c
-          JP_STATE(byte_setter)
+          jp do_set_byte
 
 set_toggle_custom
 ; Nothing to do on exit, as it is done on /key_toggle/
@@ -2672,7 +2768,11 @@ key_toggle
           add &FF
           sbc a
           cpl
-          CALL_STATE(byte_setter)
+          call do_set_byte
+      IF 0
+; No need as we can validate ourselves
+          call set_modified
+      END
 ;---hackish
           call validate ; needed to trigger refresh if flagged 
           call refresh_focus ; needed to put back cursor
@@ -2814,19 +2914,20 @@ h_krefresh
 
 h_kstruct
       BYTE ev_child_exit:WORD struct_rgt ; esc: like k_rgt
-      BYTE k_lft:WORD struct_lft
-      BYTE k_rgt:WORD struct_rgt
-      BYTE kc_lft:WORD struct_first
-      BYTE kc_rgt:WORD struct_last
+      BYTE klft:WORD struct_lft
+      BYTE krgt:WORD struct_rgt
+      BYTE kclft:WORD struct_first
+      BYTE kcrgt:WORD struct_last
       BYTE 0:WORD 0
 
 h_kmultiline
-      BYTE k_up:WORD multiline_up
-      BYTE k_dwn:WORD multiline_dwn
-      BYTE kc_up:WORD multiline_ctrl_up
-      BYTE kc_dwn:WORD multiline_ctrl_dwn
-      BYTE kc_f0:WORD multiline_top
-      BYTE kc_fdot:WORD multiline_bottom
+      BYTE kup:WORD multiline_up
+      BYTE kdwn:WORD multiline_dwn
+      BYTE kcup:WORD multiline_ctrl_up
+      BYTE kcdwn:WORD multiline_ctrl_dwn
+      BYTE kcf+0:WORD multiline_top
+      BYTE kcfdot:WORD multiline_bottom
+      BYTE kcdel:WORD multiline_del
       BYTE 0:WORD 0
 
 h_key_handler
@@ -2849,9 +2950,9 @@ fe_selected = $+1
           ld e,0        ;selected
           bit 7,e:jr z,.go
 ; Special case: if selected (whole field in inverse video),
-  ; we don't want k_lft to go left inside field (like orgams), 
+  ; we don't want klft to go left inside field (like orgams), 
   ; but instead go to previous field
-          cp k_lft
+          cp klft
           jr nz,.go
           or a          ; nc, nz
           ret
@@ -2877,6 +2978,7 @@ fe_pos = $+1
           ret
 
 .modified
+          call set_modified
           push bc
 ; -- display edited text. Don't use refresh* / widget's display:
    ; - it would read back model's value (since current not validated)
@@ -3173,6 +3275,8 @@ txt_place_cursor = &BB8A
 
 flag_init BYTE 0        ; For sanity check
 sign_init = &BB         ; arbitrary marker
+
+is_modified BYTE 0
 
 ; TODO: init with def?  
 state_sp WORD state_stack

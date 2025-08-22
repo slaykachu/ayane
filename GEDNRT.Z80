@@ -7,7 +7,11 @@ todo_wrong_chr = 0
 
 ; -- 2025 --       
  ; --- Ayane 0ai ----
-; Aug:                       
+; Aug 
+  ;22: Add test_multiline_focus
+     ; Add test_delete_first_line
+  ;21: Add test_delete_last_line
+     ; Add test_no_validate_when_not_touched
   ; 5: Add test_multiline_margin
   ; 4: Celebration! Add test_disp_sep
  ; --- Ayane 0ah ----
@@ -37,7 +41,9 @@ iotest_screen' = &8800  ; Sprites in screen (1 word / pos)
 keys_buffer = &8C00
 iotest_cursor_seq = &9000
 
+      IMPORT "const.i"
       IMPORT "ged.o"
+
 
       MACRO ASSERT_NOT p
       IF p
@@ -59,9 +65,11 @@ tests
 ; Otherwise, a BRK is trigerred.
 
           ld a,&F7:ld (0),a
-          call test_multiline_margin
+          call test_delete_last_line2
       BRK
-
+          call test_delete_last_line3
+          call test_delete_last_line4
+      BRK
 ; --- test helpers ---
           call test_field_editing
 
@@ -182,6 +190,7 @@ tests
           call test_set_struct_vol_env
           call test_set_struct_optional_readwrite
           call test_set_struct_optional_readwrite'
+          call test_no_validate_when_not_touched
           call test_set_multiline_refresh0
           call test_set_multiline_refresh
           call test_set_multiline_refresh'
@@ -197,6 +206,13 @@ tests
           call test_multiline_margin
           call test_multiline_goto_top
           call test_multiline_goto_bottom
+          call test_multiline_goto_bottom'
+          call test_multiline_focus
+          call test_delete_first_line
+          call test_delete_last_line
+          call test_delete_last_line2
+          call test_delete_last_line3
+          call test_delete_last_line4
 
           call test_random_keys
 ; Not handled !!
@@ -269,22 +285,30 @@ tests
           call _reset_nrt_mock
       ENDM
 
+k_lft = klft
+k_rgt = krgt
+k_up  = kup
+k_dwn = kdwn
+k_clr = kclr
+k_del = kdel
 fail  = &BE00
+kc_dwn = kcdwn
+kc_up = kcup
 
 test_field_editing
 ; Check API: unhandled code must be returned in A
-          ld a,k_dwn
+          ld a,kdwn
           call field_editing
           call c,fail   ; expect unhandled
-          cp k_dwn:call nz,fail
+          cp kdwn:call nz,fail
 
 ; -- Bonus: k_rgt at end of field must be unhandled as well
           xor a:ld (wv_edit_buffer),a
           ld a,-1:ld (fe_pos),a ; end pos
-          ld a,k_rgt
+          ld a,krgt
           call field_editing
           call c,fail
-          cp k_rgt:call nz,fail
+          cp krgt:call nz,fail
           ret
 
 test_flow_struct_refresh_optional_readwrite0
@@ -791,7 +815,7 @@ env_type_hexa_ui
       WORD _get_env_type
 
 env_type_handler
-      BYTE k_clr:WORD _deactivate_env
+      BYTE kclr:WORD _deactivate_env
       BYTE " ":WORD _toggle_env
       BYTE 0:WORD 0
 
@@ -971,6 +995,24 @@ ui_multiline'
       BYTE 6            ; Height
       BYTE 2            ; scroll offset (margin)
 
+ui_handler_multiline
+      BYTE w_key_handler
+      WORD ui_multiline_refresh
+      WORD nrt_handler_del
+
+nrt_handler_del
+      BYTE kcdel:WORD nrt_delete
+      BYTE 0:WORD 0
+
+nrt_delete
+          ld hl,nrt_lines#:dec (hl)
+; Don't update nrt_hexa_digit_lines itself, nevermind
+; Just refresh like instrui
+          ld hl,state_stack
+          call force_refresh_custom
+          call enter
+          scf
+          ret
 
 ui_multiline_refresh
       BYTE w_multiline
@@ -1294,8 +1336,20 @@ test_disp_struct_deci
       ENDM
 
       MACRO TEST_MULTILINE_SCROLL test_data
+; Like /TEST_RUN/ but check widget's line_at_top and cur_y
           ld de,test_data
+; Pretend models has 10 lines
+          ld a,10
           call _check_multiline_scroll
+      ENDM
+
+      MACRO TEST_MULTILINE_CUSTOM ui,test_data
+; Like /TEST_MULTILINE_SCROLL/ with custom ui
+          ld hl,ui
+          ld de,test_data
+; Pretend models has 10 lines
+          ld a,10
+          call _check_multiline_custom
       ENDM
 
       MACRO END_OF_NRT_SEQUENCE
@@ -2164,6 +2218,33 @@ test_set_nested_struct
       BYTE "+12 +3456 07 Piou 08",nrtend
       END
 
+test_no_validate_when_not_touched
+;--------------------------------
+          TEST_RUN(.ui,.seq)
+          ret
+
+.seq  BYTE k_rgt,k_lft
+          END_OF_NRT_SEQUENCE()
+      BYTE "17 17",nrtend
+
+
+.ui   BYTE w_struct
+      WORD noise_value_ui
+      WORD noise_value_ui
+      WORD 0
+
+noise_value_ui
+      BYTE w_deci_99_custom
+      WORD _set_noise_value
+      WORD _get_noise_value
+
+_set_noise_value
+      BRK
+; Musn't be called
+_get_noise_value
+          ld a,17
+          ret
+
 test_set_multiline_optional
 ;--------------------------
 ; Just enter
@@ -2252,7 +2333,7 @@ test_multiline_goto_top
 ;----------------------
           TEST_MULTILINE_SCROLL(.seq)
           ret
-.seq  BYTE k_dwn,kc_f0
+.seq  BYTE k_dwn,kcf+0
           END_OF_NRT_SEQUENCE()
       BYTE 0,0
 
@@ -2260,9 +2341,81 @@ test_multiline_goto_bottom
 ;--------------------------
           TEST_MULTILINE_SCROLL(.seq)
           ret
-.seq  BYTE k_dwn,kc_fdot
+.seq  BYTE k_dwn,kcfdot
           END_OF_NRT_SEQUENCE()
-      BYTE 8,1
+      BYTE 6,3          ; Cur on last line of view
+
+test_multiline_goto_bottom'
+;--------------------------
+; When line in view, musn't change page.
+
+          ld de,.seq
+; Pretend models has 4 lines
+          ld a,4
+          call _check_multiline_scroll
+          ret
+.seq  BYTE kcfdot
+          END_OF_NRT_SEQUENCE()
+      BYTE 0,3
+
+
+test_multiline_focus
+;-------------------
+; Prerequisite for test_delete_first_line
+          ld hl,&0C0A:ld (nrt_hexa_digit_lines),hl
+          TEST_RUN_FOCUS(ui_handler_multiline,.seq)
+          ret
+.seq  BYTE kdwn
+          END_OF_NRT_SEQUENCE()
+;model wasn't update, so we must have same lines
+      BYTE "A",nrt_nl
+          FOCUS("C"):BYTE nrtend
+
+test_delete_first_line
+;---------------------
+;Check refresh post del, as instrui
+          ld hl,&0B09:ld (nrt_hexa_digit_lines),hl
+          TEST_RUN_FOCUS(ui_handler_multiline,.seq)
+          ret
+.seq  BYTE kcdel
+          END_OF_NRT_SEQUENCE()
+;model wasn't update, so we must have same lines
+          FOCUS("9"):BYTE nrt_nl
+      BYTE "B",nrtend
+
+test_delete_last_line
+;--------------------
+          TEST_MULTILINE_SCROLL(.seq)
+          ret
+.seq  BYTE kcfdot,kcdel
+          END_OF_NRT_SEQUENCE()
+      BYTE 6,2
+
+test_delete_last_line2
+;--------------------          
+;Must use UI that updates nrt_lines# on del
+          TEST_MULTILINE_CUSTOM(ui_handler_multiline,.seq)
+          ret
+.seq  BYTE kcfdot:FILL 2,kcdel
+          END_OF_NRT_SEQUENCE()
+      BYTE 6,1
+
+test_delete_last_line3
+;--------------------
+          TEST_MULTILINE_CUSTOM(ui_handler_multiline,.seq)
+          ret
+.seq  BYTE kcfdot:FILL 3,kcdel
+          END_OF_NRT_SEQUENCE()
+      BYTE 5,1          ;scroll up
+
+test_delete_last_line4
+;---------------------
+;delete 4 last lines
+          TEST_MULTILINE_CUSTOM(ui_handler_multiline,.seq)
+          ret
+.seq  BYTE kcfdot:FILL 4,kcdel
+          END_OF_NRT_SEQUENCE()
+      BYTE 5,0
 
 
 test_toggle
@@ -2628,7 +2781,7 @@ test_focus_struct_ctrl_right
           ld a,&0B:ld (nrt_hexa_digit),a
           TEST_RUN_FOCUS(ui_struct_3fields,.seq)
           ret
-.seq  BYTE kc_rgt
+.seq  BYTE kcrgt
           END_OF_NRT_SEQUENCE()
       BYTE toggle_char_off," +28 "
           FOCUS("B")
@@ -2640,7 +2793,7 @@ test_focus_struct_ctrl_right'
           xor a:ld (dummy_byte),a ; toggle off
           TEST_RUN_FOCUS(ui_struct_many_fields,.seq)
           ret
-.seq  BYTE kc_rgt
+.seq  BYTE kcrgt
           END_OF_NRT_SEQUENCE()
           ctrl_rgt_nb_fields ** BYTE toggle_char_off," "
           FOCUS(toggle_char_off)
@@ -2728,8 +2881,8 @@ test_focus_multiline_struct_refresh
           call compare_display_focus
           ret
 
-.seq  BYTE k_rgt
-      BYTE k_esc
+.seq  BYTE krgt
+      BYTE kesc
           END_OF_NRT_SEQUENCE()
       BYTE "1 ":FOCUS(" "):FOCUS("+"):FOCUS("5"):END_OF_STRUCT()
       BYTE nrt_nl
@@ -3055,17 +3208,16 @@ _test_run_focus
           ret
 
 _check_multiline_scroll
-; Like /_test_run/ but check widget's line_at_top and cur_y
+          ld hl,ui_multiline_refresh'
+;In a = nb lines
+_check_multiline_custom
+          ld (nrt_lines#),a
           ld (nrt_sequence_pnt),de
-
-; Pretend models has 10 lines
-          ld a,10:ld (nrt_lines#),a
 
 ;We won't check that, but must be sensible pnt
           ld de,iotest_cursor_seq
           ld (iotest_drawncursor_p),de
 
-          ld hl,ui_multiline_refresh'
           push hl
           call gedeihen_init
           call gedeihen_set_hooks_nrt

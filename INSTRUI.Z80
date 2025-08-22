@@ -1,7 +1,12 @@
 ; <<<<<<<< Instrument editor >>>>>>>>>
 
 ; 2025                           
- ; Aug                
+ ; Aug      
+ ; -- v0al --
+   ; 21 deactivate main r13 when there is buzz
+      ; _del_row: cursor up if it's the last
+   ; 20 Fix sep after retrig          
+ ; -- v0ak --          
    ; 07 smarter flip-flops for volume and co 
           ; e.g. activating sync buzz automatically set hard env
    ; 04 instr_row_ui: Add separators
@@ -75,6 +80,7 @@ instr_ui'
       BYTE 2            ; scroll offset (margin)
 
 ui_get_rows#
+;Return in A for ged and C for _del_row
           call instr_get_rows#
           ld a,c
           ret
@@ -96,7 +102,13 @@ extra_handler
       BYTE 0:WORD 0
 
 _del_row
+          call ui_get_rows#
+          dec a
+          scf
+          ret z         ; don't del if only one line
+      BRK
           ld a,(selected_line)
+          ld b,a
           call del_row
           jr _refresh
 
@@ -208,7 +220,7 @@ instr_row_ui
       WORD env_arp_ui
       WORD env_pitch_ui
       WORD env_retrig_ui
-      WORD sep2_ui
+      WORD sep1_ui
       END
       WORD fx0_type_ui
       WORD fx0_env_ui
@@ -257,7 +269,7 @@ vol_ui'''
       WORD _set_vol
       WORD _get_vol
 vol_handler
-      BYTE k_clr:WORD _toggle_vol
+      BYTE kclr:WORD _toggle_vol
       BYTE " ":WORD _toggle_vol
       BYTE 0:WORD 0
 
@@ -294,14 +306,14 @@ env_type_ui''
            ;but must be able to change it)
       BYTE w_optional_readwrite
       WORD env_type_ui'''
-      WORD is_env_hard
+      WORD is_pure_env_hard
 env_type_ui'''
       BYTE w_hexa_digit_custom
       WORD _set_env_type
       WORD _get_env_type
 
 env_type_handler
-      BYTE k_clr:WORD _deactivate_env
+      BYTE kclr:WORD _deactivate_env
       BYTE " ":WORD _toggle_env
       BYTE 0:WORD 0
 
@@ -516,9 +528,26 @@ _toggle_vol
 is_volume
 ;          ld a,(row_buffer+instr_vol):bit 0,a:call nz,&BE00
           ld a,(row_buffer+instr_vol):cpl:and flags_env_hard:ret
+
+is_pure_env_hard
+; when buzz activated, the main r13 doesn't make sense
+          call is_env_hard
+          or a:ret z
+          call has_fx0_or_fx1
+;Enchaine
+not_a
+;Negate zero/non-zero
+          or a:jr z,.set1
+          xor a
+          ret
+.set1
+          inc a
+          ret
+
 is_env_hard
 ;A non zero if yes
           ld a,(row_buffer+instr_vol):and flags_env_hard:ret
+
 _deactivate_env
           ld hl,row_buffer+instr_vol
           ld a,(hl):and flags_env_hard XOR &3F:ld (hl),a
@@ -681,8 +710,14 @@ _set_fx1_type
           call _fx1_type_pnt
           jr _set_fx_type
 
+has_fx0_or_fx1
+;A = non-zero if set
+          call has_fx0
+          or a
+          ret nz
+;enchaine
 has_fx1
-;NZ if yes  (for now coincide with _get_fx0_type used for toggle)
+;(for now coincide with _get_fx1_type used for toggle)
 _get_fx1_type
 ;For now, just toggle
 ;A = non-zero if set
