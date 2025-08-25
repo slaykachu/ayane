@@ -2,6 +2,8 @@
 
 ; 2025                           
  ; Aug      
+ ; -- v0am --
+   ; 24 Inverse pitch for user comfort (+N= higher pitch)
  ; -- v0al --
    ; 21 deactivate main r13 when there is buzz
       ; _del_row: cursor up if it's the last
@@ -76,64 +78,51 @@ instr_ui'
       WORD instr_row_ui
       WORD ui_get_rows#
       WORD ui_select_row
+      WORD _insert_row
+      WORD _del_row
       BYTE 8            ; Height
       BYTE 2            ; scroll offset (margin)
 
 ui_get_rows#
-;Return in A for ged and C for _del_row
+;Return in A for ged 
           call instr_get_rows#
           ld a,c
           ret
 
 ui_select_row
-          ld (selected_line),a
+          ld (selected_line),a ; simpler than to ask back ged
           call select_row
-          ld de,row_buffer
-          call get_row
-;          ld a,(selected_line):cp 2:call z,&BE00
-          scf           ; Carry means ok
+          ld de,row_buffer:call get_row
+          scf           ; OK
           ret
 
 extra_handler
-      BYTE 13:WORD _insert_row
-      BYTE kcdel:WORD _del_row
       BYTE kf+5:WORD _instr_down_refresh ; f5
       BYTE kf+8:WORD _instr_up_refresh ; f8
       BYTE 0:WORD 0
 
 _del_row
-          call ui_get_rows#
-          dec a
-          scf
-          ret z         ; don't del if only one line
-      BRK
-          ld a,(selected_line)
-          ld b,a
-          call del_row
-          jr _refresh
+;IN: A = line to delete   
+          push af
+          call instr_get_rows#
+          or a          ; NC
+          dec c
+          pop bc
+          ret z         ; NC: don't del if only one line 
+
+          call del_row  ; in: B= row#  
+          scf           ; del_row mustn't fail!
+          ret
 
 _insert_row
-;Clone row
+;In: A: line to insert
+;Clone row                           
+          push af
           ld de,row_buffer:call get_row
-          ld a,(selected_line)
+          pop af
           call insert_empty_row
           ld de,row_buffer:call instr_set_row
-;enchaine
-_refresh
-;Refresh from root
-          ld a,(selected_line):push af
-          ld hl,state_stack
-          call force_refresh_custom
-;Hackish: selected_line was changed for disp
-        ; (since calling ui_select_row)
-          pop af:ld (selected_line),a
-;For cursor (use refresh_focus instead?)
-;Cannot use gedehein_enter now as delegate_width
-;would reset multiline state.
-;We rely on the fact force_refresh_custom use auxiliary stack,
-;so the state is preserved.
-          call enter
-          xor a:scf     ; mark as handled
+          scf           ; for now instr_set_row doesn't return flag
           ret
 
 _instr_down_refresh
@@ -424,10 +413,26 @@ _set_loop
 .set
           call instr_set_loop
 ; Hack: refresh all (since must erase previous loop marker)
-          jp _refresh
+          jr _refresh
 .unset
           call instr_remove_loop
-          jp _refresh
+;enchaine
+_refresh
+;Refresh from root
+          ld a,(selected_line):push af
+          ld hl,state_stack
+          call force_refresh_custom
+;Hackish: selected_line was changed for disp
+        ; (since calling ui_select_row)
+          pop af:ld (selected_line),a
+;For cursor (use refresh_focus instead?)
+;Cannot use gedehein_enter now as delegate_width
+;would reset multiline state.
+;We rely on the fact force_refresh_custom use auxiliary stack,
+;so the state is preserved.
+          call enter
+          scf
+          ret
 
 _get_loop
 ; Return 0 if selected_line = loop point
@@ -493,10 +498,8 @@ _get_arp  ld a,(row_buffer+instr_arp)
       END
           ret
 
-_set_pitch
-          ld (row_buffer+instr_pitch),hl
-          jr _update_row
-_get_pitch ld hl,(row_buffer+instr_pitch):ret
+_set_pitch call neg_hl:ld (row_buffer+instr_pitch),hl:jr _update_row
+_get_pitch ld hl,(row_buffer+instr_pitch):jp neg_hl
 
 _set_noise_flag ld c,&38:jr _set_flags
 _get_noise_flag ld c,&38:jr _get_flags
@@ -617,11 +620,9 @@ _get_env_arp
       END
           ret
 
-_set_env_pitch
-          ld (row_buffer+instr_hard_pitch),hl
+_set_env_pitch call neg_hl:ld (row_buffer+instr_hard_pitch),hl
           jp _update_row
-_get_env_pitch
-          ld hl,(row_buffer+instr_hard_pitch):ret
+_get_env_pitch ld hl,(row_buffer+instr_hard_pitch):jp neg_hl
 
 
 _set_fx0_type
@@ -698,8 +699,8 @@ _get_fx0_arp ld a,(row_buffer+fx0_arp)
       END
           ret
 
-_set_fx0_pitch ld (row_buffer+fx0_pitch),hl:jp _update_row
-_get_fx0_pitch ld hl,(row_buffer+fx0_pitch):ret
+_set_fx0_pitch call neg_hl:ld (row_buffer+fx0_pitch),hl:jp _update_row
+_get_fx0_pitch ld hl,(row_buffer+fx0_pitch):jr neg_hl
 
 ; Each sync buzzer can set its own env type
 _set_fx0_env ld (row_buffer+fx0_param),a:jp _update_row
@@ -757,13 +758,20 @@ _get_fx1_arp ld a,(row_buffer+fx1_arp)
       END
           ret
 
-_set_fx1_pitch ld (row_buffer+fx1_pitch),hl:jp _update_row
-_get_fx1_pitch ld hl,(row_buffer+fx1_pitch):ret
+_set_fx1_pitch call neg_hl:ld (row_buffer+fx1_pitch),hl:jp _update_row
+_get_fx1_pitch ld hl,(row_buffer+fx1_pitch):jr neg_hl
 
 ; Each sync buzzer can set its own env type
 _set_fx1_env ld (row_buffer+fx1_param),a:jp _update_row
 _get_fx1_env ld a,(row_buffer+fx1_param):ret
 
+neg_hl
+; hl := -hl
+          push af
+          xor a:sub l:ld l,a
+          ld a,0:sbc h:ld h,a
+          pop af
+          ret
 
 
 clip_4095

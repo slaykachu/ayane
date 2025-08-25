@@ -14,15 +14,10 @@
 
 ; --------------------------------
       IMPORT "memmap.i"
+      IMPORT "import.i"
 
 ;Do it first so other sources will use this instance
-      ORG code_start'
-ged
-      IMPORT "ged.o"
-ged_
-      SKIP bandaya - $
-
-      IMPORT "bandaya.o"
+          IMPORT_GED_BANDAYA()
 bandaya_
 
       SKIP ramlimit'-$
@@ -49,7 +44,7 @@ hi
  ;     IMPORT "disp.o"
   ;        PAD()
 
-      ORG disp_start'
+      ORG pianoui
       ORG $ + &8000,$$  ; &c1
       IMPORT "pianoui.o"
       IF $ - &8000 - $$
@@ -70,7 +65,7 @@ disp_bk_end
 
 ;--- That's it ---------------------------------------
 
- ;     SAVE "ayalib0.bin",code_start,hi-code_start
- ;     SAVE "ayalib1.bin",ged,bandaya_-ged
-      SAVE "pianouil.bin",disp_start',disp_bk_end-disp_start'
+      SAVE "ayalib0.bin",code_start,hi-code_start
+      SAVE "ayalib1.bin",ged,bandaya_-ged
+      SAVE "pianouil.bin",pianoui,disp_bk_end-pianoui
 

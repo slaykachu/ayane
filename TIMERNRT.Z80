@@ -1,20 +1,26 @@
-do_profile = 1
+do_profile = 0
 ; <<<<< Automated test for timer >>>>>
 
       IMPORT "const.i"
       IMPORT "memmap.i"
       IMPORT "plyconf.i"
+      IMPORT "macro.i"
 
       ORG code_start
       ENT tests
 
-      IMPORT "testlib.o"
+      IMPORT "testlib.o" ; import it before timer for periods padding
       IMPORT "timer.o"
       IF do_profile
       IMPORT ":orgrel/prof.o"
       END
 
 ; /\/\/\/ 2025 \/\/\/\/\/
+   ; ----- v0.0am ------
+  ; Aug
+    ;24 Add test_simulate_high_note
+    ;23 Move macros in macro.i
+
    ; ----- v0.0ab ------
   ; Mar
     ; 1 Use :orgrel/prof.o (rather than ums:) 
@@ -36,53 +42,12 @@ do_profile = 1
       BYTE n*2
       ENDM
 
-      MACRO EX_AF'
-      IF sfx
-          ex af,af
-      END
-      ENDM
-
-      MACRO SUB_TM n
-; Copy-paste from timer.o                  
-      IF sfx
-; Update counter TM (+2 for 'sub n' itself)
-      IF n AND 1
-; Resolution: 2-nops. Must compensate
-          ld a,a:sub [n+3]/2
-      ELSE
-          sub [n+2]/2
-      END
-      END
-      ENDM
-
-      MACRO SUB_TM'' tm
-      IF sfx
-          ex af,af
-          SUB_TM(tm+2)  ; +2 for "ex af,af"
-          ex af,af
-      END
-      ENDM
-
-      MACRO RET_ROUT tm
-      IF sfx
-          SUB_TM(tm+4)
-          ret p
-          exx:jp hl
-      ELSE
-          ret
-      END
-      ENDM
-
-      MACRO RET_ROUT' tm
-          EX_AF'()
-          RET_ROUT(tm+1)
-      ENDM
-
-
 fail  = &BE00
 nrtfail = &BE00
+MAX_TM = &80
 
 tests
+          call test_change_sync_buzzer
       2 ** [
           call test_null
           call test_start_sync_buzzer
@@ -90,7 +55,9 @@ tests
           call test_change_sync_buzzer
           call test_stop_sync_buzzer
           call test_program_next_event
+     ;     call test_program_next_event_same_slot  not needed rn
           call test_double_event
+          call test_simulate_high_note
           ]
           ret
 
@@ -98,7 +65,7 @@ test_null
 ;--------
 ; Mainly test testing framework itself: proper profiling?
 ; (boilerplate + almost empty routine fx_end)
-          call nrt_init
+          call nrt_init_custom_clock
 
           ld hl,stack_null
           call run_fx
@@ -106,7 +73,7 @@ test_null
 
 test_start_sync_buzzer
 ;---------------------
-          call nrt_init
+          call nrt_init_custom_clock
 
           ld hl,stack0
           call run_fx
@@ -119,7 +86,7 @@ test_start_sync_buzzer
           call check_no_cut
           call check_no_change
 ; just for TM checks
-          call run_set_timer
+          call run_set_timer_and_psg
           ret
 
 ref0
@@ -139,7 +106,7 @@ ref0_ = $ - ref0
 test_start_sync_buzzer_fx_end
 ;----------------------------   
 ; Same but jump to fx_end
-          call nrt_init
+          call nrt_init_custom_clock
 
           ld hl,stack0_fx_end
           call run_fx
@@ -156,10 +123,10 @@ test_start_sync_buzzer_fx_end
 test_double_event
 ;----------------   
 ; Two events at time 0
-          call nrt_init
+          call nrt_init_custom_clock
 
           ld hl,stack_double
-          call run_fx
+          call run_fx   ; Will only call sync_buzzer_register
           ld hl,refd0
           ld de,events
           ld bc,ref0_
@@ -194,30 +161,76 @@ test_double_event
           ld de,period0 + shift1 ; !!! period0: same base note
           jp set_reg13_insert_and_program
 
+test_simulate_high_note
+;----------------------
+; Program sync_buzzer with b7 (period 16bits = &107)
+          ld a,MAX_TM
+.lp
+          push af
+          call nrt_init ; does init_timer
 
+          ld bc,&7F10:out (c),c ; for raster anchor
+
+          ld hl,stack0_fx_end'
+          ld (nrt_sp+1),hl
+          call nrt_fx_setup
+c0offset = 12           ; c0 offset in periods table
+; Note a#6, whose 16 bits period is &10c > &100 
+          ld ixl,[7*12 + 10 + c0offset]*2
+          call nrt_fx   ; simulate play_instr
+; Event should be at clock 0
+          ld a,(header_events)
+          cp hdr_cpt:call nz,nrtfail
+; Try with each possible timer left 
+          pop af
+          push af
+          exx
+          ld hl,events+hdr_code
+          exx
+; Check it doesn't ASSERT
+          call set_timer_and_psg
+; force events for a full frame 
+          ld b,312/4
+.evt
+          call jp_hl'
+          djnz .evt
+
+          pop af
+          dec a
+          jp p,.lp
+          ret
 
 stack0
       WORD sync_buzzer_register
 env_type0 = 7
       BYTE env_type0
-      BYTE 1*2
-shift0 = 13
+arp0  = 1
+      BYTE arp0*2
+shift0 = 13             ; pitch
       WORD shift0
       WORD nrt_ret
 
 stack0_fx_end
       WORD sync_buzzer_register
       BYTE env_type0
-      BYTE 1*2
+      BYTE arp0*2
       WORD shift0
 stack_null
+      WORD fx_end
+
+stack0_fx_end'
+;same with arp and pitch = 0
+      WORD sync_buzzer_register
+      BYTE env_type0
+      BYTE 0
+      WORD 0
       WORD fx_end
 
 stack1
       WORD sync_buzzer_register
 env_type1 = 8
       BYTE env_type1
-      BYTE 1*2
+      BYTE arp0*2
 shift1 = -12
       WORD shift1
       WORD fx_end
@@ -239,7 +252,7 @@ test_change_sync_buzzer
 ;----------------------
 ; At second iteration, mustn't install routine but bufferize changes.
 
-          call nrt_init
+          call nrt_init_custom_clock
 
           ld hl,stack0:call run_fx
 ;Sanity checks
@@ -266,7 +279,7 @@ test_change_sync_buzzer
           ld bc,ref0_
           call compare_sized
 
-          call run_set_timer
+          call run_set_timer_and_psg
 
 ;Now event updated
           ld hl,ref1
@@ -300,7 +313,7 @@ ref1_ = $ - ref1
 
 test_stop_sync_buzzer
 ;--------------------
-          call nrt_init
+          call nrt_init_custom_clock
 
           ld hl,stack0_fx_end:call run_fx
           ld hl,stack_null:call run_fx
@@ -313,7 +326,7 @@ test_stop_sync_buzzer
           ld bc,ref0_
           call compare_sized
 
-          call run_set_timer
+          call run_set_timer_and_psg
 
 ;Event replaced by no-op
           ld hl,ref_null
@@ -344,7 +357,7 @@ ref_null_ = $ - ref_null
 test_program_next_event
 ;----------------------
 
-          call nrt_init
+          call nrt_init_custom_clock
 
           ld hl,stack0
           call run_fx
@@ -384,6 +397,12 @@ ref0'
           jp set_reg13_insert_and_program
 ref0'_ = $ - ref0'
 
+test_program_next_event_same_slot
+;--------------------------------
+;Same that previous, but event is set in same slot
+      BRK
+;todo if needed
+
 
 ;------------------------------------------
 ; -------- Helpers ---------------------
@@ -411,8 +430,13 @@ run_fx
 ;------
 ;In: HL = SP stack
           ld (nrt_sp+1),hl
+
+; check lists were init
+          ld hl,(fx_by_track_pnt):CHECK_HL_EQUAL(fx_by_track)
+          ld hl,(cut_pnt):CHECK_HL_EQUAL(cut_list)
+          ld hl,(change_pnt):CHECK_HL_EQUAL(change_list)
+
           call nrt_fx_setup
-          call preplay_init
           ex af,af
           ld a,TM_MAX
           ld ixl,26     ; note (c#0)
@@ -422,7 +446,6 @@ run_fx
       ELSE
           call nrt_fx
       END
-          call postplay
           ret
 
 nrt_fx
@@ -430,6 +453,7 @@ nrt_fx
 ; Setup sp (cannot do it before for profile)
           SUB_TM(12)
           ld (ret_sp),sp
+      BRK
 nrt_sp    ld sp,0
           ret           ; sync_buzzer_register or fx_end
 ; Might also jump back to fx_end (eg /stack1/)
@@ -439,8 +463,8 @@ nrt_ret
           ret
 
 
-run_set_timer
-;------------     
+run_set_timer_and_psg
+;--------------------
 ; reset psg regs for accurate check
           ld hl,psg_regs
           ld b,14
@@ -452,10 +476,10 @@ untouched = &3F         ; avoid setting bit 6 for r7
 ;/set_timer/ expect TM in A'
           ld a,MAX_TM
       IF do_profile
-          ld iy,set_timer
+          ld iy,set_timer_and_psg
           call nrt_profile_check
       ELSE
-          call set_timer
+          call set_timer_and_psg
       END
           ret
 
@@ -519,7 +543,6 @@ nrt_fx_setup
 nrt_profile_check
 ;In: iy = routine to profile
    ; (we want to pass IX and HL, depending on the routine)
-MAX_TM = &80
           ld (.jp),iy
           exx
           ld d,0
@@ -538,16 +561,23 @@ MAX_TM = &80
 
 
 nrt_init
-;-------      
-; Kill firmware: needed to setup exx' without interference
-               ; since profile temporarily EI.
-          ld hl,&C9FB:ld (&38),hl
+;-------
+          call init_timer
+          jr _nrt_init_com
+
+nrt_init_custom_clock
+;--------------------
           call init_timer
 ; Clock doesn't have to be init explicitly, 
 ; since remaining in sync with anchor_pnt.
 ; Only setup for ref checking.
 clock0 = &0146
           ld hl,clock0:ld (current_clock),hl
+_nrt_init_com
+          call nrt_init_periods
+; Kill firmware: needed to setup exx' without interference
+               ; since profile temporarily EI.
+          ld hl,&C9FB:ld (&38),hl
 ; Similarly, not striclty needed, but ease testing.
           ld hl,events:ld (free_slot),hl
 ;needed since profile temporarily set EI,

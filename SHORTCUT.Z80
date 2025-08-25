@@ -1,8 +1,9 @@
 
 ; Dispatch key -> routine.
 
-; 27 March 2023
+; 2025 Aug 21 Move key codes in const.i
 
+; 2023 Mar 27
 ; v0: Extracted from ed.o vBRAL for reuse in vectoria
 
 ksetkey = &BB27         ; aka km_set_translate
@@ -14,6 +15,8 @@ km_wait_char = &BB06
 km_wait_key = &BB18
 km_read_key = &BB1B
 km_disarm_break = &BB48
+
+      IMPORT "const.i"  ; for kreturn and co
 
 setup_keys
 ;---------
@@ -76,57 +79,6 @@ setkey_lp
           jr setkey_lp
 
 jp_ix     jp ix
-
-; --------------------------
-; Regroup all key codes.
-; k: normal key
-; kc: with ctrl
-; ks: with shift
-; --------------------------
-
-kreturn = &0D           ;default
-kc1   = &1B             ;defaut on AZERTY, set to QWERTY as well
-kc2   = &7E             ;default
-kdel  = &7F             ;default
-kcenter = 140           ;default
-kcreturn = 141
-kcdel = 142
-kcspc = 143
-kc4   = 144
-kcpercent = 145
-kcstar = 146
-kcm   = 147             ; remap from 13 (RETURN)
-kcp   = 148             ; remap from 10 (CLR)
-ktab  = 149             ; remap from  9 (CTRL-I)
-kcf   = 150
-; ... to 159 (ctrl-function keys)
-ksdel = 160             ; Mapping done here. Plugged in field.o
-ksclr = 161
-kc5   = 162
-kc6   = 166             ;defaut on AZERTY, set to QWERTY as zell
-;Map functions keys to custom code, so they are not interpreted
-;as numbers
-kf    = 170
-; ... to 179
-
-kcopy = &E0             ; default
-
-;--Same as default--
-kup   = &F0
-kdown = &F1
-kleft = &F2             ; For ayane's UI 
-kright = &F3            ; Handled in fieldEditor, but also for completion
-
-kcup  = &F8
-kcdown = &F9
-kcleft = &FA
-kcright = &FB
-
-kesc  = &FC
-
-ksdel = 160             ; Mapping done here. Plugged in field.o
-ksclr = 161
-kc5   = 162
 
 ; --------------
 ; Map tables

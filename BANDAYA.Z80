@@ -2,7 +2,11 @@
         ; Transitions.
 
 ; 2025 
- ;Aug     
+ ;Aug              
+   ;24 Black for piano         
+   ;21 Restore r4 at the end of int1 instead of int2
+         ; -> needed to prevent wrong state when DI or status_off
+   ;20 More robust status_on
    ; 3 Stabilize int1 (like in orgams)
          ; - Needed to mitigate DI in disp
          ; - Will also split rasters/mode
@@ -22,6 +26,8 @@ raster = 1              ; debug rasters in border
 change_r2 = 1           ; 0 for debug timing
 todo  = 1
 needroom = 1
+
+      IMPORT "macro.i"
 
 bandaya_code
           jp status_on
@@ -52,12 +58,6 @@ r7    = 30
 r7'   = 27
 r7t   = 34
 r12'  = &10             ; Main r12 in /offset/
-
-      MACRO ASSERT p
-      IF p:ELSE
- !! error
-      END
-      ENDM
 
       MACRO CHECK_MSB
 ; For optim purpose, we assume all routines share same msb
@@ -107,15 +107,16 @@ int0
       END
 r2trans0 = $ + 1
           call r2_transition
+;r4' JIT only when band on
           call set_crtc:BYTE 12,r12',13,0,1,r1',4,r4',-1
-
-     ;     ld b,34:call waitlines
-     ;     ld b,8:djnz $
-     ;     ld bc,&7F45:out (c),0:out (c),c
 
 ; Set mode via firmware
 ; otherwise, bc' not update -> flicker at each firmware access 
 mode_top  ld a,2:call mc_set_mode ; af corrupt, all others preserved
+
+;Set first since /call_int_firm/ restablish EI
+          ld hl,int1
+          ld (int_dispatch+1),hl
 
 ; Int firm while vbl for keyboard handling
           call call_int_firm
@@ -123,19 +124,12 @@ mode_top  ld a,2:call mc_set_mode ; af corrupt, all others preserved
 ; Set palette, overide firmware colors
           call set_palette:BYTE &58,&43,&4F,&4B,-1
 
-          ld hl,int1
-          ei
-          ld (int_dispatch+1),hl
           halt
           pop de
 
           INT_RET(&45,int2)
 int2
-; Note: Int2 can be 8 lignes late (even with JR $)
-      ; Firmware handling?
 hook_int2 call no_op
-          call set_crtc
-      BYTE 4,r4,-1      ; by default: r4=38. Changed JIT in int0
           ;INT_RET(&4E,int3)
 ; Black so we are not pertubed by flickering (see note above)
           INT_RET(&54,int3)
@@ -170,10 +164,11 @@ int1
 ; -- Go to last char line of bandeau to switch to mode 2
           ld b,16:call waitlines
           ld bc,&7F8D:out (c),c
+          ld c,&54:out (c),0:out (c),c
           ld de,&0140:out (c),d:out (c),e
           ld b,15:call waitlines
           ld bc,&7F8E:out (c),c
-          ld b,7:djnz $
+          ld b,4:djnz $
 background_line = &44
 ; set_palette would be too slow for both ink
 ; (plus, it's better to change ink 1 first)
@@ -198,7 +193,8 @@ r2trans1 = $ + 1
           call r2_transition
           call set_crtc
 r1trans = $+1
-      BYTE 1,r1,-1
+      BYTE 1,r1,4,r4,-1
+;r4 default value, so no prob when int0 not called
 
 ; correct stack from int_prelude
           pop af:pop bc:pop hl
@@ -298,14 +294,14 @@ status_on
 ; Common for everyone
           call set_crtc:BYTE 3,r3,-1
 
-          di
+          ld b,&F5
+.wait_vsync in a,(c):rra:jr nc,.wait_vsync
+          djnz $        ; skip int0 (might not be generated)
+          halt          ; skip int1 (must be called from int0)
+
           ld a,&C3:ld (int_firm),a
           ld hl,int_prelude:ld (int_firm+1),hl
-          ld hl,int0:ld (int_dispatch+1),hl
-          ld b,&F5
-.wait_vsync in a,(c):rra
-          jr nc,.wait_vsync
-          ei
+          ld hl,int2:ld (int_dispatch+1),hl
           ret
 
 status_off

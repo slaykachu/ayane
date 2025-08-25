@@ -9,7 +9,7 @@ todo_wrong_chr = 0
  ; --- Ayane 0ai ----
 ; Aug 
   ;22: Add test_multiline_focus
-     ; Add test_delete_first_line
+     ; Add test_delete_first_line and multiple others
   ;21: Add test_delete_last_line
      ; Add test_no_validate_when_not_touched
   ; 5: Add test_multiline_margin
@@ -65,11 +65,6 @@ tests
 ; Otherwise, a BRK is trigerred.
 
           ld a,&F7:ld (0),a
-          call test_delete_last_line2
-      BRK
-          call test_delete_last_line3
-          call test_delete_last_line4
-      BRK
 ; --- test helpers ---
           call test_field_editing
 
@@ -208,8 +203,10 @@ tests
           call test_multiline_goto_bottom
           call test_multiline_goto_bottom'
           call test_multiline_focus
+          call test_insert_line
           call test_delete_first_line
           call test_delete_last_line
+          call test_delete_last_line'
           call test_delete_last_line2
           call test_delete_last_line3
           call test_delete_last_line4
@@ -984,6 +981,8 @@ ui_multiline
       WORD ui_toggle_deci
       WORD nrt_get_lines#
       WORD nrt_select_line
+      WORD 0
+      WORD 0
       BYTE 2            ; Height
       BYTE 0            ; scroll offset (margin)
 
@@ -992,25 +991,24 @@ ui_multiline'
       WORD ui_toggle
       WORD nrt_get_lines#
       WORD nrt_select_line
+      WORD 0
+      WORD 0
       BYTE 6            ; Height
       BYTE 2            ; scroll offset (margin)
 
-ui_handler_multiline
-      BYTE w_key_handler
-      WORD ui_multiline_refresh
-      WORD nrt_handler_del
+nrt_insert_line
+;In: A = line #
+          ld hl,nrt_lines#:inc (hl)
+          ld hl,nrt_hexa_digit_lines
+          ld c,a:ld b,0
+          add hl,bc
+          ld (hl),&0F   ; value new line
+          scf
+          ret
 
-nrt_handler_del
-      BYTE kcdel:WORD nrt_delete
-      BYTE 0:WORD 0
-
-nrt_delete
+nrt_delete_line
+;don't update table, nevermind
           ld hl,nrt_lines#:dec (hl)
-; Don't update nrt_hexa_digit_lines itself, nevermind
-; Just refresh like instrui
-          ld hl,state_stack
-          call force_refresh_custom
-          call enter
           scf
           ret
 
@@ -1019,7 +1017,9 @@ ui_multiline_refresh
       WORD ui_struct_refresh_line
       WORD nrt_get_lines#
       WORD nrt_select_line
-      BYTE 2
+      WORD nrt_insert_line
+      WORD nrt_delete_line
+      BYTE 4
       BYTE 0
 
 ui_multiline_refresh'   ; Same but 4 lines view
@@ -1027,15 +1027,18 @@ ui_multiline_refresh'   ; Same but 4 lines view
       WORD ui_struct_refresh_line
       WORD nrt_get_lines#
       WORD nrt_select_line
+      WORD 0
+      WORD 0
       BYTE 4
       BYTE 0
-
 
 ui_multiline_refresh_deci
       BYTE w_multiline
       WORD ui_struct_refresh_deci_line
       WORD nrt_get_lines#
       WORD nrt_select_line
+      WORD 0
+      WORD 0
       BYTE 2
       BYTE 0
 
@@ -1044,6 +1047,8 @@ ui_multiline_optional_readwrite
       WORD vol_ui'
       WORD nrt_get_lines#
       WORD nrt_select_line
+      WORD 0
+      WORD 0
       BYTE 2
       BYTE 0
 
@@ -1053,6 +1058,8 @@ ui_multiline_optional_readwrite_dynamic
       WORD ui_dynamic_optional
       WORD nrt_get_lines#
       WORD nrt_select_line
+      WORD 0
+      WORD 0
       BYTE 2
       BYTE 0
 
@@ -1061,6 +1068,8 @@ ui_multiline_struct_optional_readwrite
       WORD ui_struct_optional_readwrite
       WORD nrt_get_lines#
       WORD nrt_select_line
+      WORD 0
+      WORD 0
       BYTE 2
       BYTE 0
 
@@ -1069,9 +1078,10 @@ ui_multiline_struct_refresh
       WORD ui_struct_refresh'
       WORD nrt_get_lines#
       WORD nrt_select_line
+      WORD 0
+      WORD 0
       BYTE 2
       BYTE 0
-
 
       IF key_under_multiline
 !!! not supported: y pos not propagated
@@ -1080,6 +1090,8 @@ ui_multiline_key_struct_refresh
       WORD ui_key_struct_refresh'
       WORD nrt_get_lines#
       WORD nrt_select_line
+      WORD 0
+      WORD 0
       BYTE 2
       BYTE 0
       END
@@ -2351,19 +2363,19 @@ test_multiline_goto_bottom'
 
           ld de,.seq
 ; Pretend models has 4 lines
-          ld a,4
+          ld a,3
           call _check_multiline_scroll
           ret
 .seq  BYTE kcfdot
           END_OF_NRT_SEQUENCE()
-      BYTE 0,3
+      BYTE 0,2
 
 
 test_multiline_focus
 ;-------------------
 ; Prerequisite for test_delete_first_line
           ld hl,&0C0A:ld (nrt_hexa_digit_lines),hl
-          TEST_RUN_FOCUS(ui_handler_multiline,.seq)
+          TEST_RUN_FOCUS(ui_multiline_refresh,.seq)
           ret
 .seq  BYTE kdwn
           END_OF_NRT_SEQUENCE()
@@ -2371,11 +2383,22 @@ test_multiline_focus
       BYTE "A",nrt_nl
           FOCUS("C"):BYTE nrtend
 
+test_insert_line
+;---------------
+          ld hl,&0302:ld (nrt_hexa_digit_lines),hl
+          TEST_RUN_FOCUS(ui_multiline_refresh,.seq)
+          ret
+.seq  BYTE kreturn
+          END_OF_NRT_SEQUENCE()
+;model wasn't update, so we must have same lines
+          FOCUS("F"):BYTE nrt_nl
+      BYTE "3",nrtend   ; nrt_insert_line doesn't really insert
+
 test_delete_first_line
 ;---------------------
 ;Check refresh post del, as instrui
           ld hl,&0B09:ld (nrt_hexa_digit_lines),hl
-          TEST_RUN_FOCUS(ui_handler_multiline,.seq)
+          TEST_RUN_FOCUS(ui_multiline_refresh,.seq)
           ret
 .seq  BYTE kcdel
           END_OF_NRT_SEQUENCE()
@@ -2385,33 +2408,48 @@ test_delete_first_line
 
 test_delete_last_line
 ;--------------------
-          TEST_MULTILINE_SCROLL(.seq)
+          TEST_MULTILINE_CUSTOM(ui_multiline_refresh,.seq)
           ret
 .seq  BYTE kcfdot,kcdel
           END_OF_NRT_SEQUENCE()
       BYTE 6,2
 
+test_delete_last_line'
+;---------------------
+          ld hl,ui_multiline_refresh
+          ld de,.seq
+          ld a,4
+          call _check_multiline_custom
+          ld hl,(iotest_cursor)
+;field was focus refreshed: column=2 line=3
+          ld de,&0203:or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+.seq  BYTE kcfdot,kcdel
+          END_OF_NRT_SEQUENCE()
+      BYTE 0,2
+
+
 test_delete_last_line2
 ;--------------------          
 ;Must use UI that updates nrt_lines# on del
-          TEST_MULTILINE_CUSTOM(ui_handler_multiline,.seq)
+          TEST_MULTILINE_CUSTOM(ui_multiline_refresh,.seq)
           ret
 .seq  BYTE kcfdot:FILL 2,kcdel
           END_OF_NRT_SEQUENCE()
-      BYTE 6,1
+      BYTE 6,1          ; scroll_offset not respected? nevermind
 
 test_delete_last_line3
 ;--------------------
-          TEST_MULTILINE_CUSTOM(ui_handler_multiline,.seq)
+          TEST_MULTILINE_CUSTOM(ui_multiline_refresh,.seq)
           ret
 .seq  BYTE kcfdot:FILL 3,kcdel
           END_OF_NRT_SEQUENCE()
-      BYTE 5,1          ;scroll up
+      BYTE 6,0
 
 test_delete_last_line4
 ;---------------------
 ;delete 4 last lines
-          TEST_MULTILINE_CUSTOM(ui_handler_multiline,.seq)
+          TEST_MULTILINE_CUSTOM(ui_multiline_refresh,.seq)
           ret
 .seq  BYTE kcfdot:FILL 4,kcdel
           END_OF_NRT_SEQUENCE()
@@ -3268,7 +3306,7 @@ compare
           inc de:inc hl
           jr compare
 
-iotest_cursor WORD &0101 ; Cursor as given to txt_set_cursor
+iotest_cursor WORD &0101 ; As txt_set_cursor H=column L=line (1-based)
 iotest_drawncursor_p WORD 0
 
 ; -------------------------

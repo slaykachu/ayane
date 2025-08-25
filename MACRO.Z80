@@ -1,0 +1,73 @@
+      IMPORT "plyconf.i" ; for sfx flag
+
+; --------------------
+; Static checks
+; --------------------
+
+      MACRO ASSERT pred
+      IF pred:ELSE
+   !! fail
+      END
+      ENDM
+
+      MACRO ASSERT_NOT pred
+      IF pred
+   !! fail
+      END
+      ENDM
+
+      MACRO CHECK_CONFINE start
+          ASSERT([$-1]/&0100 == start/&0100)
+      ENDM
+
+; --------------------
+; Timer emulation
+; --------------------
+
+      MACRO EX_AF'
+      IF sfx
+          ex af,af
+      END
+      ENDM
+
+      MACRO SUB_TM n
+      IF sfx
+; Update counter TM (+2 for 'sub n' itself)
+      IF n AND 1
+; Resolution: 2-nops. Must compensate
+          ld a,a:sub [n+3]/2
+      ELSE
+          sub [n+2]/2
+      END
+      END
+      ENDM
+
+      MACRO SUB_TM'' tm
+      IF sfx
+          ex af,af
+          SUB_TM(tm+2)  ; +2 for "ex af,af"
+          ex af,af
+      END
+      ENDM
+
+      MACRO RET_ROUT tm
+      IF sfx
+          SUB_TM(tm+4)
+          ret p
+          exx:jp hl
+      ELSE
+          ret
+      END
+      ENDM
+
+      MACRO RET_ROUT' tm
+      IF sfx
+          ex af,af
+          RET_ROUT(tm+1)
+      ELSE
+          ret
+      END
+      ENDM
+;--
+
+

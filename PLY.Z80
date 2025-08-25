@@ -17,11 +17,16 @@ need_room = 1
  ; See /track_stack/
 
 ; \/\/\/ 2025 \/\/\/\/\
+; ----- v0am -----
+  ; Aug
+   ;23 Move common macro in macro.i
+     ; Move timer list handing in ... timer.o
+; ----- v0ak -----
   ; Jun
    ;15 Padding for fx.o
   ; Apr
    ;23 Re-put r7 first, to match instr.o
-; ----- Ayane v0l2 -----
+; ----- v0l2 -----
   ; Mar
 ; Mar 24: Handle constant /pattern_size/ 
    ;21 Handle loop for compiled version  
@@ -36,8 +41,6 @@ need_room = 1
 ; -----------------------------
 n     = 20              ;a changer par TM correct au cas par cas
 
-
-
       IMPORT "plyconf.i"
 
       IF 1-ayane
@@ -47,6 +50,7 @@ dev_checks = 1 AND ayane
 
       IMPORT "memmap.i"
       IMPORT "const.i"
+      IMPORT "macro.i"
       IMPORT "instr.o"
 check_pc
       IMPORT "periods.o" ; skipped, just for c0/c1 labels
@@ -66,7 +70,7 @@ psg_regs = compiled_psg_regs
     ; - to put fx_set_phrase in same &100 area
 
       IF nb_fx
-      IMPORT "timer.o"
+      IMPORT "timer.o"  ; Only for replay_period_in_nops
       FILL -$ AND &0F,&F7 ; padding for confinement
       IMPORT "fx.o"
 
@@ -342,52 +346,6 @@ update_note_tm = 15
       END
       ENDM
 
-      MACRO EX_AF'
-      IF sfx
-          ex af,af
-      END
-      ENDM
-
-      MACRO SUB_TM n
-; Copy-paste from timer.o                  
-      IF sfx
-; Update counter TM (+2 for 'sub n' itself)
-      IF n AND 1
-; Resolution: 2-nops. Must compensate
-          ld a,a:sub [n+3]/2
-      ELSE
-          sub [n+2]/2
-      END
-      END
-      ENDM
-
-      MACRO SUB_TM'' tm
-      IF sfx
-          ex af,af
-          SUB_TM(tm+2)  ; +2 for "ex af,af"
-          ex af,af
-      END
-      ENDM
-
-      MACRO RET_ROUT tm
-      IF sfx
-          SUB_TM(tm+4)
-          ret p
-          exx:jp hl
-      ELSE
-          ret
-      END
-      ENDM
-
-      MACRO RET_ROUT' tm
-      IF sfx
-          ex af,af
-          RET_ROUT(tm)
-      ELSE
-          ret
-      END
-      ENDM
-
       MACRO SUB_TM_CALL n
 ; Update and call HL' when CPT < 0 
           SUB_TM(n+9)
@@ -431,14 +389,7 @@ play
 ; DI Needed since SP used 
 ; Better to do it ourself to avoid crash in case of oversight.
           di
-      IF sfx
-tm0   = 1+24+15         ; until track_loop
-          ld hl,fx_by_track:ld (fx_by_track_pnt),hl
-          ld hl,change_list:ld (change_pnt),hl
-          ld hl,cut_list:ld (cut_pnt),hl
-      ELSE
 tm0   = 1+15            ; until track_loop
-      END
           ld hl,r7
 ; ! don't use A (= TM)
       IF hack_minimala
@@ -884,38 +835,11 @@ evt_change_phrase
 
 track_end
 ;All tracks have been handled
-      IF sfx
-; Mark end of lists
-          ld hl,(change_pnt):ld (hl),0
-          ld hl,(cut_pnt):ld (hl),0
-          ld hl,(current_clock)
-replay_default = replay_50_08Hz * replay_unit
-             ; = 312*64  cf const.i
-      IF ayane
-track_sfx_tm = 35
-          ld bc,(replay_period_in_nops)
-      ELSE
-track_sfx_tm = 32
-          ld bc,replay_default
-      END
-      IF dev_checks
-track_check_tm = 14
-; Todo [persitence] make sure it is repopulated
-          EX_AF'()
-          ld a,c:cp replay_default AND &FF:call nz,programming_error
-          ld a,b:cp replay_default / &0100:call nz,programming_error
-          EX_AF'()
-      ELSE
-track_check_tm = 0
-      END
-          add hl,bc
-          ld (current_clock),hl
-      END
           ld hl,(tick+1)
           inc hl
           ld (tick+1),hl
 savesp    ld sp,&3131
-          RET_ROUT(track_sfx_tm + track_check_tm + 15)
+          RET_ROUT(15)
 
 ;-------------------------------------
       IF 1-ayane
@@ -1088,7 +1012,7 @@ Amorce_song
 Init_periods
 ; Adapted from lab/miniplyi
     ; More compact
-; Need to work note by note. otherwise error would be propagated
+; Need to keep working note. otherwise error would be propagated
 ; Ok    %101 -> %11 (%10.1) ->  %1 (%1.01)
 ; Wrong %101 -> %11 (%10.1) -% %10 (%1.1)  if we reload from %11
 
@@ -1157,10 +1081,6 @@ set_replay_period
           call scope_bk_base
           ld (replay_period),hl
           ld (replay_period_ui),a
-      IF replay_unit - 16
-  !! todo
-      END
-          4 ** add hl,hl
           ld (replay_period_in_nops),hl
           ret
 
@@ -1168,11 +1088,7 @@ set_replay_period
 
 ; -----------------------------
 vars
-      IF ayane
-replay_period_in_nops WORD replay_default
-      END
 
-; -----------------------------
       IF use_volume
 track_stack_size0 = 12  ; Only read with POP: no MSB issue 
       ELSE

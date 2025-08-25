@@ -1,0 +1,22 @@
+; <<< Factorize import of deps >>>
+; -> Ensure same location order used by all
+
+      IMPORT "memmap.i"
+
+      MACRO IMPORT_GED_BANDAYA
+; Must be imported first, so other sources use this instance
+      ORG ged
+      IMPORT "ged.o"
+      SKIP bandaya - $
+      IMPORT "bandaya.o"
+      ENDM
+
+      MACRO IMPORT_DISP
+      ORG disp_start
+; We import disp since we share the bank
+;  -> Allow direct call to routines (faster and smaller)
+ ; Otherwise disp-jp.call_status would reconnected original bank (c5)
+   ; -> crash
+      IMPORT "disp.o"
+      ENDM
+

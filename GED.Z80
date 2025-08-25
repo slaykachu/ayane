@@ -1,6 +1,9 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
 ;Aug       
+; -- v0am --
+  ;24 noline: shorter ----- 
 ; -- v0al -- 
+  ;23 multiline: +params insert_line/delete_line
   ;22 multiline_top: don't refresh if line_at_top already 0
     ; multiline_bottom: don't scroll if line reachable
   ;21 Don't validate if not modified
@@ -137,16 +140,18 @@ embedded_ui = param     ; struct, multiline
 
 get_enabled = param2
 
-; for multiline         
+; for multiline
 get_line# = param2
 select_line = param3
-view_height = param4
-scroll_offset = param4+1
+;indirections from param4
+insert_line = 0
+delete_line = 2
+view_height = 4
+scroll_offset = 5
 
           ASSERT_NOT(param - byte_setter) ; if <>, change wc_hexa_custom
 
 custom_handler = param2
-
 
 ; ==================================================================
 widget_state
@@ -319,75 +324,12 @@ _check_key_table
           call _hl_state_pnt:BYTE field
       ENDM
 
-_hl_state_pnt
-          pop hl:inc hl:push hl ; ret address
-          push bc
-          dec hl:ld c,(hl):ld b,0
-          ld hl,(state_sp)
-          add hl,bc
-          pop bc
-          ret
-
-call_state_on_enter
-          ld c,on_enter
-          jr _call_state
-call_state_get_width
-          ld c,get_width
-          jr _call_state
-call_state_on_validate
-          ld c,on_validate
-          jr _call_state
-call_state_get_line#
-      IF get_line# - param2
- !!! review
-      END
-          ld c,param2
-          jr _call_state
-call_state_select_line
-      IF select_line - param3
- !!! review
-      END
-          ld c,param3
-          jr _call_state
-
-_call_state
-          push hl
-          ld hl,(state_sp)
-          ld b,0
-          add hl,bc
-_jp_hl_pop
-          ld c,(hl):inc hl
-          ld b,(hl)
-          pop hl
-jp_bc
-          ld (dbg_call),bc
-          CHECK_ADDRESS()
-jp_bc_ext               ; Don't check address for external hook.
-          ld (dbg_call'),bc
-          push bc
-          ret
-
-          pop hl:inc hl:push hl ; ret address
-      BRK
-
       MACRO DE_STATE_PNT field
       IF field/&0100
 !! error
       END
           call _de_state_pnt:BYTE field
       ENDM
-
-_de_state_pnt
-          pop de:inc de:push de ; ret address
-          push hl
-          ex de,hl
-          dec hl:ld e,(hl):ld d,0
-          ld hl,(state_sp)
-          add hl,de
-          ex de,hl
-          pop hl
-          ret
-
 
       MACRO SET_STATE field
 ; All registers preserved
@@ -406,6 +348,7 @@ _de_state_pnt
 
 
       MACRO GET_STATE field
+; Out: HL = value at field
 ; All registers preserved but F
           push bc
           ld c,field
@@ -427,6 +370,123 @@ _de_state_pnt
           call _get_state_
           pop bc
       ENDM
+
+
+_hl_state_pnt
+          pop hl:inc hl:push hl ; ret address
+          push bc
+          dec hl:ld c,(hl):ld b,0
+          ld hl,(state_sp)
+          add hl,bc
+          pop bc
+          ret
+
+get_view_height
+          push bc
+          ld c,view_height
+          jr _get_state_byte_indirect_pop
+
+get_scroll_offset
+          push bc
+          ld c,scroll_offset
+;enchaine
+_get_state_byte_indirect_pop
+          call _get_state_byte_indirect
+          pop bc
+          ret
+
+_get_state_byte_indirect
+;In: C: field offset
+;Out: HL: pnt to field
+    ;  A: first byte of field
+    ; BC: trashed
+          GET_STATE(param4)
+          ld b,0:add hl,bc
+          ld a,(hl)
+          ret
+
+_get_state_word_indirect
+;In: C: field offset
+;Out: HL: pnt to field + 1
+    ; BC: value of field
+    ; NC, Z if BC=0
+    ; A preserved 
+          push af
+          call _get_state_byte_indirect
+          ld c,a
+          inc hl
+          or (hl)       ; For Z/NZ
+          ld a,c
+          pop bc
+          ld c,a
+          ld a,b
+          ld b,(hl)
+          ret
+
+call_insert_line
+;!! Pass A and DE (unused) to routine, but not flags, BC, HL
+;OUT: NC if field null
+    ; Otherwise, return flags of the routine which **must** return C
+               ; in case of success
+          ld c,insert_line
+          jr _call_state_indirect
+
+call_delete_line
+;like above
+          ld c,delete_line
+_call_state_indirect
+;only if field non null
+          call _get_state_word_indirect
+          ret z         ; NC then
+          jp jp_bc_ext
+
+call_state_on_enter
+          ld c,on_enter
+          jr _call_state
+
+call_state_get_width
+          ld c,get_width
+          jr _call_state
+
+call_state_on_validate
+          ld c,on_validate
+          jr _call_state
+
+call_state_get_line#
+          ld c,get_line#
+          jr _call_state
+
+call_state_select_line
+          ld c,select_line
+;enchaine
+_call_state
+          push hl
+          ld hl,(state_sp)
+          ld b,0
+          add hl,bc
+_jp_hl_pop
+          ld c,(hl):inc hl
+          ld b,(hl)
+          pop hl
+jp_bc
+          ld (dbg_call),bc
+          CHECK_ADDRESS()
+jp_bc_ext               ; Don't check address for external hook.
+          ld (dbg_call'),bc
+          push bc
+          ret
+
+_de_state_pnt
+          pop de:inc de:push de ; ret address
+          push hl
+          ex de,hl
+          dec hl:ld e,(hl):ld d,0
+          ld hl,(state_sp)
+          add hl,de
+          ex de,hl
+          pop hl
+          ret
+
 
 
 _set_state
@@ -1445,8 +1505,15 @@ wc_sprite_custom = wc_init_word
 wc_text_custom = wc_init_word
 
 wc_multiline
+;hydrid: copy 3 first params, and then indirection to remaining ones
+;Rationale: common code for embedded ui (direct access)
+          ; (also, was simpler and less greedy than adding 2 params
+            ;for each widget)
           DE_STATE_PNT(param)
-          ld bc,8:ldir
+          ld bc,6:ldir
+          ex de,hl
+          ld (hl),e:inc hl
+          ld (hl),d
           xor a
           SET_STATE_BYTE(line_at_top)
           SET_STATE_BYTE(cur_y)
@@ -1582,6 +1649,38 @@ force_refresh_custom
           pop de
           ld (state_sp),de
           ret
+
+_ml_refresh
+      IF hack
+;update_cur_y updated nested ui's curpos. Insufficiant since:
+  ; - there might be several levels of nesting
+  ; - enter doesn't propagate curpos
+; Remember cursor before refresh 
+; Cannot use widget_pos are we are pointing on multiline wrapper
+  ; -> it would give the pos of the wrapper, not the pos of the line
+          CALL_STATE_EXT(get_cursor)
+          push hl
+      END
+
+          ld hl,state_stack
+          call force_refresh_custom
+;reselect line, which was changed for disp (since calling ui_select_row)
+          call get_current_line_number
+          call call_state_select_line
+;For cursor (use refresh_focus instead?)
+;Cannot use gedehein_enter now as delegate_width
+;would reset multiline state.
+;We rely on the fact force_refresh_custom use auxiliary stack,
+;so the state is preserved.
+      IF hack
+          ENTER_COMMON()
+          pop hl
+          SET_STATE(widget_pos) ; this is field
+          jp refresh_focus
+      ELSE
+          jp enter
+      END
+
 
 key_handler_on_enter
           jp enter_child
@@ -1899,14 +1998,16 @@ _ml_up
           call get_current_line_number
           or a
           ret z
-;ok line      
+;ok line                    
+          dec a
+          call call_state_select_line
 ;Now view itself    
           GET_STATE_BYTE(cur_y)
           ld c,a
           GET_STATE_BYTE(line_at_top)
           or a
           jr z,.okview
-          GET_STATE_BYTE(scroll_offset)
+          call get_scroll_offset
 ; Scroll if offset >= cur_y 
           cp c
           jr c,.okview
@@ -1949,9 +2050,9 @@ multiline_dwn
           GET_STATE_BYTE(cur_y)
           inc a
           ld b,a
-          GET_STATE_BYTE(scroll_offset)
+          call get_scroll_offset
           ld c,a
-          GET_STATE_BYTE(view_height)
+          call get_view_height
           sub c:ld c,a
           ld a,b
 ; Scroll if cur_y = height - offset  (musn't be greater)
@@ -2019,8 +2120,8 @@ _ml_ctrl_up
           ret
 
 get_top_and_height
-;Out: A=top  B=height
-          GET_STATE_BYTE(view_height)
+;Out: A=top  B=height    
+          call get_view_height
           ld b,a
           GET_STATE_BYTE(line_at_top)
           ret
@@ -2079,23 +2180,34 @@ multiline_bottom
           ld a,c:sub b
           jp _multiline_scroll_com
 
-
-multiline_del
-;Handle the UI part of del: cursor up if last line
+multiline_ins
           call _ml_prelude
           push hl
+;Update the model
           call get_current_line_number
-          push af
-          call call_state_get_line#
-      BRK
-          pop bc
-          inc b
-          cp b
-          jr nz,.oklast ; not last!
+          call call_insert_line ; NC if no such rout or failure
+          call c,_ml_refresh
+          jr _ml_postlude
 
-;Like multiline_up, without refresh if scroll
+multiline_del
+          call _ml_prelude
+          push hl
+;Update the model
+          call get_current_line_number
+          call call_delete_line ; NC if no del rout or failure
+          jr nc,_ml_postlude
+
+;Handle the UI part of del: cursor up if last line
+          call call_state_get_line#
+          ld b,a
+          call get_current_line_number ; was decremented!
+          cp b
+          jr c,.done    ; not last!
+
+;Like multiline_up, without refresh if scroll,
+;since we have to refresh in any case
           call _ml_up
-          jr z,.oklast
+          jr z,.done
       IF 0
 ; prev page
 ; oups, no, cannot do that, as we use /scroll_offset/ to detect if we
@@ -2104,17 +2216,17 @@ multiline_del
           call c,_ml_ctrl_up
       ELSE
 ; scroll down
-          jr nc,.oklast
+          jr nc,.done
           GET_STATE_BYTE(line_at_top)
           sub 1:adc 0   ; dec a with clip
           SET_STATE_BYTE(line_at_top)
       END
-.oklast
+.done
+          call _ml_refresh
+_ml_postlude
           pop hl
           call set_state_sp
-;Model change and refresh still by client, so we must pass the code
-          ld a,kcdel
-          or a
+          scf
           ret
 
 update_cur_y
@@ -2370,7 +2482,7 @@ disp_multiline
           GET_STATE_BYTE(cur_y)
           push af
 
-          GET_STATE_BYTE(view_height)
+          call get_view_height
           ld b,a
           xor a
 .yloop
@@ -2408,7 +2520,7 @@ disp_one_line
           ld a,"-"      ; for better visuallisation
 ; hack: erase known line width for instrui
       ; (if bigger: residues)
-          ld b,73
+          ld b,71
           call fill
       IF todo
 ; use widget's width instead
@@ -2927,6 +3039,7 @@ h_kmultiline
       BYTE kcdwn:WORD multiline_ctrl_dwn
       BYTE kcf+0:WORD multiline_top
       BYTE kcfdot:WORD multiline_bottom
+      BYTE kreturn:WORD multiline_ins
       BYTE kcdel:WORD multiline_del
       BYTE 0:WORD 0
 

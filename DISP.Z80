@@ -1,8 +1,13 @@
 ; Disp: Routines d'affichage text. Tirees de Orgams.
    ; Difference: status_*: same API than disp_* (e.g. BC for text)
 
-; 2025
- ; Aug 2 Fix _status_num: must past buffer in BC
+; 2025     
+; -- v0m -- 
+ ; Aug
+     ;24 Use put_deci_a & co from conv.o (used out of bank by ged)
+       ; Remove dump_hexa
+; -- v0a? --
+     ; 2 Fix _status_num: must past buffer in BC
        ; Add status_deci_a_pad0_at
  ; Jun 9
   ; Adapt status_set_cursor and co to new bandeau (page &4000, r9=7)
@@ -22,46 +27,18 @@ r1'   = 48
 enable = 1
 
       IMPORT "memmap.i"
+pccheck = $
+      IMPORT "conv.o"
+      IF $ != pccheck
+  !! must have been imported beforehand
+      END
 
       ORG disp_start
 ; Subroutines common to normal disp (c7)
 ;  and bandaya status (c1) must be out of bank 
 
-dpfig
-          ld c,-1
-.dpfigwf
-          inc c
-          sub b
-          jr nc,.dpfigwf
-          add b
-          ld b,a
-          ld a,c
-          or &30
-          ld (de),a
-          inc de
-          ld a,b
-          ret
-
-dpfigno0
-          ld c,-1
-.dpfn0wf
-          inc c
-          sub b
-          jr nc,.dpfn0wf
-          add b
-          ld b,a
-          ld a,c
-          and a
-          jr z,.dpfn0ret
-;
-          or &30
-          ld (de),a
-          inc de
-          or &30        ;force nz
-.dpfn0ret
-          ld a,b
-          ret
-
+      BRK
+; Nothing for now: was dpfig now in conv.o 
       SKIP &4000 - $
 
 ; Files generated with ums:orgrel/#burnfnt.bas (using 'convfnt.o)
@@ -133,16 +110,16 @@ fonte
           jp disp_hexa_hl_inv
           jp disp_hexa_hl_shaded
 
-          jp put_deci_a
-          jp put_deci_a_pad0
-          jp put_deci_hl
-          jp put_hexa_a
-          jp put_hexa_hl
+          3 ** BRK      ;  jp put_deci_a
+          3 ** BRK      ;jp put_deci_a_pad0
+          3 ** BRK      ;jp put_deci_hl
+          3 ** BRK      ;jp put_hexa_a
+          3 ** BRK      ;jp put_hexa_hl
 
-          jp dump_ascii
-          jp dump_ascii_shaded
-          jp dump_hexa
-          jp dump_hexa_shaded
+          3 ** BRK      ;jp dump_ascii
+          3 ** BRK      ; jp dump_ascii_shaded
+          3 ** BRK      ; jp dump_hexa
+          3 ** BRK      ; jp dump_hexa_shaded
 
           jp str_pad_at
           jp str_pad_at_ei
@@ -724,193 +701,8 @@ _disp_deci_a
           push ix:ld ix,put_deci_a
           jr _disp_num_com
 
-
-put_hexa_hl
-          push af
-          ld a,h:call put_hexa_a
-          ld a,l:call put_hexa_a
-          pop af
-          ret
-
-put_hexa_a
-          push af
-          call put_hexa_qh
-          pop af
-          push af
-          call put_hexa_ql
-          xor a
-          ld (de),a
-          pop af
-          ret
-
-
-put_hexa_qh
-          rrca
-          rrca
-          rrca
-          rrca
-put_hexa_ql
-          and &0F
-          or a
-          daa
-          add &F0
-          adc &40
-          or &20        ;lowercase
-          ld (de),a
-          inc de
-          ret
-
-;
-put_deci_hl
-;Affiche "hl" en decimal
-;        
-          push hl
-          push bc
-          ld bc,10000
-          call pwfigno0
-          ld bc,1000
-          jr nz,pwdec4
-          call pwfigno0
-          ld bc,100
-          jr nz,pwdec3
-          call pwfigno0
-          ld a,l
-          ld b,10
-          jr nz,ddec100
-          jr put_dec_
-pwdec4
-;>=10000 il faut afficher nombre des 1000
-;
-          call pwfig
-          ld bc,100
-pwdec3
-          call pwfig
-          ld a,l
-          ld b,10
-          jr ddec100
-;
-pwfig
-          xor a
-pwfigwf
-          inc a
-          or a
-          sbc hl,bc
-          jr nc,pwfigwf
-;
-          add hl,bc
-          dec a
-          or &30
-          ld (de),a
-          inc de
-          ret
-;
-pwfigno0
-          xor a
-pwfn0wf
-          inc a
-          or a
-          sbc hl,bc
-          jr nc,pwfn0wf
-          add hl,bc
-          dec a
-          ret z
-;
-          or &30
-          ld (de),a
-          inc de
-          or &30        ;force nz
-          ret
-;
-put_deci_a_pad0
-; for 00-99 deci: add 0 if < 10
-          cp 10:jr nc,put_deci_a
-          ex de,hl:ld (hl),"0":inc hl:ex de,hl
-;enchaine
-put_deci_a
-          push hl       ;not modified, but mimic put_deci_hl for pop
-          push bc
-          ld b,100
-          call dpfigno0
-          ld b,10
-          jr nz,ddec100
-put_dec_
-          call dpfigno0
-          jr ddecunit
-ddec100
-;>=100 il faut afficher nombre des dizaines
-;
-          call dpfig
-ddecunit
-          or &30
-          ld (de),a
-          inc de
-          xor a
-          ld (de),a
-          pop bc
-          pop hl
-          ret
-
 ;-------
 
-dump_hexa
-;In: DE: buffer
-   ;  B: nb bytes to display
-          call is_ei
-;out:hl trashed.
-dump_hexa_lp
-          ld a,(de):inc de
-          call disp_hexa_a
-          call disp_locate_inc
-          call vo_ei
-          djnz dump_hexa_lp
-          ret
-
-dump_hexa_shaded
-          call is_ei
-dump_hexa_shaded_lp
-          ld a,(de):inc de
-          call disp_hexa_a_shaded
-          call disp_locate_inc
-          call vo_ei
-          djnz dump_hexa_shaded_lp
-          ret
-
-
-dump_ascii
-;TODO: use bc instead as a pointer?
-          call is_ei
-dump_ascii_lp
-          call get_chr
-          push de
-          call disp_chr
-          pop de
-          inc de
-          call vo_ei
-          djnz dump_ascii_lp
-          ret
-
-dump_ascii_shaded
-;TODO: use bc instead as a pointer?
-          call is_ei
-dump_ascii_shaded_lp
-          call get_chr
-          push de
-          call disp_chr_shaded
-          pop de
-          inc de
-          call vo_ei
-          djnz dump_ascii_shaded_lp
-          ret
-
-get_chr
-;Chr pour dump (#00-#1f -> ".")
-          ld a,(de)
-          cp &20
-          ret nc
-          or a
-          ret z
-          ld a,"."
-          ret
 
 is_ei
 ;Retain if we are under DI or EI,
@@ -1091,39 +883,39 @@ status_clear_line_at
 status_deci_a_at
           call status_set_cursor
 status_deci_a
-          push ix:ld ix,put_deci_a + &8000
+          push ix:ld ix,put_deci_a
           jr _status_num
 
 status_deci_a_pad0_at
           call status_set_cursor
 status_deci_a_pad0
-          push ix:ld ix,put_deci_a_pad0 + &8000
+          push ix:ld ix,put_deci_a_pad0
           jr _status_num
 
 
 status_deci_hl_at
           call status_set_cursor
 status_deci_hl
-          push ix:ld ix,put_deci_hl + &8000
+          push ix:ld ix,put_deci_hl
           jr _status_num
 
 
 status_hexa_a_at
           call status_set_cursor
 status_hexa_a
-          push ix:ld ix,put_hexa_a + &8000
+          push ix:ld ix,put_hexa_a
           jr _status_num
 
 
 status_hexa_hl_at
           call status_set_cursor
 status_hexa_hl
-          push ix:ld ix,put_hexa_hl + &8000
+          push ix:ld ix,put_hexa_hl
 _status_num
           push de:push hl
           ld de,vo_status_tmp
           push de
-          call jp_ix_c1
+          call jp_ix
           pop bc
           call status_str
           pop hl:pop de
@@ -1182,6 +974,9 @@ status_ret
           ld sp,(vo_status_savesp)
           ret
 
+      IF 0
+;Check IX dest is in C000
+;Not needed anymore
 jp_ix_c1
       IF dev_checks
           push af
@@ -1189,6 +984,7 @@ jp_ix_c1
           pop af
       END
           jp ix
+      END
 
 vo_status_savesp WORD 
 vo_status_pos WORD 0    ; 0 for proper bin length
@@ -1201,6 +997,6 @@ vo_status_tmp SKIP &80  ; buffer tmp
 
       ORG $$            ; restore
 
-      IF $ > disp_start'
+      IF $ > pianoui
    !! overlap
       END

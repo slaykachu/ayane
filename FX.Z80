@@ -1,6 +1,12 @@
 ; Effects/Commands.
 
-      IMPORT "plyconf.i"
+;/// 2025 ///
+; --- v0am ---
+;Aug
+ ; 23 Move common macro in macro.i
+
+      IMPORT "plyconf.i" ; sfx flag used via SUB_TM
+      IMPORT "macro.i"
 
 dev_checks = ayane
 
@@ -12,11 +18,8 @@ fx_code
 
 fx_noFx
           pop hl        ; skip param
-      IF sfx
-          sub 6+2 /2    ; +2: Sub itself
-      END
       IF dev_checks
-          sub 17-3 /2
+          SUB_TM(20)
           pop hl
           ex af,af
           ld a,h
@@ -25,6 +28,7 @@ fx_noFx
           ex af,af
           jp hl
       ELSE
+          SUB_TM(6)
           ret
       END
 

@@ -1,14 +1,13 @@
 ; ---- Shared constants and struct def -----
 
-; Unit is 16nops. 
-; Line unit wouldn't allow half-lines (e.g. perfect 50hz),
-; The slowest replay is then 65535 * replay_unit / 312 / 64 = 52 frames
-replay_unit = 16
-; replay_50hz = 20000 / replay_unit  ; unused
-replay_25_04Hz = 624 * 64 / replay_unit
-replay_50_08Hz = 312 * 64 / replay_unit
-replay_100_16Hz = 156 * 64 / replay_unit
-replay_300_48Hz = 52 * 64 / replay_unit
+; Unit is nop, as timer.current_clock 
+; The slowest replay is then 65535 / 312 / 64 = 3.28 frames
+; replay_50hz = 20000   ; unused
+replay_25_04Hz = 624 * 64
+replay_50_08Hz = 312 * 64
+replay_100_16Hz = 156 * 64
+replay_300_48Hz = 52 * 64
+replay_default = replay_50_08Hz
 
 delai_ui_default = 6
 diapason_default = 440-256
@@ -167,6 +166,9 @@ y_pos_instr# = 2
 x_pos_instr# = 49
 y_pos_instr_ed = 6
 x_pos_instr_ed = 8
+y_pos_note = y_pos_octave
+x_pos_note = x_pos_octave + 12
+
 ;-------------------------
 
 ; --------------------------
@@ -219,7 +221,8 @@ kcrgt = &FB
 kesc  = &FC
 
 
-;---
+;---                    
+programming_error = &BE00 ; TODO: use except
 km_wait_key = &BB18
 
       ORG savepc,saveobj ; restore

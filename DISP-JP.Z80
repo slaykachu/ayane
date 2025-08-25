@@ -78,17 +78,6 @@ disp_hexa_hl
 disp_hexa_hl_inv
 disp_hexa_hl_shaded
 
-put_deci_a
-put_deci_a_pad0
-put_deci_hl
-put_hexa_a
-put_hexa_hl
-
-dump_ascii
-dump_ascii_shaded
-dump_hexa
-dump_hexa_shaded
-
 str_pad_at
 str_pad_at_ei
 

@@ -14,14 +14,30 @@ border_col' = &44
  ; - Still fit in 256 tables (78 * 3 = 218)
  ; - CON: more interruptions (50 nops each time without rasters). 
 
+; Main routines
+; - init_timer
+; - set_timer_and_psg  ; cut fx, change periods, program psg
+; - anchor      ; Header event + routine called every 4 lines
+
 ; Routines plugged in instr row:
 ; - fx_null                    
 ; - sync_buzzer_register
 
+; /// 2025 //////
+  ; ---- v0am ----
+   ; Aug 23: Double period if too small (since "Same event" todo)
+                ; To avoid assert
+           ; Move common macros in macro.i
+hack_period = 0
+
       IMPORT "const.i"
       IMPORT "plyconf.i"
       IMPORT "memmap.i" ; psg_regs
+      IMPORT "macro.i"
+check_pc = $
       IMPORT "periods.o"
+          ASSERT($ == check_pc) ; Must have been imported first (via ply)
+;Otherwise, $ = c1, and Init_periods would trash the code!
 
 TM_MAX = &80
 RDV_SENTINELLE = TM_MAX ; Max RDV
@@ -34,6 +50,8 @@ RDV_SENTINELLE = TM_MAX ; Max RDV
 ; Size Header+code for each event.
 ; 16 is more than necessary (see for sample+volume if it's true).
 EVENT_MAX_SIZE = 16
+          ASSERT_NOT(EVENT_MAX_SIZE AND EVENT_MAX_SIZE-1)
+; -> if not power of 2, replace AND by modulo 
 
 track_fx_size = &10     ; 2 bytes by fx. Now &10 for easier debug
 
@@ -47,21 +65,12 @@ hdr_code = 5            ; execution
 fail  = &BE00
 
 ;---------------------------------------
-      MACRO SUB_TM n
-; Update counter TM (+2 for 'sub n' itself)
-      IF n AND 1
-; Resolution: 2-nops. Must compensate
-          ld a,a:sub [n+3]/2
-      ELSE
-          sub [n+2]/2
-      END
-      ENDM
-
-      MACRO SUB_TM'' n
-; Update counter TM (+2 for 'ex af')
-          ex af,af
-          SUB_TM(n+2)
-          ex af,af
+      MACRO INIT_LISTS
+init_lists_tm = 24
+; IN/OUT: A = TM (when applicable)
+          ld hl,fx_by_track:ld (fx_by_track_pnt),hl
+          ld hl,change_list:ld (change_pnt),hl
+          ld hl,cut_list:ld (cut_pnt),hl
       ENDM
 
       MACRO SUB_TM_CALL n
@@ -71,31 +80,12 @@ fail  = &BE00
           call jp_m_hl'
       ENDM
 
-      MACRO RET_ROUT tm
-      IF sfx
-          SUB_TM(tm+4)
-          ret p
-          exx:jp hl
-      ELSE
-          ret
-      END
-      ENDM
-
-      MACRO RET_ROUT' tm
-      IF sfx
-          ex af,af
-          RET_ROUT(tm+1)
-      ELSE
-          ret
-      END
-      ENDM
-
       MACRO FIND_EVENT_PRELUDE
 ; Find where to insert event (copy-pasted for speed)
 ; Here: HL = header_events + gross position 
+      ; A  = fine position
       ; D  = events
       ;  C = event to insert
-      ;  A = fine position
           ld e,(hl)
           ex de,hl
           srl a         ; A = fine pos < 128 in double-nops
@@ -105,9 +95,7 @@ fail  = &BE00
           inc l
       IF dev_checks
           ld e,a
-      IF EVENT_MAX_SIZE - &10
-  !! review check itself
-      END
+          ASSERT(EVENT_MAX_SIZE == &10) ; if fail, update check itself
           ld a,(hl):and &0F:cp hdr_cpt:call nz,fail
           ld a,e
           SUB_TM''(11)
@@ -130,19 +118,27 @@ fail  = &BE00
 
       MACRO PSG_L_HL
 ; Sent (hl) to reg l
-; In: HL = psg_regs + reg 
+; In: HL = psg_regs + reg without touching A
+    ; DE = &f680
+    ;  C = &c0
     ; PPI in select mode (F6C0)
-;Out: HM +=1
-      IF psg_regs AND &FF
- !! cannot use lsb=reg
-      END
-psg_l_hl_tm = 31
+;Out: HL +=1
+          ASSERT_NOT(psg_regs AND &FF) ; to use lsb=reg
+psg_l_hl_tm = 26
           ld b,&F4:out (c),l ; assume PPI:F6 already in select mode
-          ld b,&F6:out (c),0
+          ld b,d:out (c),0
           dec b
           outi
-          ld bc,&F680:out (c),c
-          ld c,&C0:out (c),c
+          ld b,d:out (c),e:out (c),c
+      ENDM
+
+      MACRO CHECK_EVENT_OFFSET offset
+      IF dev_checks
+          ASSERT_NOT(EVENT_MAX_SIZE AND EVENT_MAX_SIZE-1)
+; -> if not power of 2, replace 'and' by modulo 
+          and EVENT_MAX_SIZE-1
+          cp offset:call nz,fail
+      END
       ENDM
 
 ;---------------------------------------
@@ -163,56 +159,56 @@ init_timer
 ;So, if we accidently use too much fx, will overwrite first one
 ;rather than crashing.
           ld (hl),0
+ ;         xor a:ld (dbg3+1),a
+          ld hl,0:ld (current_clock),hl
+; We need it to lag behind, otherwise, race condition:
+; event set by first play/play_instr could be triggered too soon.
+          ld a,&80      ; Any < -312/4 so we don't reach 0 in 1 frame)
+          ld (current_anchor),a
 
-      IF 0
-; Not needed, as it stay in sync with current_anchor
-          ld hl,0
-          ld (current_clock),hl
-      END
 ; Not needed, as rolling link.
 ; Set it nevertheless for easier dbg.
           ld hl,events:ld (free_slot),hl
 
 ; ---- Reset table with anchor sentinelle.
           ld hl,header_events
-      IF 0
-; Stay in sync with clock. See comment above
-          ld (current_anchor),hl
-      END
 .fill     ld (hl),anchor+hdr_cpt AND &FF:inc l:jr nz,.fill
 
 ; ---- No current fx (0 use as sentinelle, must be present at
 ; every level)
+          ASSERT_NOT(fx_type_none) ;expect 0
           ld hl,fx_by_track
-      IF MAX_TRACKS*track_fx_size - 1 AND &FF00
-   !! review that
-      END
-          ld b,MAX_TRACKS*track_fx_size AND &FF
-      IF fx_type_none
-  ; expected 0
-      END
+          ld b,MAX_TRACKS*track_fx_size AND &FF ; &100 -> 0
           xor a
 .raz
 ; We want to set fx_type = none
 ; evt pnt at 0: nevermind as no fx
           ld (hl),a:inc l
           djnz .raz
+
+          INIT_LISTS()
           ret
 
 timer_code              ; for dev checks in instr.o
 
 sync_buzzer_register
 ;-------------------
+; Manage fx scheduling (start vs change vs stop)
+; That is, update /fx_by_track/change_list/cut_list/
+; When /.start/, directly encode an event (so no list needed for that)
+
 ; Called by via instr's column fx.
-; - Faster and simpler than storing type+params to re-read 
+; - Faster and simpler than storing virtual regs to read 
     ; and dispatch afterwards.
 ; - We know which track we are in.
-; - [optim] No handling (E.g. cut scan) for non-active tracks  
+; - More optimised: No handling (E.g. cut scan) for non-active tracks  
+
+      IF todo
 ; !!! When fx0 is cut in instr, fx1 will be seen as new fx0.
 ; !!! -> Will introduce an artefact, since starting clock of fx0
        ; will be used.
+      END
 ;----------
-; Manage fx (start vs change vs stop)
 
  ; In: (sp) = instr fx params 
      ; ixl = note
@@ -236,7 +232,11 @@ fx_by_track_pnt = $+1
 ; Same fx, with different params.
 ; Cannot change params of currently running fx,
 ; Much like we cannot program PSG right now. 
+      IF hack_period
+sbr_params_tm = sbr_tm_switch-1 + 59 ; -1: jr not taken
+      ELSE
 sbr_params_tm = sbr_tm_switch-1 + 54 ; -1: jr not taken
+      END
           inc l
           ld a,(hl):inc l
           ld (fx_by_track_pnt),hl
@@ -258,9 +258,29 @@ change_pnt = $+1
           ld c,a
           ld b,periods/&0100
           pop de        ; pitch
-          ld a,(bc):add e:ld (hl),a:inc l
+          ld a,(bc):add e
+      IF hack_period
+          ld e,a
           inc c
-          ld a,(bc):adc d:ld (hl),a:inc l
+          ld a,(bc):adc d
+;For B-8 we get &77, which triggers assert (as "same event" to do)
+; While < &100, double it (&80 might be ok, but cumbersome to test)
+; TODO: handle "same event" instead
+; TODO: compare agains &80
+.test_threshold
+          or a
+          jr nz,.okper
+          SUB_TM''(10)
+          sla e:adc a
+          jr .test_threshold
+.okper
+          ld (hl),e:inc l
+      ELSE
+          ld (hl),a:inc l
+          inc c
+          ld a,(bc):adc d
+      END
+          ld (hl),a:inc l
 ;- no extra param
       IF fx_extra_size
  !!! todo (...or not if fx are packed)
@@ -292,16 +312,15 @@ setup_tm = 48 + 20      ; until sbr_setup_tm
 ; For next fx on same track
           ld (fx_by_track_pnt),hl
 
-      IF hdr_cpt-hdr_link_free-1
-   !! review
-      END
 ; --- Insert event in event table
+          ASSERT(hdr_cpt == hdr_link_free+1)
           ld c,e:inc c  ; hdr_cpt
           ld hl,current_clock
           ld a,(hl):inc l ; fine pos
           ld l,(hl)     ; gross pos in LSB
           ld h,header_events/&0100
           ld d,events/&0100
+;      BRK
           FIND_EVENT_PRELUDE()
 ;First iter unrolled:
   ; - optimisation
@@ -311,18 +330,17 @@ setup_tm = 48 + 20      ; until sbr_setup_tm
           ld d,h        ; ! yeah 
           FIND_EVENT_LOOP()
 ; No Special case here as fresh event
+      IF todo
+ ; what?!! not necessarily fresh event if multi sync?
+      END
 .found0
           ex de,hl
           ld (hl),c     ; link to this event
           ld l,c
           ld h,d        ; needed when coming from first iteration
-      IF hdr_cpt-hdr_link_free-1
-   !! review
-      END
+          ASSERT(hdr_cpt == hdr_link_free+1)
           ld (hl),a:inc l
-      IF hdr_link_next-hdr_cpt-1
-   !! review
-      END
+          ASSERT(hdr_link_next == hdr_cpt+1)
           ld (hl),e:inc l ; Link to next event
 
 ; --- Fx common setup ---- 
@@ -332,16 +350,14 @@ setup_tm = 48 + 20      ; until sbr_setup_tm
 
 current_clock = $+1
           ld bc,0       ; in 16bits for easy get/update
-      IF current_clock+1 /&0100 - current_clock/&0100
-  !! error confine
-      END
+          ASSERT(current_clock+1 /&0100 == current_clock/&0100) ; confine
           ld (hl),b:inc l ; !!! MSB first (since read backward)
           ld (hl),c:inc l
 
 ; --- Fx specific setup -----
 ; -- Install routine, and poke params direclty:
    ; - Faster
-   ; - We couldn't reuse "poke params" dire 
+   ; - We couldn't reuse "poke params" 
 sbr_setup_tm = 52       ; until RET_ROUT'
       IF hdr_code-hdr_clock-2
    !! review
@@ -437,15 +453,24 @@ cut_pnt = $+1
           ld (fx_by_track_pnt),a
           RET_ROUT'(33)
 
-set_timer
-;--------
-; Cut fx, change params, and ==set PSG==
-; Cut must be done first thing at start of iter,
-; before sending psg regs -> E.g if sync buzzer is cut and replaced
-; by classic hard_env, the fx must be stopped before psg update.
+set_timer_and_psg
+;----------------
+; Cut fx, change params, and **set PSG**
 
-; IN: A' = TM
+; Rationale: cut must be done before sending psg regs
+; -> E.g if sync buzzer is cut and replaced
+; by classic hard_env, the fx must be stopped before psg update.
+; Note: play/play_instr will prepare things for next iter
+
+; IN: A = TM  
+    ;HL'= nxt event 
 ;OUT: A = TM     
+
+; Mark end of lists, which were built by e.g sync_buzzer_register
+; via instr.o
+          ld hl,(change_pnt):ld (hl),0
+          ld hl,(cut_pnt):ld (hl),0
+          SUB_TM(16)
 
 ; Convert 16 bits -> 12 bits
 ; Note: Hard env period already converted (it was /256)
@@ -455,7 +480,7 @@ correct_tm = 6          ; don't count last ex af to compensate djnz
       IF correct_tm MOD 3
  !! must report residue at the end 
       END
-          ex af,af
+          nop           ; for correct_tm to be multiple of 3
           ld hl,psg_regs
           ld b,3
 .cor_lp
@@ -484,12 +509,8 @@ cut_tm = 11             ; Until .cutend (taken)
 ; Note: event is released below, so it could also be overwritten
       ; by new fx, which is fine as well.
       IF dev_checks
-      IF EVENT_MAX_SIZE AND EVENT_MAX_SIZE-1
-   !! must review check itself
-      END
-          and EVENT_MAX_SIZE-1
-          cp hdr_code:call nz,fail
-          ld a,(de)
+          CHECK_EVENT_OFFSET(hdr_code)
+          ld a,(de)     ; restore
           SUB_TM''(9)
       END
           ld l,a
@@ -533,12 +554,8 @@ change_params_tm = 10   ; until chgend taken
       END
           inc l
       IF dev_checks
-      IF EVENT_MAX_SIZE AND EVENT_MAX_SIZE-1
-   !! must review check itself
-      END
           ld a,(hl)
-          and EVENT_MAX_SIZE-1
-          cp hdr_code+skip_prelude:call nz,fail
+          CHECK_EVENT_OFFSET(hdr_code+skip_prelude)
           SUB_TM''(9)
       END
           ld e,(hl)
@@ -554,11 +571,50 @@ change_params_tm = 10   ; until chgend taken
           jr .chglp
 .chgend
 
+          INIT_LISTS()  ; Reset pnts for next time
+
+; Sync (incoming) current_anchor to the clock.
+; It's needed at the first iteration, as current_anchor was 
+    ; purposefully lagging to avoid race condition (see init_timer)
+; It's not needed afterward, since it remains in sync naturally.
+; It's a pity then to do it each time, but the alternative is even less
+; glorious: init_timer would have to keep track of time
+          ; and be called exactly 1 frame before first set_timer.
+              ; - cumbersome
+              ; - unnecessary lag.
+      IF todo
+; For sid (r7), check for race condition with /psg/
+; Oh! when sid we must take care of conflict anyway
+      END
+sync_anchor_tm = 10
+          ld hl,(current_clock)
+          ld a,h:ld (current_anchor),a
+; Now update clock for next time.
+      IF ayane
+update_clock_tm = 14
+          ld bc,(replay_period_in_nops)
+      ELSE
+update_clock_tm = 11
+          ld bc,replay_default ; = 312*64  cf const.i
+      END
+      IF dev_checks
+; Todo [persitence] make sure it is repopulated
+          ld a,c:cp replay_default AND &FF:call nz,programming_error
+          ld a,b:cp replay_default / &0100:call nz,programming_error
+          SUB_TM''(12)
+      END
+          add hl,bc
+          ld (current_clock),hl
+
+          ex af,af      ; A = tm
+          SUB_TM(init_lists_tm+sync_anchor_tm+update_clock_tm+1)
+
 ; Enchaine
 psg
-psg_tm = 51             ; ld and calls
-          ex af,af      ; A = tm
+psg_tm = 55             ; ld and calls
           ld hl,psg_regs
+          ld de,&F680
+          ld c,&C0
           call psg_channel ; regs 0,1,8
           ld l,2
           call psg_channel ; regs 2,3,9
@@ -570,9 +626,9 @@ psg_tm = 51             ; ld and calls
           call psg_2regs ; regs 11,12
           ex af,af
           ld a,(hl)
+;If bit 4 set or different val: force trigger
 oldr13 = $+1
           cp 0
-;If bit 4 set or different val: force trigger
           res 4,a
           ld (oldr13),a
           jr nz,$+3:inc l ; reg 14: dev/null
@@ -616,7 +672,7 @@ anchor
    !! error align
       END
 
-anchor_tm = 26+13
+anchor_tm = 25+13
       IF need_speed
 ; Use one common pointer for raster and anchor
 ; !!! Requires to fill rasters table each time
@@ -633,15 +689,15 @@ current_anchor = $+1
           ld (current_anchor),hl
 ; =====  program_next_event   ====
           dec l
+;          ld c,a:dec l:ld a,(hl):cp &F1:call nz,&BE00:inc l:ld a,c
           ld c,(hl)
 ;Clear for rolling buffer
           ld (hl),anchor+hdr_cpt AND &FF
           ld l,c
           inc h
           add (hl)
-      IF hdr_code-hdr_cpt - 4 OR [EVENT_MAX_SIZE - 16]
-  !!! review that 
-      END
+          ASSERT([hdr_code AND 4]==4 AND EVENT_MAX_SIZE==16)
+          ASSERT(hdr_code == hdr_cpt+4)
 ; +4 without having to use "EX AF,AF'"
           set 2,l       ; hl=jump address
           exx
@@ -662,7 +718,10 @@ set_reg13_insert_and_program
           ld bc,&F40D
 set_psg_insert_and_program
 ;-------------------------
-; In: hl = jump address of current event
+; Called as event (set in sync_buzzer_register)
+; The prelude (setting DE, A) is done by the code inside the event.
+
+; In: hl = jump address of current event (in /events/)
     ; bc = &f400+reg
     ; de = period
     ;  a = val psg
@@ -682,12 +741,13 @@ set_reg13_insert_and_program_tm = set_psg_insert_and_program_tm + 3
 ; Bit 4 of VAL must be 0 to keep motor off, 
 ; If used as PORT MSB -> latch printer, which would cause issue
 ; with soundplayer!
-          ld c,&C0:out (c),c ; Select (for next time)
+          ld c,&C0:out (c),c ; Select (for next time or /psg/ rout)
 
+;dbg3      ld a,0:inc a:ld (dbg3+1),a
 ; ---  raster for visu -----
           ld b,&7F:ld a,l:and &1F:or &40:out (c),a
 
-; Hl points to clock. We add period to next RDV.
+; Hl-1 points to clock. We add period to next RDV.
           dec l
           ld a,(hl):add e:ld (hl),a:dec l:ld b,a
           ld a,(hl):adc d:ld (hl),a:dec l
@@ -706,6 +766,7 @@ set_reg13_insert_and_program_tm = set_psg_insert_and_program_tm + 3
           dec h         ; header_events
           ld l,a        ; Gross pos
           ld a,b
+ ;     BRK   
           FIND_EVENT_PRELUDE()
 ;First iter unrolled:
   ; - optimisation
@@ -742,24 +803,6 @@ set_reg13_insert_and_program_tm = set_psg_insert_and_program_tm + 3
           exx
           RET_ROUT(base_fx_tm + set_psg_insert_and_program_tm)
 ; ----------------------------------------------
-
-preplay_init
-; Mimic what ply.o does 
-; For nrt and piano   
-; IN/OUT: A = TM
-          ld hl,fx_by_track:ld (fx_by_track_pnt),hl
-          ld hl,change_list:ld (change_pnt),hl
-          ld hl,cut_list:ld (cut_pnt),hl
-          RET_ROUT(24)
-
-postplay
-; Mimic what ply.o does at track_end
-; For nrt and piano
-; IN/OUT: A = TM
-          ld hl,(change_pnt):ld (hl),0
-          ld hl,(cut_pnt):ld (hl),0
-; /current_clock/ not updated, nevermind.
-          RET_ROUT(16)
 
 timer_nop
 ;--------
@@ -805,8 +848,8 @@ waitlines_tm
 .inner
           SUB_TM_CALL(4)
           djnz .inner
-; Rely on fact SUB_TM(even) takes 2 nops. Whole loop takes 64 nops
           2 ** ld a,a
+; Rely on fact SUB_TM(even) takes 2 nops. Whole loop takes 64 nops
           SUB_TM(13-1+2) ; -1 last djnz, +2: padding 
           pop bc
           djnz waitlines_tm
@@ -825,21 +868,20 @@ rasters
       END
 
 fx_by_track SKIP MAX_TRACKS*track_fx_size ; n**(type, event pnt)
-      IF fx_by_track AND &FF
-  !!! must be aligned
-      END
+          ASSERT_NOT(fx_by_track AND &FF) ; aligned
+          CHECK_CONFINE(fx_by_track)
+
 
 MAX_FX_PARAMS = 4       ; pos, env, period (sync buzzer)
 
 change_list SKIP MAX_TIMER_FXS*MAX_FX_PARAMS +1 ; +1 for sentinelle
-      IF $-1 /&0100 - change_list/&0100
-   !!! error confine
-      END
+          CHECK_CONFINE(change_list)
 
 cut_list SKIP MAX_TIMER_FXS +1
-      IF $-1 /&0100 - cut_list/&0100
-   !!! error confine
-      END
+          CHECK_CONFINE(cut_list)
 
 free_slot WORD events
+replay_period_in_nops WORD replay_default
 
+dbg1  WORD 
+dbg2  WORD 

@@ -1,10 +1,14 @@
 ; <<< Conv. Conversions >>>
-            ; (well, just str->int for now)
-                        ; int->str 
 
 fail  = &BE00
 
 ; !!TODO!!: remove put_* from disp.o
+
+; //// 2025 ////
+; -- v0am --
+;Aug 
+  ; 24: Add convert_note, put_note, put_double_space
+
 
 ; TOC:             
    ; From string to integer:
@@ -16,6 +20,9 @@ fail  = &BE00
      ; put_deci_hl 
      ; put_hexa_a  
      ; put_hexa_hl
+
+   ; Misc
+     ; convert_note
 
 ; ========================================
 deci_to_byte
@@ -203,7 +210,13 @@ pwfn0wf
           inc de
           or &30        ;force nz
           ret
-;
+
+put_deci_a_pad0
+; for 00-99 deci: add 0 if < 10
+          cp 10:jr nc,put_deci_a
+          ex de,hl:ld (hl),"0":inc hl:ex de,hl
+          jr put_deci_a
+
 put_deci_a_signed
           or a          ; zero : no sign
           jr z,put_deci_a
@@ -267,6 +280,7 @@ dpfn0wf
           and a
           jr z,dpfn0ret
 ;
+put_a_deci_digit
           or &30
           ld (de),a
           inc de
@@ -275,26 +289,61 @@ dpfn0ret
           ld a,b
           ret
 
-      IF 0
-; not used right now
-put_bin_l
-          ld h,0
-put_bin_hl
-          ld a,"%"
-          call put_a
-          ld a,l
-          or h
-          ld a,"0"
-          jp z,put_a
-          ld b,17
-eat_0s
-          dec b
-          add hl,hl
-          jr nc,eat_0s
-pb_lp     ld a,0
-          adc "0"
-          call put_a
-          add hl,hl
-          djnz pb_lp
+put_double_space
+          ex de,hl
+          ld (hl)," ":inc hl
+          ld (hl)," ":inc hl
+          ex de,hl
           ret
+
+put_note
+;-------
+;in a: Encoded note
+  ;de: Buffer
+;out: de past written note
+    ;  a preserved
+    ; hl, bc thrashed
+          push af
+          call convert_note
+          ld l,a
+          add a:add l
+          add notes_text AND &FF:ld l,a
+          ld h,notes_text/&0100
+          ldi:inc bc
+          ldi:inc bc
+          ld a,c
+          call put_a_deci_digit
+          pop af
+          ret
+
+convert_note
+;in a: Encoded note
+;out c: Octave (note/12)
+   ; a: note % 12 
+          ld c,-1
+.lp
+          inc c
+          sub 12
+          jr nc,.lp
+          add 12
+          ret
+
+
+notes_text
+      BYTE "C-",0
+      BYTE "C#",0
+      BYTE "D-",0
+      BYTE "D#",0
+      BYTE "E-",0
+      BYTE "F-",0
+      BYTE "F#",0
+      BYTE "G-",0
+      BYTE "G#",0
+      BYTE "A-",0
+      BYTE "A#",0
+      BYTE "B-",0
+      IF $/&0100 - notes_text/&0100
+ !! error align
       END
+
+

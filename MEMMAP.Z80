@@ -112,16 +112,14 @@ st_module = &4800
 ; ----------------------------------------------
 ; ---------- Disp BK ------------
 ; ----------------------------------------------
-disp_start = ramlimit   ; disp.o (out of bank routs, fonte, )
-; Setup by init.o, which imports disp.o or disp.bin
-disp  = &4800
-
-disp_start' = &4F00     ; status/help/pianoui + routines in ayane
+disp_start = ramlimit   ; disp.o (out of bank routs, font...)
+disp  = &4800           ; start of code after fonts
+pianoui = &4F00
 
       ORG &8000
 psg_regs                ;  Room for pseudo registers and ??? 
 ;!! Shared with other buf, as we never play while loading or saving!
-workzone SKIP &0600     ; chipn 
+workzone SKIP &0600     ; chipn, &8100:pianoui (temp buffer for display)
 workzone_size = $ - workzone
 salo_buf1 = workzone
 salo_buf2 = workzone + &0100
@@ -130,8 +128,8 @@ salo_buf2 = workzone + &0100
 ;buf_chung_
 
 free_ram_for_nrt
-code_start'
-bandaya = &9E30
+ged
+bandaya = &9A40         ; Pad for INTx to be confined
 
 ramlimit' = &A200
       IF todo

@@ -1,5 +1,9 @@
 ; <<<<< Display piano (shading and stuff) >>>>>
-; 2025 Aug  2 More static checks
+; 2025 Aug 24 Add disp_note
+         ; 23 Default octave to 3
+         ; 20 Use IMPORT_DISP 
+            ; Each routine retourne octave
+         ;  2 More static checks
             ; Update status bar
          ;  1 Lower display
      ; Jun 23 Move test in pianouit
@@ -18,6 +22,21 @@ piano_dest = &4000 + r1*8
 
       IMPORT "const.i"  ; x_pos_octave
       IMPORT "memmap.i"
+      IMPORT "macro.i"
+      IMPORT "import.i"
+      IMPORT "conv.o"   ; put_note put_double_space
+      IMPORT "periods.o"
+      IF 0
+; We import disp since we share the bank
+;  -> Allow direct call to routines (faster and smaller)
+ ; Otherwise disp-jp.call_status would reconnected original bank (c5)
+   ; -> crash           
+pccheck = $
+          IMPORT_DISP()
+          ASSERT($ == pccheck)
+      END
+
+tmpbuf = workzone+&0100
 
 ;--------------------------------------
       MACRO LOCATION x,y
@@ -34,6 +53,7 @@ piano_dest = &4000 + r1*8
 
 
 octave_rgt
+;Out: A = octave
           ld hl,octave
           ld a,(hl):cp 7
           ret nc
@@ -41,20 +61,21 @@ octave_rgt
           jr octave_com
 
 octave_lft
+;Out: A = octave
           ld hl,octave
           ld a,(hl):or a
           ret z
           dec a
 octave_com
           ld (hl),a
-          jr disp_piano_
-
+;Enchaine
 disp_piano
           ld a,(octave)
-disp_piano_
 ; Display piano (shaded expect octave A and A+1)
 ; In: A = octave
+;Out: A = octave
 
+          push af
           push af
           LOCATION(x_pos_octave,y_pos_octave)
           CALL_DS(status_deci_a_at)
@@ -78,6 +99,7 @@ disp_piano_
           ld bc,hei*&0100 + wid_2_octaves
           ld ix,wid
           call disp_sprite
+          pop af
           ret
 
 .odd
@@ -112,6 +134,7 @@ disp_piano_
           call bc26_de
           pop bc
           djnz .ylp
+          pop af
           ret
 
 disp_sprite
@@ -169,7 +192,37 @@ bc26_de
           ld a,d:adc &C8:ld d,a
           ret
 
-octave BYTE 0
+disp_note
+;Display Note, 16bits period, 12bits period (psg) 
+ ; E.g. "B-7  &00fd  16"   
+;In: A: note (0=c0)
+          ld de,tmpbuf
+          push de
+          call put_note
+          call put_double_space
+          add a
+          add c0 AND &FF
+          ld l,a:ld h,periods/&0100
+          ld a,(hl):inc l
+          ld h,(hl):ld l,a
+          ld a,"&":ld (de),a:inc e
+          CALL_DS(put_hexa_hl)
+          call put_double_space
+;div/16 with rounding closest
+      3 ** [srl h:rr l]
+          inc hl
+          srl h:rr l
+          CALL_DS(put_deci_hl)
+          call put_double_space ; for erasing
+          xor a:ld (de),a
+          pop bc
+          LOCATION(x_pos_note,y_pos_note)
+          CALL_DS(status_str_at)
+          ret
+
+;------------------------------------------
+
+octave BYTE 7           ;3
 
 sprite
       LOAD "touches.win"
@@ -178,12 +231,12 @@ ho    = $$
 
 save_pc = $
 save_obj = $$
-      ORG disp_start
+
 ; We import disp since we share the bank
 ;  -> Allow direct call to routines (faster and smaller)
  ; Otherwise disp-jp.call_status would reconnected original bank (c5)
    ; -> crash
-      IMPORT "disp.o"
+          IMPORT_DISP()
 
       ORG save_pc,save_obj
 

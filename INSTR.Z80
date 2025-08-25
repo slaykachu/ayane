@@ -13,6 +13,7 @@ may_crunch = 1
    ; - only works for fixed /regs/ address XX00. 
 
       IMPORT "plyconf.i"
+      IMPORT "macro.i"
 
 dev_checks = 1 AND ayane ; deactivate: otherwise TM doesn't fit
 ;-> not really true anymore as of 03 Mar 2025 as we added /SUB_TM_CALL/
@@ -63,8 +64,11 @@ r14   = psg_regs+14     ; Reset by ply before iteration
       END
 
 ; \\\\\ 2025 ///
-;Apr
+; ---- v0am ----
+;Aug
+ ; 23 Move common macro in macro.i
 ; ---- v0ad ----   
+;Apr
  ; 24: Store period in BC (was only in comment!?)
   ; CHIP_VOL_AND_PNT: remove "if use_volume" -> was doing sheiss
 
@@ -78,53 +82,11 @@ r14   = psg_regs+14     ; Reset by ply before iteration
 loop_bit = 7
 fail  = &BE00
 
-      MACRO EX_AF'
-      IF sfx
-          ex af,af
-      END
-      ENDM
-
-      MACRO SUB_TM n
-; Copy-paste from timer.o                  
-      IF sfx
-; Update counter TM (+2 for 'sub n' itself)
-      IF n AND 1
-; Resolution: 2-nops. Must compensate
-          ld a,a:sub [n+3]/2
-      ELSE
-          sub [n+2]/2
-      END
-      END
-      ENDM
-
-      MACRO SUB_TM'' tm
-      IF sfx
-          ex af,af
-          SUB_TM(tm+2)  ; +2 for "ex af,af"
-          ex af,af
-      END
-      ENDM
-
       MACRO SUB_TM_CALL n
 ; Update and call HL' when CPT < 0 
           SUB_TM(n+9)
 ; Cannot use call m,jp_hl', as it must take the same time in both case
           call jp_m_hl'
-      ENDM
-
-      MACRO RET_ROUT tm
-      IF sfx
-          SUB_TM(tm+4)
-          ret p
-          exx:jp hl
-      ELSE
-          ret
-      END
-      ENDM
-
-      MACRO RET_ROUT' tm
-          EX_AF'()
-          RET_ROUT(tm+1)
       ENDM
 
 
@@ -856,14 +818,15 @@ instr_play
 ;---------
 ; For piano and instrnrt
 ; In: !! DI, instr_setup has been called
-    ; A = note (e.g. 12 = C0)
+    ; A = note (0 = C0)
     ; A' = TM
     ;HL' = timer routine
 ;Out: A = TM updated
 
 ;Note: cannot use ret_sp since it will be overwritten 
      ; from instr to timer.
-          add a         ; instr expect note *2 (offset in periods table)
+          add a         ; instr expect note *2 (index in periods table)
+          add c0 AND &FF
           ld c,a        ; note 
           ld b,0        ; volume (substracted)
           ld de,0       ; shift
@@ -871,16 +834,13 @@ instr_play
 ; Mimic ply.o pre-loop (for fx management)
 ; For now, don't inline, to trigger timer at RET point.
           ex af,af
-          call preplay_init
           ld (save_sp+1),sp
           ld sp,instr_code_pnt
  ; jump to instr code and then back at play_return
           RET_ROUT(28+6) ;+6: ld sp,n:jp n
 play_return
 save_sp   ld sp,0
-; Mimic ply.o post-loop (for fx management)
-; For now, don't inline, for symetry.
-          jp postplay
+          ret
 
       IF dev_checks
 _check_di
