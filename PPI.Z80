@@ -1,0 +1,84 @@
+; ==== For ayane specifically ====
+   ; * update A' for TM count 
+   ; * Leave AY in 'select' mode
+; Some other routines (vsync_timed, psg) in timer.o
+
+ ; 2025
+   ; Aug 25: use macro.i
+
+;---------------------------------------
+      IMPORT "macro.i"
+;---------------------------------------
+
+vsync_start
+; anti vsync to make sure we catch start of vsync
+          call anti_vsync
+;enchaine
+vsync     ld a,&F5:in a,(&FF)
+          rra
+          jr nc,vsync
+          ret
+
+anti_vsync
+          ld a,&F5:in a,(&FF)
+          rra
+          jr c,anti_vsync
+          ret
+
+scan_all_lines
+;IN: hl=buffer
+          ld a,&40
+          SUB_TM''(2)
+scan_all_lines_almost   ; for piano we don't need to scan first 2 lines
+;IN: A= first line
+   ; A' = tm
+   ; HL= buffer
+;OUT: buffer updated
+   ; A = tm (!!! switched A/A')
+.lp
+          push af
+          call testkey
+          SUB_TM(23)    ; 1 iter (testkey self-measured, without call)
+          ex af,af
+          ld (hl),c:inc hl
+          pop af
+          inc a
+          cp &4A
+          jr c,.lp
+          RET_ROUT'(-1) ; -1: last jr
+
+waitspace
+          ld a,&45
+          call testkey
+          rl c
+          jr c,waitspace
+          ret
+
+testkey
+; IN: Assume AY in select mode (F6 <- C0)
+    ; A  = keyline OR &40
+    ; A' = TM       
+    ;HL' = Jump timer
+;OUT: A = TM   !!! A / A' switched!
+    ; C = bitmap keys 
+        ; !!! Cannot use A(') since might be destroyed by timer routine 
+testkey_tm = 44
+          ld bc,&F40E
+          out (c),c
+          ld bc,&F692
+          out (c),0     ; For amstrad plus
+          inc b
+          out (c),c
+          dec b
+          out (c),a
+          ld a,&F4
+          in a,(&FF)
+          ld bc,&F782
+          out (c),c
+          ld bc,&F6C0
+          out (c),c
+          ld c,a
+          RET_ROUT'(testkey_tm)
+
+
+

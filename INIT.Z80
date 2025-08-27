@@ -21,6 +21,8 @@ todo  = 1
 
 bk_ayane = &C7
 
+init_code
+
 full_init
 ; ayane_init  ; hide the label to make sure everybody is calling 
               ; full_init

@@ -21,8 +21,15 @@ BK_DISP = &C7           ; Static for now (for connection &c1)
 bk_connected = &3C
 ;!!! 3e: vo_thisbk for ayane. See rationale in memcpc.o
 code_start = &40
+; Expected addresses, for sanity checks
+memcpc = &40
+;conv  = &0140
+;disp_jp = &0140
+init_module = &3B40
+instrsel = &3B60
+uiloop = &3C00
 
-code_main = &3C00       ; ayane.o
+code_main = &3D30       ; ayane.o
 ramlimit = &3FC0
 
 ; ---------- C0 -----------------
@@ -115,6 +122,7 @@ st_module = &4800
 disp_start = ramlimit   ; disp.o (out of bank routs, font...)
 disp  = &4800           ; start of code after fonts
 pianoui = &4F00
+disp_ayane = &7000      ; other modules imported by ayane.o
 
       ORG &8000
 psg_regs                ;  Room for pseudo registers and ??? 
@@ -123,7 +131,7 @@ workzone SKIP &0600     ; chipn, &8100:pianoui (temp buffer for display)
 workzone_size = $ - workzone
 salo_buf1 = workzone
 salo_buf2 = workzone + &0100
-; Deactivated for now (was for st conv)
+; (was for st conv)
 ;buf_chung SKIP &0200
 ;buf_chung_
 

@@ -2,21 +2,87 @@
 ; -> Ensure same location order used by all
 
       IMPORT "memmap.i"
+      IMPORT "macro.i"
 
-      MACRO IMPORT_GED_BANDAYA
-; Must be imported first, so other sources use this instance
-      ORG ged
-      IMPORT "ged.o"
-      SKIP bandaya - $
-      IMPORT "bandaya.o"
+;-----------------------------
+      MACRO PAD
+; Let all modules start at a round address
+      FILL -$ AND &0F,&F7 ; for debug, and no holes for save
       ENDM
 
+;-----------------------------
+      MACRO IMPORT_CORE
+; Imported by ayane.o
+      IMPORT "memcpc.o"
+          PAD()
+     ; IMPORT "assert.o"
+          PAD()
+      IMPORT "scan-key.o"
+          PAD()
+      IMPORT "conv.o"   ; out of bank for disp
+          PAD()
+; Handier than disp itself: do the connection
+; NO!!! ayane.o's clients of disp already in disp bank
+      ; 
+   ;   IMPORT "disp-jp.o" 
+      ENDM
+
+;-----------------------------
+      MACRO IMPORT_GED
+; Must be imported first (well after IMPORT_CORE),
+; so instrui & co use this instance
+.save
+      ORG ged
+      IMPORT "ged.o"
+          LIMIT(bandaya)
+      ORG .save
+      ENDM
+;-----------------------------
+      MACRO IMPORT_BANDAYA ;uiloop, ayane
+.save
+      ORG bandaya
+      IF 0
+      IMPORT "bandaya.o"
+      ELSE
+      LOAD "bandaya.bin"
+      END
+          LIMIT(ramlimit')
+      ORG .save
+      ENDM
+;-----------------------------
+      MACRO IMPORT_GED_BANDAYA
+; To stress orgams!
+          IMPORT_GED()
+          IMPORT_BANDAYA()
+      ENDM
+;-----------------------------
       MACRO IMPORT_DISP
+;!! BANK done by caller (ayalib assemble in c0 to gain memory)
+.save
       ORG disp_start
 ; We import disp since we share the bank
 ;  -> Allow direct call to routines (faster and smaller)
  ; Otherwise disp-jp.call_status would reconnected original bank (c5)
    ; -> crash
       IMPORT "disp.o"
+          LIMIT(pianoui)
+      ORG .save
       ENDM
+;-------------------------------
+      MACRO IMPORT_UILOOP_DEPS
+;Inkover must set BANK BK_DISP
+      IMPORT "disp-jp.o"
+      IMPORT "instrui.o" ; for instr_down/instr_ui/instr_change
+      IMPORT "piano.o"  ; for /play_piano/
+.save
+      ORG pianoui
+      ORG $ + &8000,$$  ; &c1
+      IMPORT "pianoui.o"
+      IF $ - &8000 - $$
+ !! out of sync
+      END
+          ASSERT($$ <= disp_ayane)
+      ORG .save
+      ENDM
+;-------------------------------
 

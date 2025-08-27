@@ -1,30 +1,31 @@
 dev_checks = 1
+tmp_dbg = 0
+tmp_rast = 0
 ; <<<< Handling cpc keyboard as piano >>>>
 ; -> Using hardware keycode: locale agnostic (azerty/qwerty)
 
-; 2024
-; -------- Ayane v0y ----------
-; Oct
-  ; 17: Fix timing issues.
-; -------- Ayane v0v ----------
-; Sep      
-  ; 30: Plug timer.
-      ; scan_key: Fix NC when no piano touch pressed
-; -------- Ayane v0t ----------
-  ; 17: Extract helpers in instr.o
-; -------- Ayane v0p ----------
-  ;  8: Functional!
+ ; 2025 
+  ;Aug   
+   ;25: Must init hl' !!!  
+   ;24: Split check_note into is_piano_key_pressed/play_piano 
+   ;20: tmp add .dbgcpt      
+      ; Remove bandaya dependencies: let caller do status_on/off
+      ; Fix check key when octave = 0
+   ; 4: quick_exit if no pianod key pressed
+   ; 3: exit: use status_on to ensure int0 properly re-sync
+   ; 1: _check_regs': ok when mode <> 2!
 
       BRK
 
       IMPORT "const.i"
       IMPORT "memmap.i"
-      IMPORT "instr.o"  ; for instr_code
-      IMPORT "ply.o"
- ;      IMPORT "chung.o"  ; To get current instrument # 
-      IMPORT "ppi.o"
+      IMPORT "macro.i"
+
       IMPORT "chung.o"  ; For va_current_instr
+;      IMPORT "ply.o"
+      IMPORT "instr.o"  ; for instr_setup
       IMPORT "timer.o"
+      IMPORT "ppi.o"
 
 fail  = &BE00
 
@@ -35,125 +36,103 @@ fail  = &BE00
       ENDM
 
 ;---------------------------------------
-      MACRO SUB_TM n
-; Update counter TM (+2 for 'sub n' itself)
-      IF n AND 1
-; Resolution: 2-nops. Must compensate
-          ld a,a:sub [n+3]/2
-      ELSE
-          sub [n+2]/2
-      END
-      ENDM
-
-      MACRO SUB_TM'' n
-; Update counter TM (+2 for 'ex af')
-          ex af,af
-          SUB_TM(n+2)
-          ex af,af
-      ENDM
-
       MACRO SUB_TM_CALL n
 ; Update and call HL' when CPT < 0 
+; !! A (A' here) isn't preserved
           SUB_TM(n+9)
 ; Cannot use call m,jp_hl', as it must take the same time in both case
           call jp_m_hl'
       ENDM
 
-
-      MACRO SUB_TM_CALL'' n
-          ex af,af
-          SUB_TM_CALL(n+2)
-          ex af,af
+      MACRO DBG_RAST n
+      IF tmp_rast
+          SUB_TM(17)
+          ld bc,&7F00+n:out (c),0:out (c),c:ld c,&10:out (c),c
+      END
       ENDM
-
-      MACRO RET_ROUT tm
-          SUB_TM(tm+4)
-          ret p
-          exx:jp hl
-      ENDM
-
-      MACRO RET_ROUT' tm
-          ex af,af
-          RET_ROUT(tm+1)
-      ENDM
-
 ;---------------------------------------
-check_note
+play_piano
 ;---------
 ; Called when no note currently playing
 ; Check if there is a piano key pressed and start playing le cas echeant
-          di
-          ex af,af
-          exx
-          push af
-          push bc       ;;"store firmware"
-      IF dev_checks
-          call _check_regs'
-      END
-; Must set hl' early, as most routine might trigger timer (JP HL')
-          ld hl,anchor + hdr_code
-          exx
-      IF dev_checks
-; Better break than crash in case of spurious EI
-          ld a,(&38):ld (saveint),a
-          ld a,&F7:ld (&38),a
-      END
-; --- tmp for dbg ---------
-          ld a,&42
-          ld hl,keymap+2
-          call scan_all_lines_almost
-; -------------------------
+; Out: N/A (We loop as long key presed)
 
-          call scan_keys
-          jp nc,exit
+          call _prelude
+          call scan_piano_keys
+          jp nc,_postlude
+          ld bc,&7F10:out (c),c ; for debug rasters        
 start_note
-;A= note
+;A= note (0 = c0)
           ld (current_note),a
           push af
 ;Setup instr code
           ld hl,(va_current_instr) ; for l
           call instr_setup
-          call init_timer
+          call init_timer ; do it again when looping to start_note
+;          call debug
           ld bc,&F6C0:out (c),c ; All routines assume that
-          ld bc,&7F10:out (c),c ; for debug rasters
+      IF tmp_dbg
+          xor a:ld (.dbgcpt+1),a
+      END
           ld a,MAX_TM   ; so instr_play doesn't triger event. 
           ex af,af
           pop af
+          ld hl,anchor + hdr_code ; must re-init when looping
+          exx
           call instr_play ; Amorce timer + psg_regs
-; --- tmp dev ---------------------
-;Just to set reg9 = &10
-          ex af,af
-          ld a,&3F:ld (r7),a
-          call set_timer
+
+      IF tmp_dbg
+          call debug'
+      END
+
+;         call debug
 ; ---------------------------------
-          ld a,MAX_TM   ; For stability across calls
-          ex af,af
           call anti_vsync ; idem
+          call vsync
+          SYNC_ANCHOR()
+          jr .play_entry
+
 .play_lp
 ;------
 ; Playing loop      
-; Here A'=TM  (value doesn't matter for first iteration)
+; Here A=TM  (value doesn't matter for first iteration)
           call vsync_timed
-          ld bc,&7F58:out (c),0:out (c),c:ld c,&10:out (c),c
+; Must be done at stable position
+.play_entry
+          call set_timer_and_psg
+
+      IF tmp_dbg
+          ex af,af
+.dbgcpt   ld a,0:inc a:ld (.dbgcpt+1),a ; tm not corrected
+          dec a
+          call z,debug'
+          ex af,af
+      END
+
+          DBG_RAST(&58)
 ; ensure timer has been fired before reseting rasters
-          ex af,af
-          ld b,1:call waitlines
-          ex af,af
+      IF 0
+;No need, loop is handled
+ ; NOT reseting allows visual debug!
           ld hl,rasters:ld (raster_pnt),hl ; Reset
+      ELSE
+          push hl:pop hl:nop
+      END
 ; Ensure more than 16 lines are consumed before looping
 ; For now we don't consider time taken by scan_key and set_timer:
 ; nevermind.      
-          ex af,af
 ;          ld b,16:call waitlines
 ; For visual debug!
-          ld b,80:call waitlines
+          ld b,80:call waitlines_tm
+
+;          call debug
+
+          DBG_RAST(&44)
+
+          SUB_TM_CALL(25)
+
           ex af,af
-
-          ld bc,&7F44:out (c),0:out (c),c:ld c,&10:out (c),c
-
-          SUB_TM_CALL''(65)
-
-          call scan_keys
+          call scan_piano_keys
           jr nc,.no_note
           ld hl,current_note
           cp (hl)
@@ -162,24 +141,25 @@ start_note
           push af
 ; For visual debug!
           ex af,af
-          ld b,50:call waitlines
-          ex af,af
+          ld b,10:call waitlines_tm
 
-; start/continue playing instrument         
-; Here a'=tm   
-          call set_timer ; setup timer + PSG
-; Here a=tm
-; For visual debug!
-          ld b,50:call waitlines
+          DBG_RAST(&59)
+
+          ld b,30:call waitlines_tm
+          SUB_TM_CALL(34)
+
           ex af,af
-;          ld a,(&1D09):cp &16:call nz,&BE00
-;          ld a,(&1D0A):cp &07:call nz,&BE00
           pop af
 
-          call instr_play ; for new iteration
-          SUB_TM_CALL(52)
-          ex af,af
-          jr .play_lp
+          DBG_RAST(&46)
+
+          call instr_play ; for next frame
+
+          ld b,30:call waitlines_tm
+          DBG_RAST(&4E)
+
+          SUB_TM_CALL(16+3)
+          jp .play_lp
 
 .no_note
 ; Stop playing
@@ -188,8 +168,14 @@ start_note
           ld bc,4
           ldir
           call psg
-exit
-;"restore" firmware
+_postlude
+;"restore" firmware. DON'T set EI
+; Preserve AF (for is_piano_key_pressed)
+          ex af,af
+      IF dev_checks
+saveint = $+1
+          ld a,0:ld (&38),a
+      END
           pop bc
           pop af
       IF dev_checks
@@ -197,17 +183,24 @@ exit
       END
           exx
           ex af,af
-      IF dev_checks
-saveint = $+1
-          ld a,0:ld (&38),a
-      END
-          ei
-          or a
           ret
 
-scan_keys
+is_piano_key_pressed
+; Like /scan_piano_keys/ with proper setup
+          call .hackstack
+;we know int wheren't interupted long enough
+          ei
+          ret
+
+.hackstack
+          call _prelude
+          call scan_piano_keys
+          jr _postlude
+
+scan_piano_keys
 ; IN: A' = TM
-;Out: if note pressed, Carry, A = note number
+    ; DI
+;Out: if note pressed, Carry, A = note number (0 = C)
     ; otherwise, NC
     ; A' = updated TM
 scan_keys_tm0 = 21      ; until .line_lp
@@ -243,18 +236,47 @@ scan_keys_tm1 = 11      ; until jr pressed (taken)
           ret
 
 .pressed
-          SUB_TM(scan_keys_tm0 + scan_keys_tm1 + 17)
+          SUB_TM(scan_keys_tm0 + scan_keys_tm1 + 20)
           ex af,af
           ld d,0:ld hl,map:add hl,de
           ld a,(hl)
-octave_shift = $+1
-          add 4*12
-nn    = -1              ; No note
-      IF nn - -1
+nn    = &FF             ; No note
+      IF nn < &80
   !! review that
       END
-          ccf           ; NC iif no-note (nn)
+          or a
+          ret m         ;  TM shorter. Nevermind since we stop playing
+octave_shift = $+1      ; Set by uiloop from pianoui.octave
+          add 4*12      ; give proper index in /periods/
+          scf
           ret
+
+_prelude
+;"store firmware" and setup HL'
+;OUT: AF', BC' in stack  (must jump to _postlude)
+
+          pop hl        ; ret address
+          di
+          ex af,af
+          exx
+          push af
+          push bc       ;;"store firmware"
+      IF dev_checks
+          call _check_regs'
+      END
+; Must set hl' early, as most routine might trigger timer (JP HL')
+          ld hl,anchor + hdr_code
+          exx
+      IF dev_checks
+; Better break than crash in case of spurious EI
+          ld a,(&38):ld (saveint),a
+          ld a,&F7:ld (&38),a
+      END
+          push hl       ; ret
+; !!! Must be init, as scan_piano_keys will call hl'
+          jp init_timer
+
+
 
       IF dev_checks
 _check_di
@@ -267,12 +289,30 @@ _check_regs'
  ; apparently A' can be 0 or &8x
           push af
           or a:jr z,.oka
-          cp &8E:call nz,fail
+          and &8C:cp &8C:call nz,fail
 .oka
           ld a,b:cp &7F:call nz,fail
-          ld a,c:cp &8E:call nz,fail
+          ld a,c:and &8C:cp &8C:call nz,fail
           pop af
           ret
+
+      IF tmp_dbg
+debug
+          ld a,(dbg3+1):ld (&8300),a
+          ld hl,header_events:ld de,&8200:ld bc,&0100:ldir
+          ld hl,(current_anchor)
+          ld b,&80
+.ch       dec l:ld a,(hl):cp &F1:call nz,&BE00
+          djnz .ch
+          ret
+
+debug'
+;expect just first event set (or +&f00 is already triggered)
+          ld hl,header_events+&20
+.ch       ld a,(hl):cp &F1:call nz,&BE00
+          inc l:jr nz,.ch
+          ret
+      END
       END
 
 mute_psg BYTE &3F,0,0,0

@@ -16,23 +16,21 @@
       IMPORT "memmap.i"
       IMPORT "import.i"
 
-;Do it first so other sources will use this instance
+      ORG code_start
+;Do it first so other sources will use these instances
+          IMPORT_CORE()
           IMPORT_GED_BANDAYA()
 bandaya_
-
-      SKIP ramlimit'-$
-
+          IMPORT_UILOOP_DEPS()
 ; ---- All other modules ---
-; Put here so that uiloop uses ged and pianoui.o already loaded
-
-      ORG code_start
+          PAD()
       IMPORT "init.o"   ; pull track, phrase, chung, ...
-      IMPORT "instrui.o"
-      IMPORT "instrsel.o"
-  ;    IMPORT "uiloop.o"  !!  doesn't fit
-      IMPORT "memcpc.o"
+          PAD()
+;      IMPORT "instrsel.o"
+          PAD()
+;      IMPORT "uiloop.o"
 hi
-      SKIP code_main-$  ; Poor's man limit
+      SKIP code_main-$
 
       IF 0
  !! no, would overwrite source
@@ -44,27 +42,16 @@ hi
  ;     IMPORT "disp.o"
   ;        PAD()
 
-      ORG pianoui
-      ORG $ + &8000,$$  ; &c1
-      IMPORT "pianoui.o"
-      IF $ - &8000 - $$
- !! out of sync
-      END
-      ORG $ - &8000
 disp_bk_end
 
-
 ;--- Check entry points ------------------------------
-
-          ASSERT(full_init == &3240)
-          ASSERT(memcpc_code == &0D00)
-          ASSERT(bandaya_code == bandaya)
-;          ASSERT(uiloop_code == 0)
-;          ASSERT(instrui_code == 0)
-;          ASSERT(instrsel_code == 0)
+; Those used via direct jumps by ayane.o
+          ASSERT(init_code == init_module)
+          ASSERT(uiloop_code == uiloop)
+          ASSERT(instrsel_code == instrsel)
+;bandaya: imported as lib
 
 ;--- That's it ---------------------------------------
-
       SAVE "ayalib0.bin",code_start,hi-code_start
       SAVE "ayalib1.bin",ged,bandaya_-ged
       SAVE "pianouil.bin",pianoui,disp_bk_end-pianoui

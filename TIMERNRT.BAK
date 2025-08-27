@@ -37,6 +37,8 @@ nrtfail = &BE00
 MAX_TM = &80
 
 tests
+          call test_scan_piano_keys
+      BRK
 
       2 ** [
           call test_null
@@ -52,6 +54,7 @@ tests
       IF do_profile
           call test_waitlines
           call test_vsync
+          call test_scan_piano_keys
           call test_anchor
       END
           ret
@@ -561,6 +564,12 @@ test_waitlines
 test_vsync
           call nrt_init
           ld iy,vsync_timed
+          call nrt_profile_check
+          ret
+
+test_scan_piano_keys
+          call nrt_init
+          ld iy,scan_piano_keys
           call nrt_profile_check
           ret
 

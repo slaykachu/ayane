@@ -64,8 +64,10 @@ r14   = psg_regs+14     ; Reset by ply before iteration
       END
 
 ; \\\\\ 2025 ///
-; ---- v0am ----
+; ---- v0an ----
 ;Aug
+ ; 25 Fix time instr_play
+; ---- v0am ----
  ; 23 Move common macro in macro.i
 ; ---- v0ad ----   
 ;Apr
@@ -837,7 +839,7 @@ instr_play
           ld (save_sp+1),sp
           ld sp,instr_code_pnt
  ; jump to instr code and then back at play_return
-          RET_ROUT(28+6) ;+6: ld sp,n:jp n
+          RET_ROUT(25+6) ;+6: ld sp,n:jp n
 play_return
 save_sp   ld sp,0
           ret

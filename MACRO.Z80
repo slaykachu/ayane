@@ -20,6 +20,12 @@
           ASSERT([$-1]/&0100 == start/&0100)
       ENDM
 
+      MACRO LIMIT last
+ ; !! Not equivalent to LIMIT directive:
+ ; !! Must be invoked at the end of the code meant to respect the limit
+          ASSERT($-1 <= last)
+      ENDM
+
 ; --------------------
 ; Timer emulation
 ; --------------------
@@ -51,6 +57,7 @@
       ENDM
 
       MACRO RET_ROUT tm
+; !! No routine finishing by RET_ROUT can return A
       IF sfx
           SUB_TM(tm+4)
           ret p
@@ -61,6 +68,7 @@
       ENDM
 
       MACRO RET_ROUT' tm
+; !! No routine finishing by RET_ROUT' can return A
       IF sfx
           ex af,af
           RET_ROUT(tm+1)

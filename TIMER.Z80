@@ -24,11 +24,15 @@ border_col' = &44
 ; - sync_buzzer_register
 
 ; /// 2025 //////
+  ; ---- v0an ----
+   ; Aug 
+    ; 26: Turn period 0 to &fe00 (instead of assert)
+    ; 25: Fix anchor_tm
+        ; Clean-up, comment
+        ; vsync_timed: take A=TM
   ; ---- v0am ----
-   ; Aug 23: Double period if too small (since "Same event" todo)
-                ; To avoid assert
-           ; Move common macros in macro.i
-hack_period = 0
+    ; 23: Double period while < &100. See rational at /
+        ; Move common macros in macro.i
 
       IMPORT "const.i"
       IMPORT "plyconf.i"
@@ -73,6 +77,27 @@ init_lists_tm = 24
           ld hl,cut_list:ld (cut_pnt),hl
       ENDM
 
+      MACRO CLOSE_LISTS ; for timer.nrt
+close_lists_tm = 15
+; Mark end of lists, which were built by e.g sync_buzzer_register
+; via instr.o      
+          xor a
+          ld hl,(change_pnt):ld (hl),a
+          ld hl,(cut_pnt):ld (hl),a
+      ENDM
+
+      MACRO SYNC_ANCHOR ; used by piano.o
+; Sync incoming anchor to the clock.
+; It's needed at the first iteration, as current_anchor was 
+    ; purposefully lagging to avoid race condition (see init_timer)
+; It's not needed afterward, since it remains in sync naturally.
+; Note only it's not needed, but trying to do that in set_timer_and_psg
+; may lead to race conditions, especially if the call to the routine
+; itself hasn't guarenteed stability
+          ld a,(current_clock+1):ld (current_anchor),a
+      ENDM
+
+
       MACRO SUB_TM_CALL n
 ; Update and call HL' when CPT < 0 
           SUB_TM(n+9)
@@ -116,20 +141,20 @@ init_lists_tm = 24
 .found
       ENDM
 
+          ASSERT(psg_regs AND &FF == 0) ; to use lsb=reg
+          ASSERT(psg_regs / &0100 == &80) ; out (c),h
       MACRO PSG_L_HL
-; Sent (hl) to reg l
-; In: HL = psg_regs + reg without touching A
-    ; DE = &f680
-    ;  C = &c0
+; Sent (hl) to reg l without touching A
+; In: HL = &8000 + reg 
+    ; DE = &f6c0
     ; PPI in select mode (F6C0)
 ;Out: HL +=1
-          ASSERT_NOT(psg_regs AND &FF) ; to use lsb=reg
 psg_l_hl_tm = 26
           ld b,&F4:out (c),l ; assume PPI:F6 already in select mode
           ld b,d:out (c),0
           dec b
           outi
-          ld b,d:out (c),e:out (c),c
+          ld b,d:out (c),h:out (c),e
       ENDM
 
       MACRO CHECK_EVENT_OFFSET offset
@@ -196,6 +221,8 @@ sync_buzzer_register
 ; Manage fx scheduling (start vs change vs stop)
 ; That is, update /fx_by_track/change_list/cut_list/
 ; When /.start/, directly encode an event (so no list needed for that)
+  ; -> Updates are "bufferized" and processed in set_timer_and_psg
+     ; (or when event is triggered for /.start/) 
 
 ; Called by via instr's column fx.
 ; - Faster and simpler than storing virtual regs to read 
@@ -232,11 +259,7 @@ fx_by_track_pnt = $+1
 ; Same fx, with different params.
 ; Cannot change params of currently running fx,
 ; Much like we cannot program PSG right now. 
-      IF hack_period
-sbr_params_tm = sbr_tm_switch-1 + 59 ; -1: jr not taken
-      ELSE
-sbr_params_tm = sbr_tm_switch-1 + 54 ; -1: jr not taken
-      END
+sbr_params_tm = sbr_tm_switch-1 + 58 ; -1: jr not taken
           inc l
           ld a,(hl):inc l
           ld (fx_by_track_pnt),hl
@@ -258,28 +281,29 @@ change_pnt = $+1
           ld c,a
           ld b,periods/&0100
           pop de        ; pitch
-          ld a,(bc):add e
-      IF hack_period
-          ld e,a
+          ld a,(bc):add e:ld e,a
           inc c
           ld a,(bc):adc d
-;For B-8 we get &77, which triggers assert (as "same event" to do)
-; While < &100, double it (&80 might be ok, but cumbersome to test)
-; TODO: handle "same event" instead
-; TODO: compare agains &80
-.test_threshold
-          or a
+; We don't allow periods < &100 (from B-7 = &fd)
+  ; - auto-plug ("same event" is not implemented -> assert)
+  ; - more importantly, sync_buzzer_register (the shortes timer fx)
+    ; takes 97 nops. If we allow period 128, not enough TM left.
           jr nz,.okper
-          SUB_TM''(10)
-          sla e:adc a
-          jr .test_threshold
+;period = 0 can be reached (when playing with pitch)
+;if so, pick period &ff00 (stable and short code, no indesirable pitch)
+          SUB_TM''(7-1) ; -1: jr not taken
+;e = 0 -> A:=-1 NC
+;e > 0 -> A:=1   C
+          sub e:adc e:adc -1:jr nc,.okper ; jr needed to avoid inf loop
+; While < &100, double it  
+          ex af,af
+.test_threshold
+          SUB_TM(5)
+          sla e
+          jr nc,.test_threshold
+          ex af,af
 .okper
           ld (hl),e:inc l
-      ELSE
-          ld (hl),a:inc l
-          inc c
-          ld a,(bc):adc d
-      END
           ld (hl),a:inc l
 ;- no extra param
       IF fx_extra_size
@@ -351,7 +375,7 @@ setup_tm = 48 + 20      ; until sbr_setup_tm
 current_clock = $+1
           ld bc,0       ; in 16bits for easy get/update
           ASSERT(current_clock+1 /&0100 == current_clock/&0100) ; confine
-          ld (hl),b:inc l ; !!! MSB first (since read backward)
+          ld (hl),b:inc l ; !!! write MSB first (since read backward)
           ld (hl),c:inc l
 
 ; --- Fx specific setup -----
@@ -399,7 +423,7 @@ base_fx_tm = 12         ; including ld bc,&f40d
           ld (hl),set_reg13_insert_and_program AND &FF:inc l
           ld (hl),set_reg13_insert_and_program / &0100:inc l
 
-; Jump to sync_buzzer_register or fx_end
+; Jump to other sync_buzzer_register or fx_end
           RET_ROUT'(sbr_tm_start + setup_tm + sbr_setup_tm)
 
 fx_null
@@ -456,25 +480,30 @@ cut_pnt = $+1
 set_timer_and_psg
 ;----------------
 ; Cut fx, change params, and **set PSG**
+; (start is handled in e.g. sync_buzzer_register)
 
 ; Rationale: cut must be done before sending psg regs
 ; -> E.g if sync buzzer is cut and replaced
 ; by classic hard_env, the fx must be stopped before psg update.
-; Note: play/play_instr will prepare things for next iter
+
+; It must be done **just** before, as its effect is immediate
+; (well, after current period anyway)
+
+; Must be called at constant pos in the frame (think of it as
+; PSG + virtual regs programming).
+; NB: /psg/ start time might fluctutate, that's ok.
+    ; That's what happen with regular players.
+; The possible glitchs due to lag between timer and psg programming
+; will be mitigated in the future when we play each instrument
+; independently. 
 
 ; IN: A = TM  
     ;HL'= nxt event 
 ;OUT: A = TM     
 
-; Mark end of lists, which were built by e.g sync_buzzer_register
-; via instr.o
-          ld hl,(change_pnt):ld (hl),0
-          ld hl,(cut_pnt):ld (hl),0
-          SUB_TM(16)
-
 ; Convert 16 bits -> 12 bits
 ; Note: Hard env period already converted (it was /256)
-; Done first because we change to keep timer and psg settings close
+; Done now because we change to keep timer and psg settings close
 ; (to avoid artefacts).
 correct_tm = 6          ; don't count last ex af to compensate djnz
       IF correct_tm MOD 3
@@ -497,7 +526,10 @@ correct_tm = 6          ; don't count last ex af to compensate djnz
           djnz .cor_lp
           ex af,af
 
-cut_tm = 11             ; Until .cutend (taken)
+
+          CLOSE_LISTS()
+
+cut_tm = close_lists_tm + 11 ; Until .cutend (taken)
           ld de,cut_list
           ld h,events/&0100
 .cutlp
@@ -530,7 +562,9 @@ cut_tm = 11             ; Until .cutend (taken)
           ld a,l
           ld (free_slot),a ;(2)
 
-          SUB_TM''(40)
+          ex af,af
+          SUB_TM_CALL(42)
+          ex af,af
           inc e
           jr .cutlp
 .cutend
@@ -564,7 +598,6 @@ change_params_tm = 10   ; until chgend taken
           inc e         ; skip 'ld de' opcode
           ldi           ; new period
           ldi
- ; Future_proof: if many fx to change, interrupt as needed
           ex af,af
           SUB_TM_CALL(30)
           ex af,af
@@ -573,28 +606,13 @@ change_params_tm = 10   ; until chgend taken
 
           INIT_LISTS()  ; Reset pnts for next time
 
-; Sync (incoming) current_anchor to the clock.
-; It's needed at the first iteration, as current_anchor was 
-    ; purposefully lagging to avoid race condition (see init_timer)
-; It's not needed afterward, since it remains in sync naturally.
-; It's a pity then to do it each time, but the alternative is even less
-; glorious: init_timer would have to keep track of time
-          ; and be called exactly 1 frame before first set_timer.
-              ; - cumbersome
-              ; - unnecessary lag.
-      IF todo
-; For sid (r7), check for race condition with /psg/
-; Oh! when sid we must take care of conflict anyway
-      END
-sync_anchor_tm = 10
+; Now update clock for next time (can be done anytime).
           ld hl,(current_clock)
-          ld a,h:ld (current_anchor),a
-; Now update clock for next time.
       IF ayane
-update_clock_tm = 14
+update_clock_tm = 19
           ld bc,(replay_period_in_nops)
       ELSE
-update_clock_tm = 11
+update_clock_tm = 16
           ld bc,replay_default ; = 312*64  cf const.i
       END
       IF dev_checks
@@ -607,20 +625,21 @@ update_clock_tm = 11
           ld (current_clock),hl
 
           ex af,af      ; A = tm
-          SUB_TM(init_lists_tm+sync_anchor_tm+update_clock_tm+1)
+          SUB_TM(init_lists_tm + update_clock_tm + 1)
 
 ; Enchaine
 psg
-psg_tm = 55             ; ld and calls
+psg_tm = 53             ; ld and calls
           ld hl,psg_regs
-          ld de,&F680
-          ld c,&C0
+          ld de,&F6C0
           call psg_channel ; regs 0,1,8
           ld l,2
           call psg_channel ; regs 2,3,9
           ld l,4
           call psg_channel ; regs 4,5,10
           ld l,6
+;todo for sid: and with sid_mask
+; (or skip r7 setting if current sid. More complicated?)
           call psg_2regs ; regs 6,7
           ld l,11
           call psg_2regs ; regs 11,12
@@ -672,7 +691,7 @@ anchor
    !! error align
       END
 
-anchor_tm = 25+13
+anchor_tm = 26+13
       IF need_speed
 ; Use one common pointer for raster and anchor
 ; !!! Requires to fill rasters table each time
@@ -687,6 +706,7 @@ current_anchor = $+1
           ld hl,header_events
           inc l
           ld (current_anchor),hl
+
 ; =====  program_next_event   ====
           dec l
 ;          ld c,a:dec l:ld a,(hl):cp &F1:call nz,&BE00:inc l:ld a,c
@@ -730,7 +750,7 @@ set_psg_insert_and_program
     ;  A  = cpt TM
 
 ; timing psg, rast, insert, program
-set_psg_insert_and_program_tm = 29 + 11 + 46 + 7
+set_psg_insert_and_program_tm = 29 + 11 + 46 + 7 ; 93
 set_reg13_insert_and_program_tm = set_psg_insert_and_program_tm + 3
 
           out (c),c     ; Register
@@ -824,19 +844,20 @@ jp_bc     push bc:ret
 
 ;-----------------------------
 vsync_timed
-          SUB_TM''(2-1+3) ;-1 last jr not taken +3 for ret
+;In/OUT: A = TM
+          SUB_TM(2-1+3) ;-1 last jr not taken +3 for ret
           ld b,&F5
 .lp
-vsync_timed_lp_tm = 10
-          ex af,af
+vsync_timed_lp_tm = 9
           SUB_TM_CALL(vsync_timed_lp_tm)
-          ex af,af
-          in a,(c)
-          rra
+          in c,(c)
+          rr c
           jr nc,.lp
           ret
 
 waitlines_tm
+; !!! Bugged !!! Fluctuate depending on events!!!
+  ; Sub-bug -> return earlier when more events!?!
 ; Wait B lines + 3 NOPs (final RET_ROUT)
 ; IN: B = nb lines
     ; A = TM

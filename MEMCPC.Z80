@@ -1,13 +1,20 @@
 ; << Memory bank handling for ayane >>
 ; CPC specific PAGING (out &7fxx,&cX)
-; 2025 Jun 20: jump table
+; 2025 Aug 25: Remove jump table. Short module: neater to import
+     ; Jun 20: jump table
 
 dev_checks = 1
 todo  = 1
 
       IMPORT "memmap.i"
 
+; /// 2025 ///
+   ; -- v0.0an --
+       ;25: Adopt JP_DISP / 
+
+
 mess  = &BE00
+fail  = mess
 
 ; Store currently connected bank 
 ; (for interruptions or co-routine to be able to store/restore)
@@ -15,34 +22,26 @@ bk_connected = &3C
 ;3d reserved (MSB bk).  !!!! Not used for now.
 ;3e 3f free
 
-memcpc_code
-          jp set_sp_backup
-          jp reset_sp
-          6 ** BRK
-          12 ** BRK
-      IF 0
-          jp connect_bk_base
-          jp connect_bk_track
-          jp connect_bk_phrase
-          jp connect_bk_instr
-          jp connect_bk_io
-          jp connect_a
-          jp connect_b
-          jp connect_c
-          jp connect_l
-          jp scope_bk_base
-          3 ** BRK
-          jp scope_bk_phrase
-          6 ** BRK
-          jp get_bk_connected
-      END
 
-;----------------------------
-; ---- Main work bank ------
-;----------------------------
+; ---------------------------------
+      MACRO JP_DISP adr
+          call jp_disp:WORD adr
+;note: doesn't return here, but at caller's level
+      ENDM
+
+      MACRO JP_STATUS adr
+          call jp_status:WORD adr + &8000
+;note: doesn't return here, but at caller's level
+      ENDM
+
+; ---------------------------------
+
+memcpc_code
 
 connect_bk_base
-;--------------
+;----------------
+; Main work bank
+;----------------
           push af
           call get_bk_base
           call connect_a
@@ -166,6 +165,153 @@ reset_sp
       END
 save_sp   ld sp,0
           jp hl
+
+;-----------------------------------
+; ---- Helpers to CALL in bank ----
+;-----------------------------------
+
+call_disp
+;--------     
+; Connect bk_disk, and connect back connected bk
+;Usage: call call_disp:word adr  
+
+; Get adr
+          ex (sp),hl
+          push af
+          ld a,(hl):inc hl
+          ld (.hook+1),a
+          ld a,(hl):inc hl
+          ld (.hook+2),a
+          pop af
+          ex (sp),hl    ; put back Ret address
+
+          push hl
+          push af
+          call get_bk_connected
+          ld l,a
+          ld a,BK_DISP
+          call connect_a
+      IF dev_checks
+; verify code has been loaded
+init_disp_adr = disp    ; used for checks in call_disp
+          ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
+          ld a,(init_disp_adr+3):cp &C3:call nz,fail
+      END
+          pop af
+          ex (sp),hl
+
+.hook     call 0
+
+          ex (sp),hl
+          call connect_l
+          pop hl
+          ret
+
+call_status
+;----------     
+; Connect &c1, call routine, and connect back connected bk
+;Usage: call call_disp:word adr  
+
+          ex (sp),hl
+          push af
+          ld a,(hl):inc hl
+          ld (.hook+1),a
+          ld a,(hl):inc hl
+          ld (.hook+2),a
+          pop af
+          ex (sp),hl    ; put back Ret address
+
+          push hl
+          push af
+          call get_bk_connected
+          ld l,a
+      IF BK_DISP-&C7
+ !! review                 
+      END
+          ld a,&C1
+          call connect_a
+      IF dev_checks
+; verify code has been loaded
+          ld a,(init_disp_adr+&8000):cp &C3:call nz,fail ; jp
+          ld a,(init_disp_adr+&8003):cp &C3:call nz,fail
+      END
+          pop af
+          ex (sp),hl
+
+.hook     call 0
+
+          ex (sp),hl
+          call connect_l
+          pop hl
+          ret
+
+
+jp_disp
+;--------     
+; !!!JP!!! to address in disp bk.
+;Usage: call jp_disp:word adr   
+      ; (act as jp)
+
+; Get adr
+          ex (sp),hl    ; !! RET address will be discarded !!
+          push af
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          ld (.hook+1),hl
+
+          call get_bk_connected
+          ld l,a
+          ld a,BK_DISP
+          call connect_a
+      IF dev_checks
+; verify code has been loaded
+          ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
+          ld a,(init_disp_adr+3):cp &C3:call nz,fail
+      END
+          pop af
+          ex (sp),hl
+
+.hook     call 0
+
+          ex (sp),hl
+          call connect_l
+          pop hl
+          ret
+
+jp_status
+;--------     
+; Like jp_disp, but bank &c1
+;Usage: call jp_disp:word adr   
+      ; (act as jp)
+
+; Get adr
+          ex (sp),hl    ; !! RET address will be discarded !!
+          push af
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          ld (.hook+1),hl
+
+          call get_bk_connected
+          ld l,a
+      IF BK_DISP - &C7
+  !! review
+      END
+          ld a,&C1
+          call connect_a
+      IF dev_checks
+; verify code has been loaded
+          ld a,(init_disp_adr+&8000):cp &C3:call nz,fail ; jp
+          ld a,(init_disp_adr+&8003):cp &C3:call nz,fail
+      END
+          pop af
+          ex (sp),hl
+
+.hook     call 0
+
+          ex (sp),hl
+          call connect_l
+          pop hl
+          ret
 
 ;----------------------------------------
 ; ---- Checks related to CPC Paging ----

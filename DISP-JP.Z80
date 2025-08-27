@@ -4,7 +4,12 @@
 
 ; To be completed, too lazy for now
 
-; 2025 Aug 2: Add put_deci_a_pad0 
+; 2025 
+     ; Aug
+ ; -- v0.0an ---
+       ;25: Move JP_DISP in memcpc  
+ ; -- v0.0a? --- 
+        ;2: Add put_deci_a_pad0 
 
      ; Jun 6: jp_disp: allow reentrency
 
@@ -13,21 +18,11 @@ devchecks = 1
       IMPORT "memmap.i"
       IMPORT "memcpc.o"
 
-      MACRO JP_DISP adr
-          call jp_disp:WORD adr
-;note: doesn't return here, but at caller's level
-      ENDM
-
-      MACRO JP_STATUS adr
-          call jp_status:WORD adr + &8000
-;note: doesn't return here, but at caller's level
-      ENDM
+disp_jp_code
 
       IF disp != &4800
  !! unexepected
       END
-
-init_disp_adr = disp    ; used for checks in call_disp
 
 init_disp JP_DISP(disp)
 cls       JP_DISP(disp+3) ;!!To be called before disp_* (not _at)
@@ -106,147 +101,5 @@ status_str_shaded_at
 status_str_shaded
       BRK
 
-fail  = &BE00
-
-call_disp
-;--------     
-; Connect bk_disk, and connect back connected bk
-;Usage: call call_disp:word adr  
-
-; Get adr
-          ex (sp),hl
-          push af
-          ld a,(hl):inc hl
-          ld (.hook+1),a
-          ld a,(hl):inc hl
-          ld (.hook+2),a
-          pop af
-          ex (sp),hl    ; put back Ret address
-
-          push hl
-          push af
-          call get_bk_connected
-          ld l,a
-          ld a,BK_DISP
-          call connect_a
-      IF dev_checks
-; verify code has been loaded
-          ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
-          ld a,(init_disp_adr+3):cp &C3:call nz,fail
-      END
-          pop af
-          ex (sp),hl
-
-.hook     call 0
-
-          ex (sp),hl
-          call connect_l
-          pop hl
-          ret
-
-call_status
-;----------     
-; Connect &c1, call routine, and connect back connected bk
-;Usage: call call_disp:word adr  
-
-          ex (sp),hl
-          push af
-          ld a,(hl):inc hl
-          ld (.hook+1),a
-          ld a,(hl):inc hl
-          ld (.hook+2),a
-          pop af
-          ex (sp),hl    ; put back Ret address
-
-          push hl
-          push af
-          call get_bk_connected
-          ld l,a
-      IF BK_DISP-&C7
- !! review                 
-      END
-          ld a,&C1
-          call connect_a
-      IF dev_checks
-; verify code has been loaded
-          ld a,(init_disp_adr+&8000):cp &C3:call nz,fail ; jp
-          ld a,(init_disp_adr+&8003):cp &C3:call nz,fail
-      END
-          pop af
-          ex (sp),hl
-
-.hook     call 0
-
-          ex (sp),hl
-          call connect_l
-          pop hl
-          ret
-
-
-jp_disp
-;--------     
-; !!!JP!!! to address in disp bk.
-;Usage: call jp_disp:word adr   
-      ; (act as jp)
-
-; Get adr
-          ex (sp),hl    ; !! RET address will be discarded !!
-          push af
-          ld a,(hl):inc hl
-          ld h,(hl):ld l,a
-          ld (.hook+1),hl
-
-          call get_bk_connected
-          ld l,a
-          ld a,BK_DISP
-          call connect_a
-      IF dev_checks
-; verify code has been loaded
-          ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
-          ld a,(init_disp_adr+3):cp &C3:call nz,fail
-      END
-          pop af
-          ex (sp),hl
-
-.hook     call 0
-
-          ex (sp),hl
-          call connect_l
-          pop hl
-          ret
-
-jp_status
-;--------     
-; Like jp_disp, but bank &c1
-;Usage: call jp_disp:word adr   
-      ; (act as jp)
-
-; Get adr
-          ex (sp),hl    ; !! RET address will be discarded !!
-          push af
-          ld a,(hl):inc hl
-          ld h,(hl):ld l,a
-          ld (.hook+1),hl
-
-          call get_bk_connected
-          ld l,a
-      IF BK_DISP - &C7
-  !! review
-      END
-          ld a,&C1
-          call connect_a
-      IF dev_checks
-; verify code has been loaded
-          ld a,(init_disp_adr+&8000):cp &C3:call nz,fail ; jp
-          ld a,(init_disp_adr+&8003):cp &C3:call nz,fail
-      END
-          pop af
-          ex (sp),hl
-
-.hook     call 0
-
-          ex (sp),hl
-          call connect_l
-          pop hl
-          ret
+disp_jp_code_
 
