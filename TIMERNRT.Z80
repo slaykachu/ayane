@@ -16,8 +16,15 @@ do_profile = 1
       END
 
 ; /\/\/\/ 2025 \/\/\/\/\/
+   ; ----- v0.0ao ------
+  ; Sep
+    ;16 Add test_simulate_timer_double'
+      ; run_simulation: also profile (CANCELLED!)
    ; ----- v0.0am ------
-  ; Aug          
+  ; Aug                               
+    ;29 Add test_insert_event
+    ;27 Add test_simulate_timer 
+      ; Add test_simulate_timer_double         
     ;25 Add test_waitlines test_sync test_anchor
     ;24 Add test_simulate_high_note
     ;23 Move macros in macro.i
@@ -37,7 +44,8 @@ nrtfail = &BE00
 MAX_TM = &80
 
 tests
-
+          call test_simulate_timer_double'
+      BRK
       2 ** [
           call test_null
           call test_start_sync_buzzer
@@ -46,8 +54,12 @@ tests
           call test_stop_sync_buzzer
           call test_program_next_event
      ;     call test_program_next_event_same_slot  not needed rn
-          call test_double_event
+          call test_insert_event
+          call test_double_event_at_0
           call test_simulate_high_note
+          call test_simulate_timer
+          call test_simulate_timer_double
+          call test_simulate_timer_double'
           ]
       IF do_profile
           call test_waitlines
@@ -115,8 +127,8 @@ test_start_sync_buzzer_fx_end
           ret
 
 
-test_double_event
-;----------------   
+test_double_event_at_0
+;---------------------  
 ; Two events at time 0
           call nrt_init_custom_clock
 
@@ -155,6 +167,219 @@ test_double_event
           ld a,env_type1
           ld de,period0 + shift1 ; !!! period0: same base note
           jp set_reg13_insert_and_program
+
+test_insert_event
+;----------------
+; Prerequisite for test_simulate_timer_double
+          call nrt_insert_event
+
+          ld hl,.evt00:ld bc,EVENT_MAX_SIZE:ld de,events
+          ldir
+          ld hl,_evt1:ld bc,EVENT_MAX_SIZE:ld de,events+EVENT_MAX_SIZE
+          ldir
+
+;Setting: we manually set _evt0 at clock &300 (idx 3, cpt 0)
+          ld a,hdr_cpt:ld (header_events+3),a
+        ; Now we insert _evt1 at &310 
+          ld de,&0310
+          ld hl,events + EVENT_MAX_SIZE + hdr_code
+          call nrt_insert_event
+; First event must be _evt0
+          ld a,(header_events+3):cp hdr_cpt:call nz,fail
+; Must link to _evt1
+          ld a,(events + hdr_link_next)
+          cp EVENT_MAX_SIZE+hdr_cpt:call nz,fail
+; _evt1 cpt (double nops) 
+          ld a,(events + EVENT_MAX_SIZE + hdr_cpt)
+          cp &10/2:call nz,fail
+; link to anchor
+          ld a,(events + EVENT_MAX_SIZE + hdr_link_next)
+          cp anchor_event:call nz,fail
+          ret
+
+.evt00
+;Like _evt0, but link to anchor
+      BYTE EVENT_MAX_SIZE
+      BYTE 0
+      BYTE anchor_event
+      WORD 0
+          ld de,nrtper0
+          ld b,evtmarker0 / &0100
+          jp _evt_dbg
+
+
+test_simulate_timer
+;------------------
+; Simulate 1 event running during one frame or so
+          call nrt_init
+
+;Use _evt1 which links to anchor (last event)
+nrtper1 = &0340
+
+          call clear_markers
+;Hardcoded. Brittle, but hey.
+          ld hl,_evt1:ld bc,EVENT_MAX_SIZE:ld de,events
+          ldir
+
+          call run_simulation
+
+          ld hl,evtmarker1
+          ld bc,nrtper1
+          call check_markers
+          ret
+
+test_simulate_timer_double
+;-------------------------  
+; Simulate 2 events running during one frame or so
+; Prerequiste: test_insert_event
+          call nrt_init
+
+nrtper0 = &0240         ; 2.25 lines
+          call clear_markers
+
+;Hardcoded. Brittle, but hey.
+          ld hl,_evt0:ld bc,EVENT_MAX_SIZE:ld de,events
+          ldir
+          ld hl,_evt1:ld bc,EVENT_MAX_SIZE:ld de,events+EVENT_MAX_SIZE
+          ldir
+
+          call run_simulation
+
+          ld hl,evtmarker0
+          ld bc,nrtper0
+          call check_markers
+          ld hl,evtmarker1
+          ld bc,nrtper1
+          call check_markers
+          ret
+
+
+test_simulate_timer_double'
+;-------------------------  
+; Same but with identical periods
+; Prerequiste: test_insert_event
+          call nrt_init
+
+          call clear_markers
+
+;Hardcoded. Brittle, but hey.
+          ld hl,_evt0:ld bc,EVENT_MAX_SIZE:ld de,events
+          ldir
+          ld hl,_evt0':ld bc,EVENT_MAX_SIZE:ld de,events+EVENT_MAX_SIZE
+          ldir
+
+          call run_simulation
+
+          ld hl,evtmarker0
+          ld bc,nrtper0
+          call check_markers
+          ld hl,evtmarker1
+          ld bc,nrtper0
+          call check_markers
+          ret
+
+;-----------
+          ASSERT(hdr_link_free == 0)
+          ASSERT(hdr_cpt == 1)
+          ASSERT(hdr_link_next == 2) ; next event 
+          ASSERT(hdr_clock == 3) ; clock (MSB then LSB)
+          ASSERT(hdr_code == 5) ; execution
+_evt0
+      BYTE EVENT_MAX_SIZE
+      BYTE 0
+      BYTE EVENT_MAX_SIZE + hdr_cpt
+      WORD 0
+          ld de,nrtper0
+          ld b,evtmarker0 / &0100
+          jp _evt_dbg
+_evt0'
+      BYTE EVENT_MAX_SIZE
+      BYTE 0
+      BYTE anchor_event
+      WORD 0
+          ld de,nrtper0
+          ld b,evtmarker1 / &0100
+          jp _evt_dbg
+_evt1
+      BYTE EVENT_MAX_SIZE*2
+      BYTE 0
+      BYTE anchor_event
+      WORD 0
+          ld de,nrtper1
+          ld b,evtmarker1 / &0100
+          jp _evt_dbg   ; !! JP needed, copied header
+
+_evt_dbg
+          ex af,af
+          ld a,(current_anchor)
+          dec a         ; compensete inc for nxt anchor
+          ld c,a
+          ld a,(dbg_tm_marker)
+          ld (bc),a
+
+          call nrt_insert_event
+          ex af,af
+          PROGRAM_NEXT_EVENT(8 + 13 + insert_event_tm + 9)
+
+nrt_insert_event
+;IN: hl = events + hdr_cpt
+   ; de = period to add to clock
+          INSERT_EVENT()
+          ret
+
+clear_markers
+          ld hl,evtmarker0
+          ld de,evtmarker0+1
+          ld bc,&01FF
+          ld (hl),l
+          ldir
+          ret
+
+run_simulation
+;Well, do nothing for a while. SUB_TM_CALL will call HL'
+          ld a,hdr_cpt  ; 1st event
+          ld (header_events),a
+
+          ld hl,anchor + hdr_code
+          exx
+          xor a         ; To have consistent tm marking
+simulation_len = 152    ; half a frame
+          ld b,simulation_len
+.lp
+      IF do_profile AND 0
+!! no, cannot compare real tm against A,
+ ; since A is updated with next event rdv.
+          push bc
+          ld iy,nrt_sub_tm_call
+          call nrt_profile_check'
+          pop bc
+      ELSE
+          4 ** SUB_TM_CALL(0) ; 4* 12 nops
+          SUB_TM_CALL(4)
+      END
+          djnz .lp
+          ret
+
+nrt_sub_tm_call
+          SUB_TM_CALL(3)
+          ret
+
+check_markers
+;IN: hl = table
+;  ; bc = period
+
+          ld de,0       ; clock
+.lp
+; In table+D must find E 
+          ld l,d
+          ld a,e:srl a  ;unit is double nop
+          cp (hl):call nz,fail
+; update clock
+          ex de,hl:add hl,bc:ex de,hl
+          ld a,d
+          cp simulation_len/4 ; &100 -> 4 lines
+          jr c,.lp
+          ret
 
 test_simulate_high_note
 ;----------------------
@@ -398,6 +623,7 @@ test_program_next_event_same_slot
       BRK
 ;todo if needed
 
+      IF do_profile
 test_anchor
 ;----------   
           call nrt_init
@@ -411,6 +637,7 @@ test_anchor
           SUB_TM(4)
           exx
           jp anchor + hdr_code
+      END
 
 ;------------------------------------------
 ; -------- Helpers ---------------------
@@ -514,7 +741,9 @@ run_set_psg_insert_and_program
 tm_trigger = -1         ; simulate 
           ld a,tm_trigger
           ex af,af
-          call profile_jp:WORD set_psg_insert_and_program
+;Acutally we profile from set_reg13_insert_and_program,
+;as its timing is counted inconditionaly
+          call profile_jp:WORD set_reg13_insert_and_program
           neg
           add a
 ;-3: final 'ret' not counted by profile
@@ -584,6 +813,27 @@ nrt_profile_check
           ret
       END
 
+nrt_profile_check'
+;Same a nrt_profile_check but:
+   ; keep A = TM
+   ; expect TM < &100
+          ld (.jp),iy
+          ld (.ref_tm+1),a
+          exx
+          ld d,0
+          exx
+          call profile_jp
+.jp   WORD 0
+          push af
+          neg
+.ref_tm   add 0
+          add a
+          add -3        ;-3: final 'ret' not counted by profile
+          cp l:call nz,fail
+          ld a,h:or a:call nz,fail
+          pop af
+          ret
+
 
 nrt_init
 ;-------
@@ -599,18 +849,21 @@ nrt_init_custom_clock
 clock0 = &0146
           ld hl,clock0:ld (current_clock),hl
 _nrt_init_com
+          SYNC_ANCHOR()
           call nrt_init_periods
-; Kill firmware: needed to setup exx' without interference
-               ; since profile temporarily EI.
-          ld hl,&C9FB:ld (&38),hl
-; Similarly, not striclty needed, but ease testing.
+; Not striclty needed, but ease testing.
           ld hl,events:ld (free_slot),hl
-;needed since profile temporarily set EI,
-;and we need to setup HL' before that.
+; Kill firmware: needed to setup exx' without interference
+                 ; since profile temporarily EI.
+               ; And we need to setup HL'
           ld hl,&C9FB:ld (&38),hl
 ; Must be done early because even preplay_init might trigger JP HL'
-          exx
           ld hl,timer_nop
           exx
           ret
 
+      SKIP -$ AND &FF
+evtmarker0 SKIP &0100
+evtmarker1 SKIP &0100
+
+          LIMIT(ramlimit)

@@ -23,19 +23,23 @@ bk_connected = &3C
 code_start = &40
 ; Expected addresses, for sanity checks
 memcpc = &40
-;conv  = &0140
-;disp_jp = &0140
+scankey = &0200
+conv  = &0220
+dispjp = &03B0
+instrui = &1BA0
 init_module = &3B40
-instrsel = &3B60
-uiloop = &3C00
+instrsel = &3BE0
+uiloop = &3C50
 
-code_main = &3D30       ; ayane.o
-ramlimit = &3FC0
+code_main = &3D80       ; ayane.o
+ramlimit = &4000
 
-; ---------- C0 -----------------
-      ORG &4000
-; status bar
-; st128 module
+; ----------------------------------------------
+; --------- c0: IO BK --------------
+; ----------------------------------------------
+; Status bar offset
+disc_buffer = &4000     ; really
+st_module = &4800
 
 ; ----------------------------------------------
 ; ----- c4: phrases ---------------
@@ -110,19 +114,16 @@ va_chung
 chunk_var
 chunk_var_ = &8000
 
-; ----------------------------------------------
-; --------- IO BK --------------
-; ----------------------------------------------
-disc_buffer = &4000
-st_module = &4800
 
 ; ----------------------------------------------
 ; ---------- Disp BK ------------
 ; ----------------------------------------------
-disp_start = ramlimit   ; disp.o (out of bank routs, font...)
+; -> unused for now. out of bank routs can be put in conv.o
+fonte_gris = &4000
+fonte = &4400
 disp  = &4800           ; start of code after fonts
 pianoui = &4F00
-disp_ayane = &7000      ; other modules imported by ayane.o
+disp_ayane = &5620      ; other modules imported by ayane.o
 
       ORG &8000
 psg_regs                ;  Room for pseudo registers and ??? 
@@ -137,7 +138,7 @@ salo_buf2 = workzone + &0100
 
 free_ram_for_nrt
 ged
-bandaya = &9A40         ; Pad for INTx to be confined
+bandaya = &9900         ; Pad for INTx to be confined
 
 ramlimit' = &A200
       IF todo

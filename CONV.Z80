@@ -24,6 +24,7 @@ fail  = &BE00
    ; Misc
      ; convert_note
 
+conv_code
 ; ========================================
 deci_to_byte
 ; Convert string (in decimal) to byte "12" -> 12

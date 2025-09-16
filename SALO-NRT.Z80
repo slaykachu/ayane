@@ -1,14 +1,16 @@
 ; Tests salo
 ; 2025
-   ; Aug 9 Exercise file > &100 
+; -- v0.0ao -- 
+   ; Sep 17 Reorder so it fits in RAM
+   ; Aug  9 Exercise file > &100 
 ; -- v0.0ac --
-   ; Mar 5 First version
-
-      ORG &0100
-      ENT tests
+   ; Mar  5 First version
 
       IMPORT "const.i"  ; just for track_param#
       IMPORT "memmap.i"
+
+      ORG code_start
+      ENT tests
 
       IMPORT "salo.o"
       IMPORT "init.o"
@@ -16,16 +18,18 @@
       IMPORT "phrase.o"
       IMPORT "chung.o"
       IMPORT "instr.o"
-      IMPORT "testlib.o"
 
       MACRO NO_TEXT
 ;Null terminated: only the 0
       BYTE 0
       ENDM
 
+ho
       SKIP ramlimit - $ ; poor man's limit
 
       ORG free_ram_for_nrt
+
+      IMPORT "testlib.o"
 
 tests
           call test_save_empty_module
@@ -469,7 +473,7 @@ nrt_load
 
 dest_meta SKIP dummy_
 
-destsize = &0C00
+destsize = &0B00        ; for test_big.vampire1.aya? 
 
       SKIP -$ AND &FF
 destnrt
@@ -477,10 +481,12 @@ destnrt
 destnrt2
       SKIP destsize
 
+hi
       SKIP &A400 - $    ; poor man's limit
 
       ORG &5000
 vampire
+;Created with chipconv.o
       LOAD "testdata/vampire1.aya"
 vampire_size = &0ABD
 ; vampire_size = $ - vampire   Doesn't work: unidos copy rounded to b00

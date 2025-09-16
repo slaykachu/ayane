@@ -17,7 +17,6 @@ fail  = &BE00
 ; TODO [space optim] Reuse shortcut.o for /scan_key/
      ; Or the other way around: shortcut would reuse this instance.
 
-scan_key
       IMPORT "scan-key.o"
 
       IF todo

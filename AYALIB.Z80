@@ -17,18 +17,16 @@
       IMPORT "import.i"
 
       ORG code_start
-;Do it first so other sources will use these instances
           IMPORT_CORE()
-          IMPORT_GED_BANDAYA()
-bandaya_
-          IMPORT_UILOOP_DEPS()
+post_core
+          IMPORT_UILOOP_SHARED_DEPS()
 ; ---- All other modules ---
           PAD()
       IMPORT "init.o"   ; pull track, phrase, chung, ...
           PAD()
-;      IMPORT "instrsel.o"
-          PAD()
-;      IMPORT "uiloop.o"
+      IMPORT "instrsel.o"
+ ;         PAD()
+ ;     IMPORT "uiloop.o"
 hi
       SKIP code_main-$
 
@@ -47,12 +45,20 @@ disp_bk_end
 ;--- Check entry points ------------------------------
 ; Those used via direct jumps by ayane.o
           ASSERT(init_code == init_module)
-          ASSERT(uiloop_code == uiloop)
+  ;        ASSERT(uiloop_code == uiloop)
           ASSERT(instrsel_code == instrsel)
-;bandaya: imported as lib
+
+; Ensure sync with uiloop    
+          ASSERT(memcpc_code == memcpc)
+          ASSERT(scankey_code == scankey)
+          ASSERT(conv_code == conv)
+          ASSERT(dispjp_code == dispjp)
+          ASSERT(instrui_code == instrui)
 
 ;--- That's it ---------------------------------------
-      SAVE "ayalib0.bin",code_start,hi-code_start
-      SAVE "ayalib1.bin",ged,bandaya_-ged
-      SAVE "pianouil.bin",pianoui,disp_bk_end-pianoui
-
+      SAVE "ayalib0.bin",post_core,hi-post_core
+      SAVE "ayalib1.bin",ged,end_of_ged-ged
+  ; -> Not imported here (didn't fit)
+  ;    SAVE "pianouil.bin",pianoui,disp_bk_end-pianoui
+  ; -> Imported directly by ayane.o
+  ;    SAVE "disp.bin",disp,pianoui-disp

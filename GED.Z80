@@ -1,4 +1,7 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
+; -- v0ao --
+; Sep
+   ;6 Add jump table (on hold)
 ;Aug       
 ; -- v0am --
   ;24 noline: shorter ----- 
@@ -268,6 +271,12 @@ state_ = $
 
       ORG _save_pc
 
+gedeihen_code
+      IF 0
+;Not needed: each ged client should import it
+          jr gedeihen_init
+          jr setup_widget
+      END
 ; ----------------------------------
 ; Macros + helpers
 

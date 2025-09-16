@@ -4,6 +4,8 @@
    ;   ...
    ;   BYTE
 
+scankey_code
+
 scan_key
 ;In:  C=code cherch{, HL=table
 ;Out: Si trouv{, Carry, HL=routine

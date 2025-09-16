@@ -1,4 +1,6 @@
 ; ---- Init all modules ------
+; v0.0ao  7 Sep 25 full_init: Call Init_periods
+                 ; 
 ; v0.0ac  5 Mar 25
 todo  = 1
 
@@ -7,7 +9,8 @@ todo  = 1
 ; (well for now it's not exact sadly).
 ; It also avoid cyclic dependency between chunk and ply.
 
-      IMPORT "const.i"  ; diapason_default
+      IMPORT "const.i"  ; diapason_default, 
+      IMPORT "macro.i"
 
       IMPORT "track.o"
       IMPORT "phrase.o" ; for song_reset
@@ -17,11 +20,15 @@ todo  = 1
       IMPORT "chunk.o"
       IMPORT "widget.o" ; for init_widget
       IMPORT "shortcut.o"
-      IMPORT "memcpc.o" ; To force order in mem
+      IMPORT "memcpc.o"
+; used by dummy_instr_sync
+      IMPORT "timer.o"
 
 bk_ayane = &C7
 
 init_code
+          jr full_init
+          jr dummy_instr_sync
 
 full_init
 ; ayane_init  ; hide the label to make sure everybody is calling 
@@ -29,6 +36,7 @@ full_init
 ; in:  N/A     
           call Init_chunk_module
           call Init_chung
+          call Init_periods
           call phrase_reset
           call Init_track_module
           call setup_keys
@@ -38,4 +46,93 @@ full_init
           call set_diapason
 ; replay_period init in Init_track_module
           ret
+
+dummy_instr_sync
+;---------------
+; 1 row with sync buzeer for plynrt
+          ld a,1        ; id (0 is reserved)
+          ld c,0        ; nb params
+          call New_instr_ayane
+          xor a
+          ld b,2
+          ld de,row0
+          call helper_setrows
+          ld de,row2_ui
+          call helper_setrow
+          ret
+
+helper_setrow
+;In: a = start row 
+   ;de = data row
+          ld b,1
+helper_setrows
+;In: a = start row 
+   ; b = rows#
+   ;de = data row
+;Out:a += b 
+          push af
+          push bc
+          push de
+          push de
+          push af
+          call insert_empty_row
+          pop af
+          call select_row
+          pop de
+          call set_row
+          pop de
+          ld hl,instr_row_size_max
+          add hl,de
+          ex de,hl
+          pop bc
+          pop af
+          inc a
+          djnz helper_setrows
+          ret
+
+; for manual testing
+flags_ui = &38          ; no noise
+hard_env_type_ui = 10
+hard_arp_ui = 0
+hard_pitch_ui = 0
+sync_pitch_ui = 0
+sync_env_type_ui = 4    ; /|______
+sync_arp_ui = 0
+
+
+row0  BYTE 0:WORD 0:BYTE &38,0
+          VOL(15)
+      FILL fx0_type - [$-row0],0
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_end
+      IF instr_row_size_max - [$-row0]
+ !!! incomplete
+      END
+
+row2_ui
+      BYTE 0:WORD 0:BYTE flags_ui,3 ; 
+          VOL_HARD()    ; Hard env 
+      BYTE hard_env_type_ui
+      BYTE hard_arp_ui * 2
+      WORD hard_pitch_ui
+      IF fx0_type - [$-row2_ui]
+   !! error align
+      END
+.syncbuzzer0
+      WORD sync_buzzer_register
+      BYTE sync_env_type_ui
+      BYTE sync_arp_ui*2
+      WORD sync_pitch_ui
+      IF $-.syncbuzzer0 - instr_fx_size
+   !! missing fields
+      END
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_end
+      IF instr_row_size_max - [$-row2_ui]
+ !!! incomplete
+      END
 

@@ -1,5 +1,6 @@
 ; <<< Factorize import of deps >>>
 ; -> Ensure same location order used by all
+todo  = 1
 
       IMPORT "memmap.i"
       IMPORT "macro.i"
@@ -25,6 +26,10 @@
 ; NO!!! ayane.o's clients of disp already in disp bank
       ; 
    ;   IMPORT "disp-jp.o" 
+      IF todo
+; See why "double defined" from ayane.o when uncommented
+;post_core    
+      END
       ENDM
 
 ;-----------------------------
@@ -38,51 +43,79 @@
       ORG .save
       ENDM
 ;-----------------------------
-      MACRO IMPORT_BANDAYA ;uiloop, ayane
+      MACRO BANDAYA_JP
+clearstatus_jp = bandaya
+firm2status_jp = bandaya +2
+status2firm = bandaya +4
+status_on = bandaya +6
+status_off = bandaya +8
+      ENDM
+
+      MACRO IMPORT_BANDAYA
 .save
       ORG bandaya
-      IF 0
       IMPORT "bandaya.o"
-      ELSE
-      LOAD "bandaya.bin"
-      END
           LIMIT(ramlimit')
       ORG .save
       ENDM
+
 ;-----------------------------
       MACRO IMPORT_GED_BANDAYA
 ; To stress orgams!
           IMPORT_GED()
           IMPORT_BANDAYA()
       ENDM
+
 ;-----------------------------
       MACRO IMPORT_DISP
 ;!! BANK done by caller (ayalib assemble in c0 to gain memory)
 .save
-      ORG disp_start
-; We import disp since we share the bank
-;  -> Allow direct call to routines (faster and smaller)
- ; Otherwise disp-jp.call_status would reconnected original bank (c5)
-   ; -> crash
+      ORG disp
       IMPORT "disp.o"
           LIMIT(pianoui)
       ORG .save
       ENDM
+
 ;-------------------------------
-      MACRO IMPORT_UILOOP_DEPS
+      MACRO IMPORT_UILOOP_SHARED_DEPS
+;Deps embebbed in ayalib
 ;Inkover must set BANK BK_DISP
+          IMPORT_CORE()
+          IMPORT_GED()
       IMPORT "disp-jp.o"
       IMPORT "instrui.o" ; for instr_down/instr_ui/instr_change
       IMPORT "piano.o"  ; for /play_piano/
+      ENDM
+
+;-------------------------------
+      MACRO IMPORT_PIANOUI
 .save
       ORG pianoui
       ORG $ + &8000,$$  ; &c1
       IMPORT "pianoui.o"
-      IF $ - &8000 - $$
+      IF $ - &8000 != $$
  !! out of sync
       END
           ASSERT($$ <= disp_ayane)
       ORG .save
       ENDM
+
+      MACRO LOAD_PIANOUI
+.save
+      ORG pianoui
+      LOAD "pianoui.bin"
+      ORG .save
+      ENDM
+
 ;-------------------------------
+      MACRO LOAD_FONTS
+.save
+      ORG fonte_gris
+      LOAD ":lib/fntgris.bin"
+      ORG fonte
+      LOAD ":lib/fntorg.bin"
+      ORG .save
+      ENDM
+;-------------------------------
+
 

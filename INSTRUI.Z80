@@ -42,9 +42,6 @@ hack_refresh = 1
 
       FILL -$ AND &0F,&F7
 
-instrui_code
-          jp instr_cold_refresh
-
 ;--------------------------------
       MACRO LOCATION x,y
           ld de,x*&0100 + y
@@ -63,6 +60,32 @@ instrui_code
 ; Ged expect Z for whatever reason
           xor a:scf
       ENDM
+
+;--------------------------------
+instrui_code
+;-----------------
+instr_cold_refresh
+;-----------------
+ ; -- bandaya
+          LOCATION(x_pos_instr_ed,y_pos_instr_ed)
+          ld bc,_fields
+          CALL_DS(status_str_at)
+
+ ; -- gedeihen 
+          call gedeihen_init
+ ; For now, keep default (firmware hooks)
+ ;     call gedeihen_set_hooks 
+          ld hl,&0101:call txt_set_cursor
+          ld hl,instr_ui
+          call setup_widget
+;enchaine
+refresh_all
+          ld hl,&0101:call txt_set_cursor ; needed?
+          call gedeihen_disp
+reenter
+          ld hl,&0101:call txt_set_cursor
+          ld hl,instr_ui
+          jp gedeihen_enter
 
 ;--------------------------------
 instr_ui
@@ -160,30 +183,6 @@ instr_change
           call New_instr_ayane
 ;New instr: add empty line (prevent ged assert)
           jp instr_append_empty_row
-
-;-----------------
-instr_cold_refresh
-;-----------------
- ; -- bandaya
-          LOCATION(x_pos_instr_ed,y_pos_instr_ed)
-          ld bc,_fields
-          CALL_DS(status_str_at)
-
- ; -- gedeihen 
-          call gedeihen_init
- ; For now, keep default (firmware hooks)
- ;     call gedeihen_set_hooks 
-          ld hl,&0101:call txt_set_cursor
-          ld hl,instr_ui
-          call setup_widget
-;enchaine
-refresh_all
-          ld hl,&0101:call txt_set_cursor ; needed?
-          call gedeihen_disp
-reenter
-          ld hl,&0101:call txt_set_cursor
-          ld hl,instr_ui
-          jp gedeihen_enter
 
 _fields
 ;Lp X Vol  Arp Pitch Noise E R Arp Pitch Buz1 Arp Pitch  Buz2 

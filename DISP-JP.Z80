@@ -18,7 +18,7 @@ devchecks = 1
       IMPORT "memmap.i"
       IMPORT "memcpc.o"
 
-disp_jp_code
+dispjp_code
 
       IF disp != &4800
  !! unexepected

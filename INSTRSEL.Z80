@@ -1,5 +1,16 @@
 ; <<<<<<<< Instrument selector >>>>>>>>>
 ; 2025 
+; -- v0ao --
+  ; Sep  7: Remove instr_selector_process:
+             ; - use /extra_handler/
+             ; - so we can use gerenic uiloop and test instr (piano)
+          ; Use instr_change for status update
+          ; cancel: don't restore instr
+                ; 'esc' to exit page shouldn't have side-effect
+                ; less code!
+          ; Fix selector_ui': w_multiline now needs insert+delete
+
+; -- v0am -- 
   ; Aug 20: Remove import "uiloop" (not needed)
       ; 02: Use instrui.instr_change
   ; Jul 14: Move manual test in instrstt.o 
@@ -11,6 +22,7 @@ need_rom = 1
 
       IMPORT "const.i"
       IMPORT "memmap.i"
+      IMPORT "macro.i"
 
       IMPORT "chung.o"  ; Model (instr get/set row)
       IMPORT "ged.o"
@@ -18,9 +30,6 @@ need_rom = 1
       IMPORT "instrui.o" ; for instr_change
  ;     IMPORT "shortcut.o" ; for setup_keys kcdel km_wait_key
 
-instrsel_code
-          jr instr_selector_init
-          jr instr_selector_process
 
 ; ----------------------------------
       MACRO UNHANDLED code
@@ -29,11 +38,9 @@ instrsel_code
       ENDM
 ; ----------------------------------
 
+instrsel_code
 instr_selector_init
-; --- Save current in case of ESC ---
-; becose changed to display names?
-          call Song_get_instr
-          ld (saved_instr),a
+          ASSERT($ == instrsel_code) ; avoid jump table 
 
 ; --- Gedeihen setup ---
           call gedeihen_init
@@ -41,67 +48,47 @@ instr_selector_init
  ;     call gedeihen_set_hooks 
           ld hl,selector_ui
           call setup_widget
-          jp refresh_all
-
-
-instr_selector_process
-          call gedeihen_process
-;TODO: review that, interface has changed
-          ret c
-          call z,to_be_implemented
-;--- Unhandled key
-;(for just one key, simpler to do it explicitly than
- ;introduce handler widget) 
-          cp 13:jr z,.select ; Exit, instr selected
-          cp esc_code
-          ret nz
-;cancel
-          ld a,(saved_instr)
-          call Song_select_instr
-          UNHANDLED(esc_code) ; So uiloop can process exit
-          ret
-
-.select
-          call instr_change
-;Caller will enter instrui
-          ld a,13
-          or a
-          ret
-
-; -------------------------------------------------
-
-refresh_all
+; -- refresh_all
       IF need_room
  ; factorize with instrui
       END
           ld hl,&0101:call txt_set_cursor
           call gedeihen_disp
-;reenter
           ld hl,&0101:call txt_set_cursor
           ld hl,selector_ui
           jp gedeihen_enter
 
 ; -------------------------------------------------
 selector_ui
+      BYTE w_key_handler
+      WORD selector_ui'
+      WORD extra_handler
+
+selector_ui'
       BYTE w_multiline
       WORD instr_id_ui
       WORD ui_get_instr#
       WORD ui_select_instr
-      BYTE 9            ; Height (for vampire1.chp)
+      WORD 0            ; no delete
+      WORD 0            ; no insert
+      BYTE 10           ; Height (vampire1.chp: 9 instr)
       BYTE 0            ; scroll offset (margin)
 
 ui_get_instr#
 ;Hack for now. Do i have song_get_instr# ?
           ld a,9
+;todo: instr# + 1 (so entry with empty_instr)
           ret
 
 ui_select_instr
           inc a         ; start from 1
-          call Song_select_instr
+          call instr_change
           scf           ; Carry means ok
           ret
 
 extra_handler
+      BYTE kreturn:WORD select_instr
+      BYTE kesc:WORD cancel
       BYTE 0:WORD 0
 
 instr_id_ui
@@ -128,5 +115,11 @@ instr_title
 
 .empty_txt BYTE " <New instr>",0
 
+cancel
+          UNHANDLED(kesc) ; Caller can process exit
+          ret
 
-saved_instr BYTE 
+select_instr
+          UNHANDLED(kreturn) ;Caller will enter instrui
+          ret
+
