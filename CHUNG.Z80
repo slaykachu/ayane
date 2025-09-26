@@ -1,5 +1,4 @@
 ; <<<<< chung: gestion chunk? + instr >>>>>
-; TODO: see what's up with firmware, since we use EXX.
 ; 2025 Aug 9. Remove st-related code:
                    ; - dead code
                    ; - can pick it up from older chung versions
@@ -97,10 +96,6 @@ row_link = 2
   ; If a particular music doesn't use fx, then we remove handling
   ; dynamically.
       END
-
-hist
-; TODO: see what's up with firmware, since we use EXX.
-
 
 ;==============================================
       MACRO EXPECT_EQUAL x,y

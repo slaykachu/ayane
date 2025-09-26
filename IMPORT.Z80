@@ -13,7 +13,7 @@ todo  = 1
 
 ;-----------------------------
       MACRO IMPORT_CORE
-; Imported by ayane.o
+; Also imported by ayane.o
       IMPORT "memcpc.o"
           PAD()
      ; IMPORT "assert.o"
@@ -33,6 +33,16 @@ todo  = 1
       ENDM
 
 ;-----------------------------
+      MACRO IMPORT_SHARED_DEPS
+; Used by both uiloop and salo
+          IMPORT_CORE()
+      IMPORT "chunk.o"  ; salo:Next_node
+      IMPORT "chung.o"  ; salo:instr
+      IMPORT "ply.o"    ; salo:/events/ mapping
+      IMPORT "disp-jp.o" ; salo: future
+      ENDM
+
+;-----------------------------
       MACRO IMPORT_GED
 ; Must be imported first (well after IMPORT_CORE),
 ; so instrui & co use this instance
@@ -42,6 +52,33 @@ todo  = 1
           LIMIT(bandaya)
       ORG .save
       ENDM
+
+;-----------------------------
+      MACRO IMPORT_UILOOP_DEPS
+; Used by both uiloop and ayalib
+          IMPORT_SHARED_DEPS()
+          IMPORT_GED()
+      IMPORT "instrui.o" ; for instr_down/instr_ui/instr_change
+      IMPORT "piano.o"  ; for /play_piano/
+      ENDM
+
+;-----------------------------
+      MACRO IMPORT_SALO_DEPS
+; Used by both salo and ayalib
+.pc
+          IMPORT_SHARED_DEPS()
+; doesn't work, don't know why
+; When imported from salo.o for the 2nd time (after salo-nrt),
+; we should have $ == .pc, but that's not the case, and SKIP fails
+;      IF $ != .pc
+      IF $ < phrase
+; When imported second time, $ is already past track.o
+      SKIP phrase-$     ; needed to skip instrui, piano...
+      END
+      IMPORT "phrase.o"
+      IMPORT "track.o"
+      ENDM
+
 ;-----------------------------
       MACRO BANDAYA_JP
 clearstatus_jp = bandaya
@@ -74,17 +111,6 @@ status_off = bandaya +8
       IMPORT "disp.o"
           LIMIT(pianoui)
       ORG .save
-      ENDM
-
-;-------------------------------
-      MACRO IMPORT_UILOOP_SHARED_DEPS
-;Deps embebbed in ayalib
-;Inkover must set BANK BK_DISP
-          IMPORT_CORE()
-          IMPORT_GED()
-      IMPORT "disp-jp.o"
-      IMPORT "instrui.o" ; for instr_down/instr_ui/instr_change
-      IMPORT "piano.o"  ; for /play_piano/
       ENDM
 
 ;-------------------------------

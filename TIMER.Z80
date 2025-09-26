@@ -204,9 +204,9 @@ insert_event_tm = 34 + 13
       ENDM
 
       IF nrt_marker
-program_next_event_tm = 9 + 8
+program_next_event_tm = 11 + 8
       ELSE
-program_next_event_tm = 9
+program_next_event_tm = 11
       END
 
       MACRO PROGRAM_NEXT_EVENT tm
@@ -217,6 +217,7 @@ program_next_event_tm = 9
           ld a,c
       END
           SUB_TM(tm + program_next_event_tm)
+          jr c,.toomuch
           add (hl)
           ASSERT([hdr_code AND 4]==4 AND EVENT_MAX_SIZE==16)
           ASSERT(hdr_code == hdr_cpt+4)
@@ -228,6 +229,21 @@ program_next_event_tm = 9
   ; (simultaneous events) 
           ret c
           exx
+          jp hl
+
+.toomuch
+; consecutive events took more than 512 nops -> must fire next one
+      IF todo
+; ??? it happens even with just anchor + 2 evt
+    ; (even with dev_checks=0, when nrt_marker=1) 
+    ; It shouldn't! 50 + 108 + 108 nops bigger than 256, but not 512
+; !!!? infinite loop if more events than can be handled
+    ; -> precheck this condition first?
+      END
+; This code path is 4-1 nops shorter.
+          ld a,a        ; compensate 1 nop
+          adc (hl)      ; compensate 2 nops
+          set 2,l
           jp hl
       ENDM
 

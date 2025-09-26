@@ -1,7 +1,9 @@
 ; <<<<<<<< Instrument selector >>>>>>>>>
 ; 2025 
+; -- v0ap --
+  ; Sep 18: Don't change instr# in status here anymore
 ; -- v0ao --
-  ; Sep  7: Remove instr_selector_process:
+       ; 7: Remove instr_selector_process:
              ; - use /extra_handler/
              ; - so we can use gerenic uiloop and test instr (piano)
           ; Use instr_change for status update
@@ -26,17 +28,6 @@ need_rom = 1
 
       IMPORT "chung.o"  ; Model (instr get/set row)
       IMPORT "ged.o"
-      IMPORT "memcpc.o" ; reset_sp
-      IMPORT "instrui.o" ; for instr_change
- ;     IMPORT "shortcut.o" ; for setup_keys kcdel km_wait_key
-
-
-; ----------------------------------
-      MACRO UNHANDLED code
-          xor a:inc a   ; NC, NZ
-          ld a,code
-      ENDM
-; ----------------------------------
 
 instrsel_code
 instr_selector_init
@@ -82,7 +73,7 @@ ui_get_instr#
 
 ui_select_instr
           inc a         ; start from 1
-          call instr_change
+          call Song_select_instr
           scf           ; Carry means ok
           ret
 

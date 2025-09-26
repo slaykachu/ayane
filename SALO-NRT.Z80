@@ -9,27 +9,34 @@
       IMPORT "const.i"  ; just for track_param#
       IMPORT "memmap.i"
 
+      ORG 0:BRK
+
       ORG code_start
       ENT tests
 
-      IMPORT "salo.o"
-      IMPORT "init.o"
-      IMPORT "track.o"
-      IMPORT "phrase.o"
-      IMPORT "chung.o"
-      IMPORT "instr.o"
+      IMPORT "memmap.i"
+      IMPORT "import.i"
 
+          IMPORT_SALO_DEPS()
+      IMPORT "init.o"
+      IMPORT "instr.o"
+      IMPORT "testlib.o"
+
+ho    SKIP ramlimit - $ ; poor man's limit
+
+      ORG io
+      IMPORT "io.o"     ; for save
+
+      IMPORT "salo.o"   ; set ORG salo
+
+      SKIP free_ram_for_nrt - $
+
+;-----------------------------
       MACRO NO_TEXT
 ;Null terminated: only the 0
       BYTE 0
       ENDM
-
-ho
-      SKIP ramlimit - $ ; poor man's limit
-
-      ORG free_ram_for_nrt
-
-      IMPORT "testlib.o"
+;-----------------------------
 
 tests
           call test_save_empty_module
@@ -55,6 +62,7 @@ test_save_empty_module
           ld hl,almost_empty
           ld de,destnrt
           ld bc,almost_empty_
+          call connect_bk_io
           call compare_sized
           ret
 
@@ -81,6 +89,7 @@ test_save_empty_phrase
           ld hl,empty_phrase
           ld de,destnrt
           ld bc,empty_phrase_
+          call connect_bk_io
           call compare_sized
           ret
 
@@ -236,7 +245,7 @@ test_big
           ld bc,0
           call load_file:call nc,fail
           ld de,destnrt:call nrt_save_no_meta
-          ld bc,&7FC0:out (c),c
+          call connect_bk_io
           ld hl,vampire
           ld de,destnrt
           ld bc,vampire_size
@@ -263,6 +272,7 @@ hack_ret  ret           ; to speed-up tests
           cp 5:call nc,fail
 
 ; Clear buffer for comparaison (we don't know exact lenght)
+          call connect_bk_io
           ld hl,destnrt:ld de,destnrt+1:ld bc,destsize-1:ld (hl),0:ldir
           ld hl,destnrt2:ld de,destnrt2+1:ld bc,destsize-1:ld (hl),0
           ldir
@@ -277,6 +287,7 @@ hack_ret  ret           ; to speed-up tests
           ld de,destnrt
           ld hl,destnrt2
           ld bc,destsize
+          call connect_bk_io
           call compare_sized
 
 ; -- Reload + save 
@@ -287,6 +298,7 @@ hack_ret  ret           ; to speed-up tests
           ld de,destnrt
           ld hl,destnrt2
           ld bc,destsize
+          call connect_bk_io
           call compare_sized
 
 ; Check state    
@@ -425,21 +437,18 @@ empty_phrase_ = $ - empty_phrase
 
 nrt_save
 ;In: de=dest
-      IF todo
-; should pass max size to memdisk
-      END
+          ld a,d:add destsize/&0100 ; max size
           call memdisk_init_write
           ld hl,memdisk_write_bloc
-    ;      ld ix,tmpbrk
           ld de,dummy_meta
           ld bc,dummy_
           call save:call nc,fail
           ret
 
 nrt_save_no_meta
+          ld a,d:add destsize/&0100
           call memdisk_init_write
           ld hl,memdisk_write_bloc
-    ;      ld ix,tmpbrk
           ld bc,0
           call save:call nc,fail
           ret
@@ -459,7 +468,7 @@ nrt_load
           xor a
 .clr      ld (de),a:inc de:djnz .clr
 
-          call memdisk_init_read
+          ld a,h:add destsize/&0100:call memdisk_init_read
           ld hl,memdisk_load_bloc
           ld de,dest_meta
           ld bc,dummy_
@@ -468,18 +477,17 @@ nrt_load
           ld hl,dummy_meta
           ld de,dest_meta
           ld bc,dummy_
+          call connect_bk_io
           call compare_sized
           ret
 
 dest_meta SKIP dummy_
 
-destsize = &0B00        ; for test_big.vampire1.aya? 
+destsize = &0B00        ; for test_big.vampire1.aya?  Can up to &1000
 
-      SKIP -$ AND &FF
-destnrt
-      SKIP destsize
-destnrt2
-      SKIP destsize
+;Since IO buf is in c0, that's safe to put them here
+destnrt = &6000
+destnrt2 = &7000
 
 hi
       SKIP &A400 - $    ; poor man's limit
@@ -491,3 +499,5 @@ vampire
 vampire_size = &0ABD
 ; vampire_size = $ - vampire   Doesn't work: unidos copy rounded to b00
 
+      SAVE "io.bin",io_code,io_end - io_code
+      SAVE "salo.bin",salo_code,salo_end - salo_code

@@ -19,10 +19,12 @@
       ORG code_start
           IMPORT_CORE()
 post_core
-          IMPORT_UILOOP_SHARED_DEPS()
+          IMPORT_UILOOP_DEPS()
+          IMPORT_SALO_DEPS()
+
 ; ---- All other modules ---
           PAD()
-      IMPORT "init.o"   ; pull track, phrase, chung, ...
+      IMPORT "init.o"
           PAD()
       IMPORT "instrsel.o"
  ;         PAD()
@@ -32,7 +34,7 @@ hi
 
       IF 0
  !! no, would overwrite source
-; For saving, nevermind if it's not in the right bank
+; For saving, nevermind the bank
       BANK BK_DISP
       END
 
@@ -48,12 +50,16 @@ disp_bk_end
   ;        ASSERT(uiloop_code == uiloop)
           ASSERT(instrsel_code == instrsel)
 
-; Ensure sync with uiloop    
+; Sync uiloop    
           ASSERT(memcpc_code == memcpc)
           ASSERT(scankey_code == scankey)
           ASSERT(conv_code == conv)
           ASSERT(dispjp_code == dispjp)
           ASSERT(instrui_code == instrui)
+
+; Sync salo    
+          ASSERT(phrase_code == phrase)
+          ASSERT(track_code == track_module)
 
 ;--- That's it ---------------------------------------
       SAVE "ayalib0.bin",post_core,hi-post_core

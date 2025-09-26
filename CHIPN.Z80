@@ -9,7 +9,12 @@ hack  = 1
           ; - patterns
           ; - instruments
 
-        ; 2025
+        ; 2025  
+        ; ----- v0ap -----
+          ; Jun 
+           ; 26 New workzone
+              ; Fix vampire1.instr08 : arp 00C must be activated
+                        ; lpvol was exiting immediatly with step >=0
         ; ----- v0j2 -----
           ; Mar
            ; 20 Fix pitch pokage in workzone
@@ -72,14 +77,17 @@ v0l2  = 1               ; Activate changes for kim9.chp
 
       IMPORT "const.i"
       IMPORT "memmap.i"
-      IMPORT "memcpc.o" ; connect_bk_st
-      IMPORT "phrase.o"
-      IMPORT "chung.o"
-      IMPORT "track.o"  ; Song_add_map
+      IMPORT "import.i"
+
+ ; Needed as chipconv.o also import "salo.o"
+ ; And we use phrase and track (Song_add_map) as well.
+          IMPORT_SALO_DEPS()
       IMPORT "plyconf.i" ; tmp hack: some stuff deactivated
 
 connect_bk_chip = connect_bk_io
-module = st_module      ; &4000 (same address than for st module)
+workzone_chipn = &9000  ; After testlib in chipconv.o!
+workzone = workzone_chipn
+workzone_size = &0600   ; actually less used, see /max_rows/
 
 fail  = &BE00
 to_be_implemented = &BE00
@@ -520,6 +528,12 @@ create_instr
 .okvol
           pop af
           add hl,de
+          bit 7,c:jr nz,.decvol
+;constant/increasing vol
+          add c
+          jr nc,.lpvol
+          jr .donevol
+.decvol
           add c
           jr c,.lpvol
 .donevol
@@ -992,3 +1006,4 @@ fx_rows# BYTE
 arp_loop BYTE 
 cur_instr BYTE 
 
+hi

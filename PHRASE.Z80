@@ -133,6 +133,7 @@ programming_error = &BE00
 not_supported = &BE00
 to_be_implemented = &BE00
 ;==============================================
+phrase_code
 
 phrase_reset
 ;-----------
@@ -1842,5 +1843,5 @@ zero_size = $-zero_start
 
       ORG save_pc
 
-
+phrase_end
 

@@ -495,6 +495,7 @@ out2  = 10
 out3  = 11
 ; Reevaluate when reaching 16
 
+track_code
 ; -----------------------------
 ;      AUM Virtual Machine
 ; -----------------------------
@@ -2908,6 +2909,6 @@ tracks_index            ; desambiguate
   !! confinement issue
       END
 
-
+track_end
 
 

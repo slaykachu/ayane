@@ -1,6 +1,11 @@
 ; <<<<<<<< Instrument editor >>>>>>>>>
 
 ; 2025                           
+ ; -- v0ap --
+ ; Sep
+   ; 18 Only create instrument when displaying it 
+      ; not with f5/f8 outside of editor
+         ; -> prevent spurious creation when instrsel lists them!
  ; Aug      
  ; -- v0am --
    ; 24 Inverse pitch for user comfort (+N= higher pitch)
@@ -38,7 +43,6 @@ hack_refresh = 1
       IMPORT "ged.o"
       IMPORT "timer.o"  ; for fx_null/sync_buzzer_register
       IMPORT "disp-jp.o"
-      IMPORT "shortcut.o" ; for kcdel 
 
       FILL -$ AND &0F,&F7
 
@@ -63,6 +67,9 @@ hack_refresh = 1
 
 ;--------------------------------
 instrui_code
+          jr instr_cold_refresh
+          jr update_instr_in_status
+
 ;-----------------
 instr_cold_refresh
 ;-----------------
@@ -70,6 +77,20 @@ instr_cold_refresh
           LOCATION(x_pos_instr_ed,y_pos_instr_ed)
           ld bc,_fields
           CALL_DS(status_str_at)
+
+ ; -- Create instrument if empty 
+          call Song_get_instr
+          ld c,a
+          call Song_select_instr
+          jr nz,.exist
+          ld a,c
+          call New_instr_ayane
+;Set 1 line (prevent ged assert, and user friendly)
+      IF todo
+; Not null row. E.g. tone + vol=f
+      END
+          call instr_append_empty_row
+.exist
 
  ; -- gedeihen 
           call gedeihen_init
@@ -86,6 +107,29 @@ reenter
           ld hl,&0101:call txt_set_cursor
           ld hl,instr_ui
           jp gedeihen_enter
+
+; ---------------------------------------
+;Helpers (put first so update_instr_in_status reachable by jr)
+
+instr_down
+          call Song_get_instr
+          cp 2:ret c    ; 1: no-op
+          dec a
+;enchaine
+instr_change
+          call Song_select_instr
+;enchaine
+update_instr_in_status
+          call Song_get_instr
+          LOCATION(x_pos_instr#,y_pos_instr#)
+          CALL_DS(status_deci_a_pad0_at)
+          ret
+
+instr_up
+          call Song_get_instr
+          cp 99:ccf:ret c ; 99: no-op
+          inc a
+          jr instr_change
 
 ;--------------------------------
 instr_ui
@@ -159,33 +203,8 @@ _instr_refresh
           RET_C_Z()
           ret
 
-instr_down
-          call Song_get_instr
-          cp 2:ret c    ; 1: no-op
-          dec a
-          jr instr_change
-
-instr_up
-          call Song_get_instr
-          cp 99:ccf:ret c ; 99: no-op
-          inc a
-;enchaine
-instr_change
-          LOCATION(x_pos_instr#,y_pos_instr#)
-          push af
-          CALL_DS(status_deci_a_pad0_at)
-          pop af
-          ld c,a
-          call Song_select_instr
-          ret nz        ; Existing: nothing to do
-; Create new instr
-          ld a,c
-          call New_instr_ayane
-;New instr: add empty line (prevent ged assert)
-          jp instr_append_empty_row
-
+;----------------
 _fields
-;Lp X Vol  Arp Pitch Noise E R Arp Pitch Buz1 Arp Pitch  Buz2 
       BYTE "Lp T Vol  Arp Pitch Noise  H Arp Pitch R "
       BYTE "Buz1 Arp Pitch  "
       BYTE "Buz2 Arp Pitch",0

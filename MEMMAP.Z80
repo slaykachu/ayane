@@ -25,21 +25,24 @@ code_start = &40
 memcpc = &40
 scankey = &0200
 conv  = &0220
-dispjp = &03B0
-instrui = &1BA0
+dispjp = &1B00
+instrui = &1B50
+phrase = &2150
+track_module = &2C91
 init_module = &3B40
 instrsel = &3BE0
-uiloop = &3C50
+uiloop = &3C60
 
-code_main = &3D80       ; ayane.o
+code_main = &3D90       ; ayane.o
 ramlimit = &4000
 
 ; ----------------------------------------------
 ; --------- c0: IO BK --------------
 ; ----------------------------------------------
 ; Status bar offset
-disc_buffer = &4000     ; really
-st_module = &4800
+disc_buffer = &4000
+io    = &4800
+imported_module = &4A00 ; chipn for now
 
 ; ----------------------------------------------
 ; ----- c4: phrases ---------------
@@ -128,37 +131,24 @@ disp_ayane = &5620      ; other modules imported by ayane.o
       ORG &8000
 psg_regs                ;  Room for pseudo registers and ??? 
 ;!! Shared with other buf, as we never play while loading or saving!
-workzone SKIP &0600     ; chipn, &8100:pianoui (temp buffer for display)
-workzone_size = $ - workzone
+workzone SKIP &0200     ; salo, &8100:pianoui (tmp for display)
 salo_buf1 = workzone
 salo_buf2 = workzone + &0100
-; (was for st conv)
-;buf_chung SKIP &0200
-;buf_chung_
 
-free_ram_for_nrt
-ged
-bandaya = &9900         ; Pad for INTx to be confined
+salo
+ged   = &8A80
+bandaya = &9D40
+free_ram_for_nrt = salo
 
-ramlimit' = &A200
+ramlimit' = &A400
       IF todo
 ; Replace ramlimit by himem
-; -> More ram  if himem > &a200 (typical)
-; -> No corruption if " < &a200 
+; -> More ram  if himem > &a400 (typical)
+; -> No corruption if " < &a400 
 ; Note, when detecting himen, check it is > tables
       END
 
    ; also fx pnt for /append_fx/   !?!
-      IF todo
-;check why needed by st128
-;!!! currently conflict with tables
-      END
-
-; Out of bank variables are more convenient!
-; !! Private vars are kept alongside code.
-; !! No need to reserve room 
-;vars_chung SKIP 32      ; some room
-;vars_chung_
 
       ORG savepc,saveobj
 

@@ -1,0 +1,18 @@
+(T)one flag: PSG square tone
+Noise flag + value: . -  No noise
+                    . n  No noise, but change R6 for side effect
+                    x 0  Noise, don't change R6
+                    x n  Noise n 
+Hard Env: 0,1,2,3 \___ 4,5,6,7,F /___ 8 \\\\ 9 \___ A \/\/ 
+                                  ___           ___
+                               B \    C //// D /    E /\/\
+Hard Arp/Pitch: When sync buzzer is on, control wave form.
+Hard (R)etrig:  Retrig env (expert option) 
+
+Each arp and pitch are re-computed from the base note. E.g. to apply the
+same vibrato on psg tone and sync buzzer you have to copy the column
+
+s.
+
+#1: Timer FXs (sync-buzzer) dephasing relative to PSG square tone
+    With pitch=0, no phase shifting should occur. Ye

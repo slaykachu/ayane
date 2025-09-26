@@ -38,6 +38,16 @@
       BYTE &21          ; Bit 0 and 5 Set (after rrca, C and bit4 set)
       ENDM
 
+; ---------------------
+; API
+; ---------------------
+      MACRO UNHANDLED code
+;For ged clients. 
+          xor a:inc a   ; NC, NZ  TODO: NZ still needed?
+          ld a,code
+      ENDM
+
+
 ; --------------------
 ; Timer emulation
 ; --------------------
