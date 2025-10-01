@@ -3,9 +3,12 @@ do_play = 1             ; 0: check  1: play tune
 is_minimala = 0         ;0: --4k08-- kim9 (40 years md)
 
 ; /////// 2025 ////////
-; ---- v0.0ac ----                            
-  ; Mar
-    ; 17: Dump regs in /dbg/
+; ---- v0.0aq ----
+ ; Sep
+   ; 26: Reorder to fit in ram
+; ---- v0.0ac ----
+ ; Mar
+   ; 17: Dump regs in /dbg/
 ; ---- v0.0ab ----                            
  ; Feb
    ; 27 Fix hl'=timer_noop when sfx=1 (was in hL)
@@ -14,10 +17,16 @@ is_minimala = 0         ;0: --4k08-- kim9 (40 years md)
       ENT tests
 
       IMPORT "memmap.i"
+      IMPORT "import.i"
+
       IMPORT "chipn.o"
-      IMPORT "init.o"
       IMPORT "ply.o"
-      IMPORT "track.o"  ; just for /tracks/!
+      IMPORT "track.o"  ; just for Song_get_first_track!
+ho
+      SKIP ramlimit - $
+
+      ORG free_ram_for_nrt
+      IMPORT "init.o"
       IMPORT "testlib.o"
 
 tests
@@ -46,15 +55,14 @@ iter_lp
 
           halt
           halt
-          halt
       END
 
 tick_cpt  ld hl,-1      ; matches ply.tick
           inc hl
           ld (tick_cpt+1),hl
-          ld bc,&1200   ; minimala 1480
-          or a:sbc hl,bc:jr z,end_of_tune
-
+   ;       ld bc,&1200   ; minimala 1480
+     ;     or a:sbc hl,bc:jr z,end_of_tune
+          ld bc,&10:or a:sbc hl,bc:call z,&BE00
 
           di
           ex af,af:push af
@@ -64,19 +72,21 @@ tick_cpt  ld hl,-1      ; matches ply.tick
           exx
           ld bc,&7F10:out (c),c:ld c,&5F:out (c),c
 
-          ld hl,(tick_cpt+1)
-          ld bc,&10:or a:sbc hl,bc:call z,&BE00
 
           call play
 
 dbg_pnt   ld de,dbg
           ld hl,psg_regs
-          ld b,11
+ ;          ld b,11
+          ld b,16       ; easier dbg
 .cp       ld a,(hl):inc hl:ld (de),a:inc e:djnz .cp
           ld (dbg_pnt+1),de
 
       IF do_play
           ld bc,&7F10:out (c),c:ld c,&40:out (c),c
+    ;      xor a
+    ;      ld (psg_regs+8),a
+    ;      ld (psg_regs+9),a
           call psg_nrt
       END
           ld bc,&7F10:out (c),c:ld c,&44:out (c),c
@@ -143,10 +153,14 @@ chip_init
 
       FILL -$ AND &FF,0
 psg_ref SKIP 14
+      END
 
-      SKIP ramlimit-$
+hi
+      SKIP workzone_chipn-$
 
 BK_REF = &C6
+
+      IF 1 - do_play
 
       BANK BK_REF
       IF is_minimala
@@ -159,7 +173,7 @@ BK_REF = &C6
       END
 
       BANK BK_IO
-      ORG &4000
+      ORG imported_module
 chp_module
       IF is_minimala
       LOAD "ums:music/tj/minimala.chq" ; with header

@@ -1,4 +1,4 @@
-dev_checks = 1
+dev_checks = 0
 nrt_marker = 1          ; for timernrt
 todo  = 1
 need_speed = 1
@@ -113,6 +113,29 @@ close_lists_tm = 15
           call jp_m_hl'
       ENDM
 
+correct_tm = 6          ; don't count last ex af to compensate djnz
+      IF correct_tm MOD 3
+ !! must report residue at the end 
+      END
+
+      MACRO PER_16_TO_12
+          nop           ; for correct_tm to be multiple of 3
+          ld hl,psg_regs
+          ld b,3
+.cor_lp
+          ld e,(hl):inc l
+          ld d,(hl)
+      3 ** [srl d:rr e]
+          inc de        ; round to closest
+          srl d:rr e
+          ld (hl),d:dec l
+          ld (hl),e
+          inc l
+          inc l
+          SUB_TM_CALL(34 + correct_tm/3)
+          djnz .cor_lp  ; tm compensated by ex af,af
+      ENDM
+
       MACRO FIND_EVENT_PRELUDE
 ; Find where to insert event (copy-pasted for speed)
 ; Here: HL = header_events + gross position 
@@ -181,7 +204,7 @@ insert_event_tm = 34 + 13
           jr c,.found0
           ld d,h        ; stable tm (jr not taken)
           FIND_EVENT_LOOP()
-; !!Note: We don't handle "instert after itself", which would 
+; !!Note: We don't handle "insert after itself", which would 
         ; require a different code path (no link update, just cpt)
 ; Well, it cannot happen, as period >= &100
 ; We check that to be more future-robust, and detect programming error
@@ -539,7 +562,7 @@ fx_null
 ; active fxs only, for optimisation sake), so it will act as the 2nd
 ; effect is cut and reactivated.
 
-; Fx are packed for now (KISS), so skip parameters
+; Fx not packed for now (KISS), so skip parameters
           pop hl
           pop hl
       IF fx_extra_size
@@ -550,10 +573,10 @@ fx_null
 fx_end
 ; End of instr handling
 ; Each supernumerous fx must be cut.
-          ex af,af
 ret_sp = $+1
           ld sp,0
-
+fx_end_                 ; called from instr._instr_end
+          ex af,af
           ld hl,(fx_by_track_pnt)
 cut_pnt = $+1
           ld de,cut_list
@@ -615,23 +638,11 @@ correct_tm = 6          ; don't count last ex af to compensate djnz
       IF correct_tm MOD 3
  !! must report residue at the end 
       END
-          nop           ; for correct_tm to be multiple of 3
-          ld hl,psg_regs
-          ld b,3
-.cor_lp
-          ld e,(hl):inc l
-          ld d,(hl)
-      3 ** [srl d:rr e]
-          inc de        ; round to closest
-          srl d:rr e
-          ld (hl),d:dec l
-          ld (hl),e
-          inc l
-          inc l
-          SUB_TM_CALL(34 + correct_tm/3)
-          djnz .cor_lp
-          ex af,af
 
+      IF periods_in_16bits
+          PER_16_TO_12()
+      END
+          ex af,af
 
           CLOSE_LISTS()
 
@@ -658,7 +669,7 @@ cut_tm = close_lists_tm + 11 ; Until .cutend (taken)
           ld (hl),&C9   ; RET
 
 ; -- release event (free_slot)
-; (1) event.hdr_link_next = tmp
+; (1) event.hdr_link_next = free
 ; (2) free_slot.pnt = event
           ld a,l
           add hdr_link_free - hdr_code - 3

@@ -1,7 +1,11 @@
 ; Tests salo
 ; 2025
+; -- v0.0aq -- 
+        ;28 Test saving syncbuzzer
+            ; -> NOPE, already here (dummy /raw_row3/)
+                     ; (hum, it sets fx_null apparently) 
 ; -- v0.0ao -- 
-   ; Sep 17 Reorder so it fits in RAM
+        ;17 Reorder so it fits in RAM
    ; Aug  9 Exercise file > &100 
 ; -- v0.0ac --
    ; Mar  5 First version
@@ -20,7 +24,6 @@
           IMPORT_SALO_DEPS()
       IMPORT "init.o"
       IMPORT "instr.o"
-      IMPORT "testlib.o"
 
 ho    SKIP ramlimit - $ ; poor man's limit
 
@@ -30,6 +33,7 @@ ho    SKIP ramlimit - $ ; poor man's limit
       IMPORT "salo.o"   ; set ORG salo
 
       SKIP free_ram_for_nrt - $
+      IMPORT "testlib.o"
 
 ;-----------------------------
       MACRO NO_TEXT
@@ -113,6 +117,8 @@ test_assets
 ; -- with one row
           ld b,1
           ld hl,raw_row1
+; Note: invalid fx routine, sets fx_null apparently.
+      ; Sanatized by chung or what?
           call instr_ayane_append_rows
           call check_save_load_save
 ; -- with two rows
@@ -131,6 +137,14 @@ test_assets
           ld hl,raw_row3
           call instr_ayane_append_rows
           call check_save_load_save
+; -- with 1 sync buzzer
+          ld a,0:ld (hack_ret),a
+      IF 0
+          ld b,1
+          ld hl,raw_row_buzz
+          call instr_ayane_append_rows
+          call check_save_load_save
+      END
 ; - Empty phrase  
           xor a
           call song_select_new_phrase
@@ -483,7 +497,7 @@ nrt_load
 
 dest_meta SKIP dummy_
 
-destsize = &0B00        ; for test_big.vampire1.aya?  Can up to &1000
+destsize = &0F00        ; for test_big.vampire1.aya?  room &1000
 
 ;Since IO buf is in c0, that's safe to put them here
 destnrt = &6000
@@ -499,5 +513,5 @@ vampire
 vampire_size = &0ABD
 ; vampire_size = $ - vampire   Doesn't work: unidos copy rounded to b00
 
-      SAVE "io.bin",io_code,io_end - io_code
-      SAVE "salo.bin",salo_code,salo_end - salo_code
+      SAVE "ayaio.bin",io_code,io_end - io_code
+      SAVE "ayasalo.bin",salo_code,salo_end - salo_code

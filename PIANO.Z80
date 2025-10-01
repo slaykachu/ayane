@@ -4,7 +4,11 @@ tmp_rast = 0
 ; <<<< Handling cpc keyboard as piano >>>>
 ; -> Using hardware keycode: locale agnostic (azerty/qwerty)
 
- ; 2025 
+ ; 2025                
+    ; -- v0aq --
+  ;Sep
+   ;27: Add play_song (mechanical piano!)
+    ; -- v0a? --
   ;Aug   
    ;25: Must init hl' !!!  
    ;24: Split check_note into is_piano_key_pressed/play_piano 
@@ -15,14 +19,12 @@ tmp_rast = 0
    ; 3: exit: use status_on to ensure int0 properly re-sync
    ; 1: _check_regs': ok when mode <> 2!
 
-      BRK
-
       IMPORT "const.i"
       IMPORT "memmap.i"
       IMPORT "macro.i"
 
       IMPORT "chung.o"  ; For va_current_instr
-;      IMPORT "ply.o"
+      IMPORT "ply.o"    ; play
       IMPORT "instr.o"  ; for instr_setup
       IMPORT "timer.o"
       IMPORT "ppi.o"
@@ -51,6 +53,41 @@ fail  = &BE00
       END
       ENDM
 ;---------------------------------------
+piano_code
+play_song
+;--------
+; Done in this source since shared code
+; In: client called Amorce_song
+; Out: N/A (We loop until ESC pressed)
+          ASSERT($ == piano_code) ; called from ayane.o
+
+          call _prelude
+          call play_prelude
+          call play     ; prepare regs
+          call play_prelude'
+          jr .play_song_entry
+
+.play_song_lp
+;------------
+; Here A=TM  (value doesn't matter for first iteration)
+          call vsync_timed
+; Must be done at stable position
+.play_song_entry
+          call set_timer_and_psg
+
+          ex af,af
+          ld a,&48:call testkey
+          inc c         ; ESC, 1, tab
+          jp nz,_stop_play
+
+          SUB_TM_CALL(5+17) ; including call vsync_timed
+
+          call play     ; regs for next frame
+
+          SUB_TM_CALL(5+3)
+          jr .play_song_lp
+
+
 play_piano
 ;---------
 ; Called when no note currently playing
@@ -60,7 +97,6 @@ play_piano
           call _prelude
           call scan_piano_keys
           jp nc,_postlude
-          ld bc,&7F10:out (c),c ; for debug rasters        
 start_note
 ;A= note (0 = c0)
           ld (current_note),a
@@ -68,28 +104,15 @@ start_note
 ;Setup instr code
           ld hl,(va_current_instr) ; for l
           call instr_setup
-          call init_timer ; do it again when looping to start_note
-;          call debug
-          ld bc,&F6C0:out (c),c ; All routines assume that
+;         call debug
+          call play_prelude
+          pop af
+          call instr_play ; Amorce timer + psg_regs
       IF tmp_dbg
           xor a:ld (.dbgcpt+1),a
-      END
-          ld a,MAX_TM   ; so instr_play doesn't triger event. 
-          ex af,af
-          pop af
-          ld hl,anchor + hdr_code ; must re-init when looping
-          exx
-          call instr_play ; Amorce timer + psg_regs
-
-      IF tmp_dbg
           call debug'
       END
-
-;         call debug
-; ---------------------------------
-          call anti_vsync ; idem
-          call vsync
-          SYNC_ANCHOR()
+          call play_prelude'
           jr .play_entry
 
 .play_lp
@@ -133,7 +156,7 @@ start_note
 
           ex af,af
           call scan_piano_keys
-          jr nc,.no_note
+          jr nc,_stop_play
           ld hl,current_note
           cp (hl)
           jr nz,start_note
@@ -159,9 +182,9 @@ start_note
           DBG_RAST(&4E)
 
           SUB_TM_CALL(16+3)
-          jp .play_lp
+          jr .play_lp
 
-.no_note
+_stop_play
 ; Stop playing
           ld hl,mute_psg
           ld de,psg_regs+7
@@ -185,6 +208,29 @@ saveint = $+1
           ex af,af
           ret
 
+;-----------------------------
+play_prelude
+;Needed when changing note, so no spurious event
+;E.g. event scan_piano_keys will call hl'
+          ld a,MAX_TM   ; so instr_play doesn't triger event. 
+          ex af,af
+          ld hl,anchor + hdr_code ; must re-init when looping
+          exx
+          jp init_timer
+
+play_prelude'
+          ld bc,&7F10:out (c),c ; for debug rasters        
+          ld bc,&F6C0:out (c),c ; All fx routines assume that
+
+      IF tmp_dbg
+          call debug'
+      END
+          call anti_vsync
+          call vsync
+          SYNC_ANCHOR()
+          ret
+
+;-----------------------------
 is_piano_key_pressed
 ; Like /scan_piano_keys/ with proper setup
           call .hackstack
@@ -252,7 +298,8 @@ octave_shift = $+1      ; Set by uiloop from pianoui.octave
           ret
 
 _prelude
-;"store firmware" and setup HL'
+;Store "firmware" and setup HL'     
+;In: !!! Must be called at top level
 ;OUT: AF', BC' in stack  (must jump to _postlude)
 
           pop hl        ; ret address
@@ -264,18 +311,16 @@ _prelude
       IF dev_checks
           call _check_regs'
       END
-; Must set hl' early, as most routine might trigger timer (JP HL')
-          ld hl,anchor + hdr_code
           exx
+          push hl       ; for ret
+; Must set hl' early, as most routine might trigger timer (JP HL')
+          call play_prelude
       IF dev_checks
 ; Better break than crash in case of spurious EI
           ld a,(&38):ld (saveint),a
           ld a,&F7:ld (&38),a
       END
-          push hl       ; ret
-; !!! Must be init, as scan_piano_keys will call hl'
-          jp init_timer
-
+          ret
 
 
       IF dev_checks

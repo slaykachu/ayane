@@ -25,15 +25,17 @@ code_start = &40
 memcpc = &40
 scankey = &0200
 conv  = &0220
-dispjp = &1B00
-instrui = &1B50
-phrase = &2150
-track_module = &2C91
-init_module = &3B40
-instrsel = &3BE0
-uiloop = &3C60
+ply   = &1212
+dispjp = &1C00
+instrui = &1C50
+piano = &20D8
+phrase = &22A0
+track_module = &2D91
+init_module = &3C40
+instrsel = &3CE0
+uiloop = &3D60
 
-code_main = &3D90       ; ayane.o
+code_main = &3EC0       ; ayane.o
 ramlimit = &4000
 
 ; ----------------------------------------------
@@ -136,9 +138,9 @@ salo_buf1 = workzone
 salo_buf2 = workzone + &0100
 
 salo
-ged   = &8A80
-bandaya = &9D40
-free_ram_for_nrt = salo
+ged   = &8B10
+free_ram_for_nrt = ged  ; used by salo-nrt!
+bandaya = &9E00
 
 ramlimit' = &A400
       IF todo

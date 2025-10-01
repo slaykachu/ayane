@@ -6,8 +6,12 @@ todo_wrong_chr = 0
 ; TODO???? refresh_focus in gedeihen_enter?
 
 ; -- 2025 --       
- ; --- Ayane 0ai ----
-; Aug 
+ ; --- v0aq ----
+; Sep
+  ;29: Adapt tests when do_scroll_multiline = 0
+     ; Add test_focus_multiline_ctrl_up
+ ; --- v0ai ----
+; Aug
   ;22: Add test_multiline_focus
      ; Add test_delete_first_line and multiple others
   ;21: Add test_delete_last_line
@@ -65,7 +69,8 @@ tests
 ; Otherwise, a BRK is trigerred.
 
           ld a,&F7:ld (0),a
-; --- test helpers ---
+      IF 1
+; --- test helpers --- 
           call test_field_editing
 
 ; --- test flow (setup) ---
@@ -198,10 +203,12 @@ tests
           call test_multiline_scroll4
           call test_multiline_scroll5
           call test_multiline_scroll6
+      END
           call test_multiline_margin
           call test_multiline_goto_top
           call test_multiline_goto_bottom
           call test_multiline_goto_bottom'
+          call multiline_ctrl_down
           call test_multiline_focus
           call test_insert_line
           call test_delete_first_line
@@ -242,6 +249,8 @@ tests
           call test_focus_multiline_optional_readwrite_dynamic
           call test_focus_multiline_struct_optional_readwrite
           call test_focus_multiline_struct_refresh
+          call test_focus_ml_ctrl_down
+          call test_focus_ml_ctrl_up
       IF key_under_multiline
 !!! not supported: y pos not propagated (set in w_refresh only)
           call test_focus_multiline_keyhandler_struct_refresh0
@@ -2154,14 +2163,26 @@ test_multiline_margin
           ld a,5:ld (nrt_lines#),a ; = height - 1
           ld a,&FF:ld (dummy_byte),a
           TEST_RUN_FOCUS(ui_multiline',.seq)
+          ld a,(iotest_cursor)
+      IF do_scroll_multiline
+          cp 3:call nz,fail
+      ELSE
+          cp 4:call nz,fail
+      END
           ret
 .seq      4 ** BYTE k_dwn
       BYTE k_up
           END_OF_NRT_SEQUENCE()
       BYTE toggle_char,nrt_nl
       BYTE toggle_char,nrt_nl
+      IF do_scroll_multiline
           FOCUS(toggle_char):BYTE nrt_nl
       BYTE toggle_char,nrtend
+      ELSE
+;Page down, plus page up 
+      BYTE toggle_char,nrtend
+          FOCUS(toggle_char):BYTE nrt_nl
+      END
 
 test_set_multiline_refresh0
 ;--------------------------
@@ -2314,14 +2335,12 @@ test_multiline_scroll4
 
 test_multiline_scroll5
 ;---------------------
-; Past page = last line
-; (we might want to change this at some point: stay in last page,
-  ;just change cur_y)
+; Last page + last line in view
           TEST_MULTILINE_SCROLL(.seq)
           ret
 .seq      3 ** BYTE kc_dwn
           END_OF_NRT_SEQUENCE()
-      BYTE 9,0
+      BYTE 8,1
 
 test_multiline_scroll6
 ;---------------------
@@ -2362,11 +2381,22 @@ test_multiline_goto_bottom'
 ; When line in view, musn't change page.
 
           ld de,.seq
-; Pretend models has 4 lines
           ld a,3
           call _check_multiline_scroll
           ret
 .seq  BYTE kcfdot
+          END_OF_NRT_SEQUENCE()
+      BYTE 0,2
+
+multiline_ctrl_down
+;------------------
+; When line in view, musn't change page.
+
+          ld de,.seq
+          ld a,3
+          call _check_multiline_scroll
+          ret
+.seq  BYTE kc_dwn
           END_OF_NRT_SEQUENCE()
       BYTE 0,2
 
@@ -2943,6 +2973,52 @@ test_focus_multiline_struct_refresh
           or a:sbc hl,de:add hl,de:call nz,fail
           ret
 
+test_focus_ml_ctrl_down
+; Test hack refresh whole multiline, while keeping state
+          ld a,4:ld (nrt_lines#),a
+          ld hl,&0F0E:ld (nrt_hexa_digit_lines+2),hl
+          ld hl,&1110:ld (nrt_deci99_lines+2),hl
+          TEST_RUN_FOCUS(ui_multiline_refresh_deci,.seq)
+
+          ld de,&0601
+          call _check_cursor
+          ret
+
+.seq  BYTE krgt,kcdwn
+      BYTE kesc
+          END_OF_NRT_SEQUENCE()
+      BYTE "E ":FOCUS("+"):FOCUS("1"):FOCUS("6"):END_OF_STRUCT()
+      BYTE nrt_nl
+      BYTE "F +17":END_OF_STRUCT()
+      BYTE nrtend
+
+
+
+test_focus_ml_ctrl_up
+; Test hack refresh whole multiline, while keeping state
+          ld a,4:ld (nrt_lines#),a
+          ld hl,&0403:ld (nrt_hexa_digit_lines),hl
+          ld hl,&0807:ld (nrt_deci99_lines),hl
+          TEST_RUN_FOCUS(ui_multiline_refresh_deci,.seq)
+
+          ld de,&0601
+          call _check_cursor
+          ret
+
+.seq  BYTE krgt,kcdwn,kcup
+      BYTE kesc
+          END_OF_NRT_SEQUENCE()
+      BYTE "3 ":FOCUS(" "):FOCUS("+"):FOCUS("7"):END_OF_STRUCT()
+      BYTE nrt_nl
+      BYTE "4  +8":END_OF_STRUCT()
+      BYTE nrtend
+
+
+_check_cursor
+          ld hl,(iotest_cursor)
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
       IF key_under_multiline
 test_focus_multiline_keyhandler_struct_refresh0
 ;----------------------------------------------
@@ -2959,7 +3035,7 @@ test_focus_multiline_keyhandler_struct_refresh0
 .seq  BYTE k_dwn,"A"
       BYTE k_esc        ; Force validate (sanity, normaly auto-validate)
           END_OF_NRT_SEQUENCE()
-          FOCUS("D"):BYTE nrt_nl ; Same byte, but wasn't refreshed
+      BYTE "D",nrt_nl   ; Same byte, but wasn't refreshed
           FOCUS("A")
       BYTE nrtend
 

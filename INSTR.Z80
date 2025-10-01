@@ -15,8 +15,7 @@ may_crunch = 1
       IMPORT "plyconf.i"
       IMPORT "macro.i"
 
-dev_checks = 1 AND ayane ; deactivate: otherwise TM doesn't fit
-;-> not really true anymore as of 03 Mar 2025 as we added /SUB_TM_CALL/
+dev_checks = 0 AND ayane
 
       IF ayane
       IMPORT "const.i"  ; instr_head_size
@@ -26,7 +25,7 @@ dev_checks = 1 AND ayane ; deactivate: otherwise TM doesn't fit
 ;!! when assembling ply.o with ayane=0
       FILL -$ AND &FF,&F7
       IF sfx
-      IMPORT "timer.o"  ; for ret_sp
+      IMPORT "timer.o"  ; for ret_sp, fx_end
       END
       ELSE
 psg_regs = compiled_psg_regs
@@ -64,6 +63,11 @@ r14   = psg_regs+14     ; Reset by ply before iteration
       END
 
 ; \\\\\ 2025 ///
+; ---- v0aq ----
+;Sep  
+ ; 29 _instr_end: must call _fx_end to cut fx
+ ; 27 instr_play: c0 now aligned.
+    ; Fix tm when dev_checks
 ; ---- v0an ----
 ;Aug
  ; 25 Fix time instr_play
@@ -206,18 +210,20 @@ instr_null
 
       IF use_instr_end
 _instr_end
-; After final row: mustn't touch anything.
-   ; - Time efficient for buzzs
-   ; - Needed for future: track mix
-; Routine placed here to be reachable by jr
-; Note it differs from instr_null by the total TM used
+; After final row: don't change regs and cut fx.
+; Note it differs from instr_null.
 ; Also, this is not an instr type.
+; Routine placed here to be reachable by jr
 tm1_  = 8               ; from .exec to jr instr_end (taken)
           pop hl        ; consume regs+vol
           pop hl        ; consume regs+mask            
+      IF sfx
+          SUB_TM(tm1_+6+3)
+          jp fx_end_
+      ELSE
           RET_ROUT(tm1_+6)
       END
-
+      END
 ; --------------------------------------------------------
 ; Start with chip instruments (shorter) for confinement
 
@@ -300,7 +306,7 @@ instr_default
           cp tables_/&0100:call nc,fail
 ; no loop in header.
           bit loop_bit,h:call nz,fail
-          SUB_TM''(18)
+          SUB_TM''(16)
       END
           EX_AF'()
           SUB_TM_CALL(26) ; from instr_default until .exec
@@ -540,11 +546,12 @@ tm3'  = 14              ; until RET_ROUT'
      ; Since whole instr routine might take more than 256 nops.
 ;Note: We could use sp for previous field. Not done for now:
      ; - Don't want to rewrite code (must rewrite ply as well to
-         ; pass mask and volume before hand in one go)
+         ; pass mask and volume beforehand in one go)
              ; -> No! Actually don't do the channel dispatch here
                     ; but in psg register dispatch
                     ; -> Faster, simpler: as we add virtual registers,
                        ; we need dynamic pointer anyway.
+             ; -> Must rewrite to decorelate ply+instr (300hz instr)
      ; - Constraints might change (e.g. custom table for some fields)
      ; - YAGNI     
       IF dev_checks
@@ -828,7 +835,7 @@ instr_play
 ;Note: cannot use ret_sp since it will be overwritten 
      ; from instr to timer.
           add a         ; instr expect note *2 (index in periods table)
-          add c0 AND &FF
+          ASSERT(c0 AND &FF == 0)
           ld c,a        ; note 
           ld b,0        ; volume (substracted)
           ld de,0       ; shift
@@ -839,7 +846,7 @@ instr_play
           ld (save_sp+1),sp
           ld sp,instr_code_pnt
  ; jump to instr code and then back at play_return
-          RET_ROUT(25+6) ;+6: ld sp,n:jp n
+          RET_ROUT(23+6) ;+6: ld sp,n:jp n
 play_return
 save_sp   ld sp,0
           ret

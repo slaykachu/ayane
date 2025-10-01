@@ -129,7 +129,7 @@ status_off = bandaya +8
       MACRO LOAD_PIANOUI
 .save
       ORG pianoui
-      LOAD "pianoui.bin"
+      LOAD "ayapianu.bin"
       ORG .save
       ENDM
 

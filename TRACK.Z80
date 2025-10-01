@@ -2,8 +2,9 @@ dev_checks = 1
 todo  = 1
 makeroom = 1
 
-; 2025 Aug 9: Add Set_last_hook_duration
-         ; 8: s/Reset_tracks/Reset_tracks_and_subsongs
+; 2025 Sep 26: track_code: jump table for ayana
+     ; Aug  9: Add Set_last_hook_duration
+          ; 8: s/Reset_tracks/Reset_tracks_and_subsongs
             ; Do set loop for chipn import (not handled by salo yet) 
 do_set_loop = 0
 
@@ -496,6 +497,10 @@ out3  = 11
 ; Reevaluate when reaching 16
 
 track_code
+          jp Reset_tracks_and_subsongs
+          jp Song_get_first_track ; ayane for play
+          jp get_track_header ; "
+
 ; -----------------------------
 ;      AUM Virtual Machine
 ; -----------------------------

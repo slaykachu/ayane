@@ -37,6 +37,7 @@ hack_refresh = 1
 
       IMPORT "const.i"
       IMPORT "memmap.i"
+      IMPORT "macro.i"
 
       IMPORT "memcpc.o" ; reset_sp
       IMPORT "chung.o"  ; Model (instr get/set row)
@@ -47,10 +48,6 @@ hack_refresh = 1
       FILL -$ AND &0F,&F7
 
 ;--------------------------------
-      MACRO LOCATION x,y
-          ld de,x*&0100 + y
-      ENDM
-
       MACRO CALL_DS adr
  ; ds="disp status" status_* in disp.o
  ; disp-jp does the connection
@@ -647,13 +644,17 @@ _set_fx0_type
 ;For now, just toggle
           call _fx0_type_pnt
 _set_fx_type
-          ld bc,fx_null
-          or a:jr z,.set
-          ld bc,sync_buzzer_register
-.set
+;Here: A = 0 or non-zero, convert to type id
+          or a
+          push af       ; Z flag
+          jr z,$+4:ld a,fx_type_sync_buzzer
+;Note: it would be better to let chung do the conversion id->rout when
+     ; updating row. nevermind for now.
+          call fx_type_to_rout
           ld (hl),c:inc hl
           ld (hl),b
 ;Refresh volume:
+          pop af
           jr z,.reset
 ; if set, set hard env flag
           call _activate_env
@@ -682,17 +683,11 @@ _get_fx0_type
           call is_env_hard
           ret z
           call _fx0_type_pnt
-      IF [fx_null AND &FF] - [sync_buzzer_register AND &FF]:ELSE
- !!! needs MSB to discrimate
-      END
-          ld a,(hl)
-      IF dev_checks
-          cp fx_null AND &FF:jr z,.ok
-          cp sync_buzzer_register AND &FF:jr z,.ok
-          call fail
-.ok
-      END
-          xor fx_null AND &FF
+_get_fx_type
+          ld c,(hl):inc hl
+          ld b,(hl)
+          call fx_rout_to_type
+          or a
           ret
 
 _fx0_type_pnt
@@ -739,19 +734,12 @@ has_fx1
 ;(for now coincide with _get_fx1_type used for toggle)
 _get_fx1_type
 ;For now, just toggle
-;A = non-zero if set
+;A = non-zero if set + Flag Z/NZ for some callers
+          call is_env_hard
+          ret z
           call _fx1_type_pnt
-      IF [fx_null AND &FF] - [sync_buzzer_register AND &FF]:ELSE
- !!! needs MSB to discrimate
-      END
-          ld a,(hl)
-      IF dev_checks
-          cp fx_null AND &FF:jr z,.ok
-          cp sync_buzzer_register AND &FF:jr z,.ok
-          call fail
-.ok
-      END
-          xor fx_null AND &FF
+          call _get_fx_type
+          or a
           ret
 
 _fx1_type_pnt

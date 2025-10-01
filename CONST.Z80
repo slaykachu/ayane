@@ -16,6 +16,8 @@ MAX_TRACKS = 16         ; used by track, ply, salo
 MAX_TIMER_FXS = 15      ; used by timer only -> no ui check.
 MAX_FX_BY_INSTR = 2
 
+note_c_10 = 10 * 12     ; C-10 -> period 0 
+
 fx_type_none = 0
 fx_type_sync_buzzer = 1
 
@@ -164,7 +166,8 @@ y_pos_octave = 1
 x_pos_octave = 50
 y_pos_instr# = 2
 x_pos_instr# = 49
-y_pos_instr_ed = 6
+y_pos_last_line = 6
+y_pos_instr_ed = y_pos_last_line
 x_pos_instr_ed = 8
 y_pos_note = y_pos_octave
 x_pos_note = x_pos_octave + 12

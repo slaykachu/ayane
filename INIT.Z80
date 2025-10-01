@@ -55,9 +55,9 @@ dummy_instr_sync
           call New_instr_ayane
           xor a
           ld b,2
-          ld de,row0
+          ld de,_row0
           call helper_setrows
-          ld de,row2_ui
+          ld de,_row2_ui
           call helper_setrow
           ret
 
@@ -100,25 +100,25 @@ sync_env_type_ui = 4    ; /|______
 sync_arp_ui = 0
 
 
-row0  BYTE 0:WORD 0:BYTE &38,0
+_row0 BYTE 0:WORD 0:BYTE &38,0
           VOL(15)
-      FILL fx0_type - [$-row0],0
+      FILL fx0_type - [$-_row0],0
       WORD fx_null
       FILL instr_fx_size-2,0
       WORD fx_null
       FILL instr_fx_size-2,0
       WORD fx_end
-      IF instr_row_size_max - [$-row0]
+      IF instr_row_size_max - [$-_row0]
  !!! incomplete
       END
 
-row2_ui
+_row2_ui
       BYTE 0:WORD 0:BYTE flags_ui,3 ; 
           VOL_HARD()    ; Hard env 
       BYTE hard_env_type_ui
       BYTE hard_arp_ui * 2
       WORD hard_pitch_ui
-      IF fx0_type - [$-row2_ui]
+      IF fx0_type - [$-_row2_ui]
    !! error align
       END
 .syncbuzzer0
@@ -132,7 +132,7 @@ row2_ui
       WORD fx_null
       FILL instr_fx_size-2,0
       WORD fx_end
-      IF instr_row_size_max - [$-row2_ui]
+      IF instr_row_size_max - [$-_row2_ui]
  !!! incomplete
       END
 

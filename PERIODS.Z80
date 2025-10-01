@@ -3,6 +3,9 @@
 todo  = 1
 
 ; 2025
+; ----- v0aq -----
+ ; Sep 27
+    ; Don't reserve anymore before c0. 
 ; ----- v0an -----
  ; Aug 26
     ; Fill before c0 
@@ -25,6 +28,7 @@ periods
 ; f = 440*2^(x/12)
 ; p = cint(1000000/f)
 
+      IF periods_in_16bits
 C     = &EEE4
 C#    = &E17C
 D     = &D4D4
@@ -37,20 +41,15 @@ G#    = &967E
 A     = &8E0C
 A#    = &8613
 B     = &7E8C
+      ELSE
+ !! todo
+      END
 
 ; Align to midi notes. C0 (Double bass pedal) is 12.
-      IF ayane
-; For wrapping (arg)
-      WORD C,C#,D,D#,E,F,F#,G,G#,A,A#,B
-      ELSE
-; Room for psg regis
-      IF todo
-;!! no, should act the same
- ; proper version at compile: detect if wrapping
-     ; if so  -> like ayane
-     ; if not -> can reuse
-      END
-      FILL 12*2,0
+      IF 1-ayane
+; Room for psg register
+!! no, should act the same (for common wrap behavior)
+; -> update compile.o for custom psg_regs dest
       END
 c0
       WORD C,C#,D,D#,E,F,F#,G,G#,A,A#,B

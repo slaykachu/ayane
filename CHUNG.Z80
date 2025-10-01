@@ -1,12 +1,18 @@
 ; <<<<< chung: gestion chunk? + instr >>>>>
-; 2025 Aug 9. Remove st-related code:
+; 2025
+ ; -- v0aq --
+  ; Sep 28. Split set_hard_envs set_hard_type / _arp / ...
+              ; Rationale: Will allow type by column (const, tab...)
+          ; Add set_fx0_type/get_fx0_type and co
+ ; -- v0a? --
+  ; Aug  9. Remove st-related code:
                    ; - dead code
                    ; - can pick it up from older chung versions
                    ; - i need memory
-         ; 8. Deactivate st-related code
-         ; 7. Move column_type_default & co in salo 
-            ; get_column: return size
-         ; 4. add instr_remove_loop
+       ; 8. Deactivate st-related code
+       ; 7. Move column_type_default & co in salo 
+          ; get_column: return size
+       ; 4. add instr_remove_loop
 
      ; Jun 20. Jump table
 ; hist in journal.o
@@ -27,11 +33,12 @@ row_link = 2
 
       IMPORT "const.i"
       IMPORT "memmap.i"
+      IMPORT "macro.i"
       IMPORT "plyconf.i" ; for nb_fx and use_instr_chip_down_vib (tmp)
 
       IMPORT "ply.o"    ; For fx_set_phrase
       IMPORT "instr.o"  ; Use LSB as type.
-      IMPORT "timer.o"  ; fx_end/sync_buzzer_register
+      IMPORT "timer.o"  ; fx_null/fx_end/sync_buzzer_register
       IMPORT "heap.o"   ; new_heap_chunk
       IMPORT "chunk.o"  ; new_chunk 
       IMPORT "memcpc.o"
@@ -442,7 +449,7 @@ instr_ayane_append_rows
   ;check it is a proper address)
 ; !!! for now, fx_null + fx_null + fx_end is expected
 ; !!! rather than just fx_end (c.f. CHECK_SFX)
-; !!! Doesn't matter since whole size is allocated anyway
+; !!! Doesn't matter yet since whole size is allocated anyway
       IF todo_later
 ; just put fx_end if no fx, and fx_null if fx only in 2nd slot
       END
@@ -827,42 +834,114 @@ set_vols
 set_noises
           ld bc,[instr_noise+idsz] *&0100 + 1
           jr set_column
-set_hard_envs
-          ld bc,[instr_hard_arp+idsz] *&0100 + 3
+set_hard_types          ; includes retrig flag
+          ld bc,[instr_hard_type+idsz] *&0100 + 1
+          jr set_column
+set_hard_arps
+          ld bc,[instr_hard_arp+idsz] *&0100 + 1
+          jr set_column
+set_hard_pitchs
+          ld bc,[instr_hard_pitch+idsz] *&0100 + 2
+          jr set_column
+set_fx0_types
+          ld b,fx0_type+idsz
+_set_column_fx_type
+          ld ix,copy_fx_type_to_rout
+          jr set_column_custom
+set_fx0_params
+          ld bc,[fx0_param+idsz] *&0100 + 1
+          jr set_column
+set_fx0_arps
+          ld bc,[fx0_arp+idsz] *&0100 + 1
+          jr set_column
+set_fx0_pitchs
+          ld bc,[fx0_pitch+idsz] *&0100 + 2
+          jr set_column
+set_fx1_types
+          ld b,fx1_type+idsz
+          jr _set_column_fx_type
+set_fx1_params
+          ld bc,[fx1_param+idsz] *&0100 + 1
+          jr set_column
+set_fx1_arps
+          ld bc,[fx1_arp+idsz] *&0100 + 1
+          jr set_column
+set_fx1_pitchs
+          ld bc,[fx1_pitch+idsz] *&0100 + 2
 ;enchaine
 set_column
+          ld ix,_copy_to_instr
+set_column_custom
 ; Set whole column in instrument
 ; Nb rows must have been set beforehand (instr_set_rows#)
 ; In:hl=source
+    ;ix=copy routine
     ; b=offset (field)
-    ; c=width (1 to 3 bytes)
+    ; c=width (1 to 3 bytes) (when ix=.copy) 
           ex de,hl
           call _prelude
-          call get_instr_rows
-          jr z,.okrows  ; Ease salo's code when no rows.
-          ld a,b
-.rowlp
-          push hl
-          push bc
-          push af
-          add l:ld l,a:jr nc,$+3:inc h
+          call _transfer_rows
+          jp _postlude
+
+_copy_to_instr
       IF dev_checks
           inc c:dec c:call z,unexpected
       END
-.copy     ld a,(de):inc de
+.cplp
+          ld a,(de):inc de
           ld (hl),a:inc hl
           dec c
-          jr nz,.copy
-          pop af
-          pop bc
-          pop hl
-          call is_last_row
-          jr z,okrows
-          call ld_hl_link
-          jr .rowlp
+          jr nz,.cplp
+          ret
 
-.okrows
-          jp _postlude
+copy_fx_type_to_rout
+          ld a,(de):inc de
+          call fx_type_to_rout
+          ld (hl),c:inc hl
+          ld (hl),b
+          ret
+
+fx_type_to_rout
+; Convert type id to rout address (used by instrui)
+; In:   A = type
+; Out: BC = rout
+          ASSERT(fx_type_none == 0)
+          ld bc,fx_null
+          or a
+          ret z
+          ld bc,sync_buzzer_register
+      IF dev_checks
+          cp fx_type_sync_buzzer:call nz,unexpected
+      END
+          ret
+
+copy_fx_rout_to_type
+          ld c,(hl):inc hl
+          ld b,(hl)
+          call fx_rout_to_type
+          ld (de),a:inc de
+          ret
+
+fx_rout_to_type
+; Convert rout to type id (used by instrui)
+; In:  BC = rout
+; Out:  A = type      
+
+          ASSERT(fx_type_none == 0)
+          xor a
+          push hl
+          ld hl,fx_null:sbc hl,bc
+          pop hl
+          ret z
+          ld a,fx_type_sync_buzzer
+      IF dev_checks
+          push hl
+          ld hl,sync_buzzer_register:or a:sbc hl,bc:call nz,unexpected
+          pop hl
+      END
+          ret
+
+jp_ix     jp ix
 
 get_arps
           ld bc,[instr_arp+idsz] *&0100 + 1
@@ -879,10 +958,45 @@ get_vols
 get_noises
           ld bc,[instr_noise+idsz] *&0100 + 1
           jr get_column
-get_hard_envs
-          ld bc,[instr_hard_arp+idsz] *&0100 + 3
+get_hard_types          ; includes retrig flag
+          ld bc,[instr_hard_type+idsz] *&0100 + 1
+          jr get_column
+get_hard_arps
+          ld bc,[instr_hard_arp+idsz] *&0100 + 1
+          jr get_column
+get_hard_pitchs
+          ld bc,[instr_hard_pitch+idsz] *&0100 + 2
+          jr get_column
+get_fx0_types
+          ld b,fx0_type+idsz
+_get_column_fx_type
+          ld ix,copy_fx_rout_to_type
+          jr get_column_custom
+get_fx0_params
+          ld bc,[fx0_param+idsz] *&0100 + 1
+          jr get_column
+get_fx0_arps
+          ld bc,[fx0_arp+idsz] *&0100 + 1
+          jr get_column
+get_fx0_pitchs
+          ld bc,[fx0_pitch+idsz] *&0100 + 2
+          jr get_column
+get_fx1_types
+          ld b,fx1_type+idsz
+          jr _get_column_fx_type
+get_fx1_params
+          ld bc,[fx1_param+idsz] *&0100 + 1
+          jr get_column
+get_fx1_arps
+          ld bc,[fx1_arp+idsz] *&0100 + 1
+          jr get_column
+get_fx1_pitchs
+          ld bc,[fx1_pitch+idsz] *&0100 + 2
 ;enchaine
 get_column
+          ld ix,_copy_from_instr
+;enchaine
+get_column_custom
 ; Set whole column in instrument
 ; Nb rows must have been set beforehand (instr_set_rows#)
 ; In:hl=dest
@@ -893,34 +1007,37 @@ get_column
           call _prelude
           ex de,hl
           push de
-          call get_instr_rows
-          jr z,.okrows
-          ld a,b
-.rowlp
-          push hl
-          push bc
-          push af
-          add l:ld l,a:jr nc,$+3:inc h
-      IF dev_checks
-          inc c:dec c:call z,unexpected
-      END
-.copy     ld a,(hl):inc hl
-          ld (de),a:inc de
-          dec c
-          jr nz,.copy
-          pop af
-          pop bc
-          pop hl
-          call is_last_row
-          jr z,.okrows
-          call ld_hl_link
-          jr rowlp
-.okrows
+          call _transfer_rows
           ld a,e
           pop de
           sub e
           jp _postlude
 
+_copy_from_instr
+      IF dev_checks
+          inc c:dec c:call z,unexpected
+      END
+.cplp
+          ld a,(hl):inc hl
+          ld (de),a:inc de
+          dec c
+          jr nz,.cplp
+          ret
+
+_transfer_rows
+          call get_instr_rows
+          ret z         ; Ease salo's code when no rows.
+.rowlp
+          push hl
+          push bc
+          ld a,l:add b:ld l,a:jr nc,$+3:inc h
+          call jp_ix
+          pop bc
+          pop hl
+          call is_last_row
+          ret z
+          call ld_hl_link
+          jr .rowlp
 
 is_last_row
 ; Also used by compile and salo
@@ -1100,6 +1217,7 @@ _install_com            ; !!! Used by phrase.o
           ret
 
 _prelude
+; !! Must be call top_level
 ; save registers and sp (for 'exception mechanisme)
 ; then connect work bank
 ; More space-efficient, we don't need to be fast

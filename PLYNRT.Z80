@@ -1,5 +1,11 @@
-; Tests ply.o
-; v0.0ac 05 Mar 25
+; Tests ply.o            
+do_profile = 1
+; 2025 
+; --- v0.0aq ---
+  ; Sep 27 Fix changed api
+         ; c-0 is now 0
+; --- v0.0ac ---
+  ; Mar 05
 
       IMPORT "const.i"
       IMPORT "memmap.i"
@@ -84,13 +90,17 @@ track1 = tracks+4       ; track 0 empty (reserved)
 fail  = &BE00
 
 tests
-          call test_empty_song_no_hook_tm
+          call test_empty_phrase
 
+      IF do_profile
           call test_profiling
           call test_timer_nop
+      END
           call test_empty_song
+      IF do_profile
           call test_empty_song_no_hook_tm
           call test_empty_song_tm
+      END
           call test_empty_phrase
           call test_note_instr
           call test_sync_buzzer
@@ -99,8 +109,8 @@ tests
 nrt_init
           call Init_chung
           call Init_track_module
-          call song_reset ; clear phrase_idx
           call New_module ; create 3 empty tracks
+          call phrase_reset
 ; ST convert use exx
 ; ply uses ex exx and af,af'
           ld hl,&C9FB:ld (&38),hl
@@ -193,8 +203,13 @@ test_empty_phrase
 ; --- track with this phrase
           call nrt_phrase0_in_track1
 
+      IF do_profile
           call tm_play
           call tm_play  ; 2nd iter
+      ELSE
+          call nrt_play
+          call nrt_play
+      END
           ret
 
 test_note_instr
@@ -202,7 +217,11 @@ test_note_instr
 ;simple note with simple instrument
           call nrt_init
           call nrt_dummy_song
+      IF do_profile
           call tm_play
+      ELSE
+          call nrt_play
+      END
 
           ld hl,.ref
           ld de,psg_regs
@@ -226,7 +245,11 @@ test_sync_buzzer
           ld b,20
 .lp
           push bc
+      IF do_profile
           call tm_play
+      ELSE
+          call nrt_play
+      END
           pop bc
           jr nz,.lp
           ret
@@ -244,7 +267,7 @@ nrt_dummy_phrase
 ; --- dummy phrase
           xor a:call song_select_new_phrase
           call phrase_select_new_row:call nc,fail
-          ld a,12:call row_set_note
+          ld a,0:call row_set_note
           ld a,1:call row_set_instr
 ;enchaine
 ; --- dummy track
@@ -445,7 +468,7 @@ timer_nop
 
 ; Put at the end to respect ORG order (workaround bug#108)
 ; No more room befor ramlimit
-      ORG buf_chung_    ; &9300
+      ORG free_ram_for_nrt
       IMPORT ":orgrel/prof.o"
 
 

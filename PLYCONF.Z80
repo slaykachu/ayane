@@ -21,6 +21,8 @@ compiled_psg_regs = compiled_periods ; share zone
 compiled_data = compiled_periods + &0100
 compiled_instr = compiled_data
 
+periods_in_16bits = 1
+
       IF ayane
 ; Special fx (interleave player with routine in HL')
 sfx   = 1

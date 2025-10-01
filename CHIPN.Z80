@@ -1,7 +1,8 @@
 hack_minimala = 0       ; also used for 4k08
 hack_4k08 = 0
-hack_kim9 = 1
+hack_kim9 = 0
 hack  = 1
+dev_checks = 1
          ; Convertion for chip'n'sfx
 
         ; TOC:  
@@ -10,8 +11,17 @@ hack  = 1
           ; - instruments
 
         ; 2025  
+        ; ----- v0aq -----
+          ; Sep
+           ; 27 Fix constant vol + fx: loop after fx duration
+                   ; -> shorter instr
+                   ; -> fx don't stop after max_rows lines (32)
+                   ; -> fix vampire1.instr04 05 06
+              ; chipvib: fill whole table
+                       ; poke_a_signed: correction 12 -> 16 bits
+              ; correct c-9 -> c-10 for percussions
+
         ; ----- v0ap -----
-          ; Jun 
            ; 26 New workzone
               ; Fix vampire1.instr08 : arp 00C must be activated
                         ; lpvol was exiting immediatly with step >=0
@@ -94,6 +104,12 @@ to_be_implemented = &BE00
 unexpectedinput = &BE00
 
 ;---------------------------------------
+      MACRO IS_VOLUME_CONSTANT
+; Z is yes
+          ld a,(volume) ; step
+          or a
+      ENDM
+
       MACRO CHECK_ROWS
       IF dev_checks
           call _check_rows
@@ -225,20 +241,18 @@ patterns
           ld a,(hl):inc hl
           cp "#":jr nz,$+3:inc c
 ; handle "C-B": encoding for "C-9" 
-      IF todo
-; (period 0 or cut?)
-; For now choose octave 9: should point to period 0 as well.
-; !! todo, check that as well 
-      END
           ld a,(hl):inc hl
           cp "B":ld a,9:jr z,.okoctave
           dec hl
           call decX2val
 .okoctave
-          inc a         ; +1 octave to match midi numbering
           2 ** add a:ld b,a:add a:add b ; octave: a*12
           add c
-          ld c,a:ld a,(global_transpose):add c
+; "C-9" -> "C-10" for percussion
+          ld c,a
+          cp 9*12:ld a,note_c_10:jr z,.oknote
+          ld a,(global_transpose):add c
+.oknote
           call row_set_note
           call connect_bk_chip
           ld a,":":call consume_char
@@ -265,7 +279,7 @@ patterns
 .ok_note
           ld a,(delai)
           call row_add_duration
-          jr .rowlp
+          jp .rowlp
 
 .rowend
           call skip_nl
@@ -420,10 +434,12 @@ create_instr
           ld a,c:neg:ld c,a
           ld a,(cur_instr)
           call New_instr_chp_down_arp_noise
+; enchaine
       ELSE
           jr .instr_default
       END
 
+      IF use_instr_chip_down_arp_noise OR use_instr_chip_down_arp
 .chipdownarp_com
 ; Flatten arp "table"
           ld a,(workzone + instr_arp + instr_row_size_max)
@@ -434,10 +450,9 @@ create_instr
           CHECK_ROWS()
           ld hl,workzone
           call instr_chip_append_rows_byte
-          ld a,(arp_loop)
-          ld b,a
-          call instr_set_loop
-          ret
+!! todo: is b preserved?
+          jr com_set_loop
+      END
 
 .chipdownvib_only
 ; -register instr 
@@ -537,7 +552,13 @@ create_instr
           add c
           jr c,.lpvol
 .donevol
-;Last volume could be > 0, nevermind
+;Last volume could be > 0, nevermind 
+          IS_VOLUME_CONSTANT()
+          jr nz,.oklen
+;When constant, clip nb rows
+          ld a,(fx_loop_rows#)
+          ld b,a
+.oklen
           push bc       ; b= nb row
 
 ; --- Register instr
@@ -578,7 +599,13 @@ create_instr
           call instr_ayane_append_rows
           pop bc
           dec b
-; Hack: Set loop to last row (end of instrument)
+; Hack: Set loop to
+   ; first row if constant volume
+   ; last row otherwise 
+          ld a,(volume) ;step
+          or a:jr nz,.okl
+          ld b,a
+.okl
           call instr_set_loop
           ret
       ELSE
@@ -601,7 +628,6 @@ poke_fx
 
 .arpeggio
 ; Prepare full arpegio sequence.
-          xor a:ld (arp_loop),a ; default 
           ld hl,workzone + instr_arp
           ld de,instr_row_size_max
 
@@ -609,19 +635,24 @@ poke_fx
           ld a,c:or a:jr z,.arp2
           call get_arp_Y
           ld a,b
-; pre-multiply
+; pre-multiply both
           add a
           sla c
-          bit 7,c:jr nz,.arp_stale ; special chipnsfx case (Y=E or F)
+ ; special chipnsfx case (C<0 -> must stale) 
+     ; Y=E C=-48
+     ; Y=F C=-24
+          jr c,.arp_stale
 ;Fill entirely. Real length established in .lpvol
           ld b,max_rows/3
 .lparp3
           call one_arp3
           djnz .lparp3
-.fx_ret3
           ld a,3
 .fx_ret
+          ld b,a
+.fx_ret_
           ld (fx_rows#),a
+          ld a,b:ld (fx_loop_rows#),a
           ret
 
 .arp_stale
@@ -631,8 +662,8 @@ poke_fx
 .lparp
           ld (hl),c:add hl,de
           djnz .lparp
-          ld a,2:ld (arp_loop),a
-          jr .fx_ret3
+          ld a,3:ld b,1
+          jr .fx_ret_
 
 .arp2
           ld a,b
@@ -655,16 +686,21 @@ poke_fx
 .chipFX1
 ; (partly) reproduce chip instrument
 ; - for vibrato/portamento, usual table
-; Here: B=X 
-      ; C=Y            
+; In: B=X 
+    ; C=Y     
+
+          ld a,1:ld (fx_loop_rows#),a ; hackish default for portamento
+
           ld a,c
           or a:jr nz,.no_slow_porta
       IF hack_kim9
 ;!! hack for kim9.chp
-      END
           ld bc,-1
           ld a,1        ; will add -2 
           jr .okdirection
+      ELSE
+          call to_be_implemented
+      END
 
 .no_slow_porta
           cp 8:call z,to_be_implemented ; idem going down
@@ -709,7 +745,7 @@ poke_fx
       IF hack_kim9
           ld a,6        ; Boum1 volume too low after that 
       ELSE
- !!! todo: compute length wrt volume fading
+          call to_be_implemented ; compute length wrt volume fading
       END
       END
           push af
@@ -755,18 +791,24 @@ poke_fx
       END
       END
 .okhack
-          ld a,c
           ld hl,workzone+instr_pitch
-          call fillw0_row
+          ld e,c
+          ld c,0
+.viblp
+          call fillw0_row:jr nc,.vibend
+          ld a,e
+          call fillwa_row:jr nc,.vibend
+          call fillw0_row:jr nc,.vibend
+          ld a,e:neg
           call fillwa_row
-          call fillw0_row
-          neg
-          call fillwa_row
-          ld a,b:add a:add a ; total nb rows
+          jr c,.viblp
+.vibend
+          ld a,b:add a:add a:ld b,a ; loop rows
+          ld a,c        ; total nb rows
       IF dev_checks
           or a:call z,fail
       END
-          jp .fx_ret
+          jp .fx_ret_
 
 .one_arp3
           ld (hl),0:add hl,de
@@ -911,22 +953,29 @@ is_nl
           ret
 
 poke_a_signed
+      IF periods_in_16bits
+;a*16            
+          push af:push de
+          ld d,0
+          add a:jr nc,$+3:dec d
+      3 ** [add a:rl d]
+          ld (hl),a:inc hl
+          ld (hl),d:inc hl
+          pop de:pop af
+      ELSE
           ld (hl),a:inc hl
           ld (hl),0:bit 7,a:jr z,$+3:dec (hl)
           inc hl
+      END
           ret
 
 
 fillw0_row
-          push af
-          xor a
-          call fillwa_row
-          pop af
-          ret
-
+          ld a,0
+;enchaine
 fillwa_row
 ; Poke B * word A, column-wise until max_row is reached
-; In: A = value (sined)
+; In: A = value (signed)
     ; B = rep
     ; C = current row
     ;HL = pos field in table
@@ -1003,7 +1052,7 @@ noise WORD
 fx    BYTE 
 XY    WORD 
 fx_rows# BYTE 
-arp_loop BYTE 
+fx_loop_rows# BYTE 
 cur_instr BYTE 
 
 hi

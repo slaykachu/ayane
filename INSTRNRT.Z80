@@ -1,30 +1,24 @@
 ; ------------- Tests for instr.o ----------------
 
-; v0.0ac 05 Mar 25
+; --- v0.0aq ---
+   ; Sep 27 c-0 is now 0
+          ; nrt_init: call init_timer
+; --- v0.0ac ---
+   ; Mar 05
 ; Changelog in journal.o
 
-      ORG &0100
-      ENT tests
 
       IMPORT "const.i"
       IMPORT "memmap.i" ; psg_regs
+      IMPORT "macro.i"  ; SUB_TM
+
+      ORG code_start
+      ENT tests
 
       IMPORT "instr.o"
-      IMPORT "timer.o"  ; set_reg13_insert_and_program/_tm
+      IMPORT "timer.o"  ; set_reg13_insert_and_program/_tm init_timer
       IMPORT "testlib.o"
       IMPORT ":orgrel/prof.o"
-
-      MACRO SUB_TM n
-; Copy-paste from timer.o                  
-; Update counter TM (+2 for 'sub n' itself)
-      IF n AND 1
-; Resolution: 2-nops. Must compensate
-          ld a,a:sub [n+3]/2
-      ELSE
-          sub [n+2]/2
-      END
-      ENDM
-
 
 tests
           call nrt_init
@@ -41,6 +35,7 @@ nrt_init
 ;needed since profile temporarily set EI,
 ;and we need to setup HL' before that.
           ld hl,&C9FB:ld (&38),hl
+          call init_timer ; needed for set_reg13_insert_and_program
           ret
 
 test_instr_null
@@ -123,7 +118,7 @@ nrt_instr_play
 check_from_channel_b
 ;in: hl = ref
           push hl
-          ld a,12       ; c0
+          ld a,0        ; c0
           call nrt_instr_play ; on channel B
           pop hl
           ld de,psg_regs+2

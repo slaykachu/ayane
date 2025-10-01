@@ -47,8 +47,11 @@ disp_bk_end
 ;--- Check entry points ------------------------------
 ; Those used via direct jumps by ayane.o
           ASSERT(init_code == init_module)
-  ;        ASSERT(uiloop_code == uiloop)
+  ;        ASSERT(uiloop_code == uiloop)  ; didn't fit
           ASSERT(instrsel_code == instrsel)
+          ASSERT(track_code == track_module) ; also salo
+          ASSERT(ply_code == ply)
+          ASSERT(piano_code == piano)
 
 ; Sync uiloop    
           ASSERT(memcpc_code == memcpc)
@@ -59,11 +62,10 @@ disp_bk_end
 
 ; Sync salo    
           ASSERT(phrase_code == phrase)
-          ASSERT(track_code == track_module)
 
 ;--- That's it ---------------------------------------
       SAVE "ayalib0.bin",post_core,hi-post_core
-      SAVE "ayalib1.bin",ged,end_of_ged-ged
+      SAVE "ayalib1.bin",ged,ged_end-ged
   ; -> Not imported here (didn't fit)
   ;    SAVE "pianouil.bin",pianoui,disp_bk_end-pianoui
   ; -> Imported directly by ayane.o

@@ -89,6 +89,8 @@ status_hexa_hl_at
 
 status_char JP_STATUS(disp+&A5)
 status_str JP_STATUS(disp+&A8)
+      IF 0
+ !! not exposed ; as we shall call disp directly
 status_pad
 status_deci_a
 status_deci_a_pad0
@@ -96,9 +98,10 @@ status_deci_hl
 status_hexa_a
 status_hexa_hl
 status_inv_cursor_at
-status_clear_line_at
+status_clear_from
 status_str_shaded_at
 status_str_shaded
+      END
       BRK
 
 disp_jp_code_

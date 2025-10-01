@@ -47,6 +47,9 @@
           ld a,code
       ENDM
 
+      MACRO LOCATION x,y
+          ld de,x*&0100 + y
+      ENDM
 
 ; --------------------
 ; Timer emulation

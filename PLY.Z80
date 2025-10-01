@@ -17,6 +17,12 @@ need_room = 1
  ; See /track_stack/
 
 ; \/\/\/ 2025 \/\/\/\/\
+; ----- v0aq -----
+  ; Sep
+   ;28 end_of_track: handle end of song (null link)
+   ;27 Init_periods: Put 0 at /note_c_10/
+     ; fix tm tracking (A was corrupted to set r7)
+   ;26 ply_code: jump table for ayane
 ; ----- v0am -----
   ; Aug
    ;23 Move common macro in macro.i
@@ -46,7 +52,7 @@ n     = 20              ;a changer par TM correct au cas par cas
       IF 1-ayane
       ORG compiled_player
       END
-dev_checks = 1 AND ayane
+dev_checks = 0 AND ayane
 
       IMPORT "memmap.i"
       IMPORT "const.i"
@@ -73,6 +79,10 @@ psg_regs = compiled_psg_regs
       IMPORT "timer.o"  ; Only for replay_period_in_nops
       FILL -$ AND &0F,&F7 ; padding for confinement
       IMPORT "fx.o"
+
+ply_code
+          jp Amorce_song
+          jr play
 
 fx_set_phrase
 ; Fake FX: update row pnt.
@@ -306,11 +316,7 @@ update_instr_tm = 61
 !! todo
       END
       IF dev_checks
-; 0: reserved (different than 'no note')
-   ; Can be used for e.g. restart instrument.
-          call z,mess
-; >= 128: reserved
-          call c,mess
+          call c,mess   ; >= 128: reserved
       END
           pop hl
           add h:ld l,a
@@ -321,9 +327,8 @@ update_note_tm = 15
           ld a,(hl):INC_HL()
           add a
       IF dev_checks
-          call z,mess
-          call c,mess
-          SUB_TM''(6)
+          call c,mess   ; >= 128: reserved
+          SUB_TM''(3)
       END
           pop de
           add d:ld e,a
@@ -375,7 +380,8 @@ play
        ;  A: cpt TM 
       END
 ;Out: /regs/ buffer filled up
-    ; Hl : iter# so far, (e.g. 1 after first call)  warp after &ffff
+    ; hl: iter# so far, (e.g. 1 after first call)  warp after &ffff
+    ;  a: cpt TM
 
 ;Used:
     ; SP: track info
@@ -391,13 +397,12 @@ play
           di
 tm0   = 1+15            ; until track_loop
           ld hl,r7
-; ! don't use A (= TM)
       IF hack_minimala
 ; Channel always open
-          ld a,&38:ld (r7),a
+          ld (hl),&38
       ELSE
 ;We only open voice/noise, so start from all closed.
-          ld a,&3F:ld (r7),a
+          ld (hl),&3F
       END
 ;r13 : keep value from previous iter to detect if retrig needed
 ;r14 : sentinelle set in instr.o
@@ -411,7 +416,7 @@ track_loop
       IF ayane
 ;only needed if RDV. Nevermind
           ld bc,&7F00 + BK_TRACK:out (c),c
-tm1   = 24              ; until 'jr play_phrase' taken / not taken+EX AF
+tm1   = 24              ; until 'jr play_phrase' taken 
       ELSE
 tm1   = 17
       END
@@ -436,8 +441,9 @@ tick      ld bc,0       ; Nb tick (1st iter:0)
 ; use "inc l" if each track is confined
       END
       IF ayane
+tm1'  = 5               ; until end_of_track (taken)
 tm2   = 14+5+12+10-1    ; until evt_handle_loop ; -1: jr not taken
-          inc h:dec h:jr z,stop ; cannot use A(')
+          inc h:dec h:jr z,end_of_track ; cannot use A(')
 ; read link next event hook
           ld e,(hl):inc hl
           ld d,(hl):inc hl
@@ -524,8 +530,10 @@ evt_handle_loop
       END
 
       IF ayane
-stop
-          call to_be_implemented
+end_of_track
+;continue to play phrase/instr.
+          SUB_TM(tm1'+3-1) ; -1 jr nz,play_phrase not taken
+          jr play_phrase
       END
 ; Set flag not to call the player again.
 ; And/or put address of null row in stack. 
@@ -550,13 +558,8 @@ play_phrase'
 ;enchaine
 play_phrase
 ;----------
-;end_of_track = play_phrase
-; -- RDV phrase event (only 1 type: read next row)
-; In 16 bits for crunchability
-; We keep it separated from track RDV
-; so we don't have to compare when resetting
-; I don't know what i meant by that
-
+; -- RDV phrase event? (only 1 type: read_row)
+; In 16 bits for crunchability / uniformity
           SUB_TM(tm1+14)
           pop hl
           or a:sbc hl,bc
@@ -1010,9 +1013,11 @@ Amorce_song
 
 ;Enchaine (save a call)
 Init_periods
+; Fill whole table. 10 octaves + 8 notes. Put 0 at C-10
 ; Adapted from lab/miniplyi
     ; More compact
-; Need to keep working note. otherwise error would be propagated
+; Need to keep working note without rounding
+; otherwise error would be propagated.
 ; Ok    %101 -> %11 (%10.1) ->  %1 (%1.01)
 ; Wrong %101 -> %11 (%10.1) -% %10 (%1.1)  if we reload from %11
 
@@ -1022,8 +1027,6 @@ Init_periods
           ld c,(hl):inc l
           ld b,(hl):inc l
           push de
-; We fill the whole table.
-; From c8 periods errors start to be quite far off. Nevermind.
 .octave_lp
           srl b:rr c
 ;round to closer
@@ -1039,6 +1042,13 @@ Init_periods
           ld a,e
           cp c1+24 AND &FF
           jr c,.note_lp
+
+;C-10: period 0 for percussions.
+;C#10 and after: leave as is, nevermind
+          ld l,note_c_10*2
+          xor a
+          ld (hl),a:inc l
+          ld (hl),a
           ret
 
       IF ayane

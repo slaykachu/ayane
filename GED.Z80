@@ -1,7 +1,12 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
+; -- v0aq --
+; Sep    
+  ;30 multiline_ctrl_up:  Musn't refresh when line in view
+  ;29 multiline_ctrl_dwn: Musn't scroll when line in view
+    ; Deactivate multiline scrolling: too slughish
+do_scroll_multiline = 0
 ; -- v0ao --
-; Sep
-   ;6 Add jump table (on hold)
+   ;6 Add jump table (cancelled: not needed, as uiloop calls directly)
 ;Aug       
 ; -- v0am --
   ;24 noline: shorter ----- 
@@ -1984,10 +1989,17 @@ multiline_up
           call _ml_up
           jr z,multiline_stay
           jr nc,_multiline_reenter
+      IF do_scroll_multiline
 ;scroll down
-          GET_STATE_BYTE(line_at_top)
+          call get_line_at_top
           dec a
-          jp _multiline_scroll_com
+          jp _multiline_refresh_com
+      ELSE
+          call get_current_line_number ; before page_up!
+          push af
+          call page_up
+          jp _ml_upd_y_and_refresh
+      END
 
 _ml_prelude
 ;Out: hl = cur state of focus 
@@ -2013,13 +2025,19 @@ _ml_up
 ;Now view itself    
           GET_STATE_BYTE(cur_y)
           ld c,a
-          GET_STATE_BYTE(line_at_top)
+          call get_line_at_top
           or a
           jr z,.okview
-          call get_scroll_offset
 ; Scroll if offset >= cur_y 
+      IF do_scroll_multiline
+          call get_scroll_offset
           cp c
           jr c,.okview
+      ELSE
+; Scroll if 0 > cur_y
+          ld a,c:or a
+          jr nz,.okview
+      END
 
 ; must scroll
           scf:sbc a     ; NZ, C
@@ -2031,6 +2049,7 @@ _ml_up
           ret z         ; can it happen?
 ;just update y     
           dec a
+_ml_update_y
           call update_cur_y
           xor a:inc a   ; NZ, NC
           ret
@@ -2046,30 +2065,33 @@ multiline_stay
 multiline_dwn
           call _ml_prelude
           push hl
-;Increment model's line    
-          call call_state_get_line#
-          ld b,a
-          call get_current_line_number
+          call _ml_dwn
+          jr z,multiline_stay
+          jr nc,_multiline_reenter
+      IF do_scroll_multiline
+;scroll up
+          call get_line_at_top
           inc a
-          cp b
-          jr nc,multiline_stay
-;ok line 
-          call call_state_select_line
-;Now view itself
-          GET_STATE_BYTE(cur_y)
-          inc a
+      ELSE
+          call get_current_line_number ; before page_up!
+          push af
+          call page_dwn
+_ml_upd_y_and_refresh
           ld b,a
-          call get_scroll_offset
-          ld c,a
-          call get_view_height
-          sub c:ld c,a
-          ld a,b
-; Scroll if cur_y = height - offset  (musn't be greater)
-          cp c
-          jr z,_multiline_scroll_up
-      IF dev_checks
-          call nc,fail  ; past scroll threshold
+          pop af
+          push bc
+          call update_cur_y_from_selected
+          pop af
+;enchaine
       END
+_multiline_refresh_com
+;In: A = new line at top
+   ; !!! (sp) = saved state_sp
+          SET_STATE_BYTE(line_at_top)
+          ld hl,(state_sp)
+          call refresh_nofocus_safe_save_cursor
+          jr _multiline_reenter
+
 _multiline_update_cur_y
           call update_cur_y
 _multiline_reenter
@@ -2087,30 +2109,61 @@ _multiline_reenter
           xor a:scf
           ret           ; C Z: handled, nothing to do. 
 
-_multiline_scroll_up
-          GET_STATE_BYTE(line_at_top)
+_ml_dwn
+; OUT: Z: nothing more to do
+     ;NZ, NC: just update y  (A = new value)
+     ;NZ,  C: must scroll
+
+;Increment model's line    
+          call call_state_get_line#
+          ld b,a
+          call get_current_line_number
           inc a
-_multiline_scroll_com
-;In: A = new line at top
-   ; !!! (sp) = saved state_sp
-          SET_STATE_BYTE(line_at_top)
-          ld hl,(state_sp)
-          call refresh_nofocus_safe_save_cursor
-          jr _multiline_reenter
+          cp b
+          jr c,.ok
+          cp a          ; Z
+          ret
+.ok
+          call call_state_select_line
+;Now view itself
+          GET_STATE_BYTE(cur_y)
+          inc a
+          ld b,a
+; Scroll only if new cur_y = height - offset  (cann't be greater)
+      IF do_scroll_multiline
+          call get_scroll_offset
+          ld c,a
+          call get_view_height
+          sub c
+      ELSE
+; Force offset=0 to page only when past bottom
+          call get_view_height
+      END
+          ld c,a
+          ld a,b
+          cp c
+          jp nz,_ml_update_y
+
+      IF dev_checks
+          call nc,fail  ; past scroll threshold
+      END
+          scf:sbc a     ; NZ, C
+          ret
+
 
 multiline_ctrl_up
           call _ml_prelude
           push hl
-          call reset_cursor_from_widget_location
-          call rewind_state
           call _ml_ctrl_up
-          jr _multiline_scroll_com
+          jr nc,_multiline_update_cur_y
+          jr _multiline_refresh_com
 
 _ml_ctrl_up
 ; A = line_at_top - height, witch clipping and may move cursor:
                     ; e.g. to top if line_at_top was 0
-;Out: A = new line_at_top
+;Out: like page_up
 
+; A = line_at_top - height
           call get_top_and_height
           ld c,a
           ld a,b
@@ -2122,22 +2175,41 @@ _ml_ctrl_up
           sub l:jr nc,$+3:xor a
           call update_cur_y
 .oky
-          ld a,c
+;enchaine
+page_up
+;Out: A = new line_at_top
+    ; NC = already at top  (A=0 in that case)
+    ; Carry = must scroll
+          call get_top_and_height
+          or a
+          ret z
           sub b
-          ret nc
-          xor a         ; clip
+          jr nc,$+3:xor a ; clip
+          scf
           ret
 
 get_top_and_height
 ;Out: A=top  B=height    
           call get_view_height
           ld b,a
+get_line_at_top
           GET_STATE_BYTE(line_at_top)
           ret
 
 multiline_ctrl_dwn
           call _ml_prelude
           push hl
+;first check if bottom in view (like multiline_bottom)
+          call call_state_get_line#:dec a
+          call _ml_is_reachable
+          jp nc,_multiline_update_cur_y
+;must scroll
+          call page_dwn
+          jp _multiline_refresh_com
+
+page_dwn
+;Out: A = new line on top
+    ; NZ if must refresh
           call call_state_get_line#
       IF dev_checks
           or a:call z,fail ; We don't handle empty structure
@@ -2146,48 +2218,40 @@ multiline_ctrl_dwn
           ld c,a
           call get_top_and_height
           cp c
-          jp z,multiline_stay
+          ret z
           add b
 ; clip to line# - 1
-          cp c:jr c,$+3:ld a,c
-          jr _multiline_scroll_com
+          cp c:ret c    ; nz
+          ld a,c
+          inc b         ; nz
+          ret
 
 multiline_top
           call _ml_prelude
           push hl
           GET_STATE_BYTE(line_at_top)
           or a
-          jr z,_multiline_update_cur_y ; Send a=0
+          jp z,_multiline_update_cur_y ; Send a=0
 ;scroll
           xor a
           call update_cur_y
-          jr _multiline_scroll_com
+          jp _multiline_refresh_com
 
 multiline_bottom
 ; If bottom reachable, just update cur_y
 ; Otherwise, scroll such that 
           call _ml_prelude
           push hl
-          call call_state_get_line#
-          ld c,a        ; line to reach + 1
-          call get_top_and_height
-          add b         ; last line in view + 1
-;reach < last+1  equilavent to last+1 >= reach+1
-          sub c
-          jr c,.scroll
-;We want cur_y := reach-top = reach-(last+1-hei)
-;here A = (last+1) - (reach+1)
-          cpl           ; neg:dec a
-          add b
-          jp _multiline_update_cur_y
-.scroll
+          call call_state_get_line#:dec a
+          call _ml_is_reachable
+          jp nc,_multiline_update_cur_y
 ;We want cur = hei-1
           ld a,b:dec a
           SET_STATE_BYTE(cur_y)
        ; top = reach+1 - hei
 ;hence top+cur = reach (invariant)
           ld a,c:sub b
-          jp _multiline_scroll_com
+          jp _multiline_refresh_com
 
 multiline_ins
           call _ml_prelude
@@ -2226,7 +2290,7 @@ multiline_del
       ELSE
 ; scroll down
           jr nc,.done
-          GET_STATE_BYTE(line_at_top)
+          call get_line_at_top
           sub 1:adc 0   ; dec a with clip
           SET_STATE_BYTE(line_at_top)
       END
@@ -2238,6 +2302,34 @@ _ml_postlude
           scf
           ret
 
+_ml_is_reachable
+;In: A = line to reach
+;Ret: Carry if must scroll, B = height
+    ; Otherwise NC,  A = new cur_y
+          ld c,a:inc c  ; line to reach + 1
+          call get_top_and_height
+          add b         ; last line in view + 1
+;reach < last+1  equilavent to last+1 >= reach+1
+          sub c
+          ret c
+;We want cur_y := reach-top = reach-(last+1-hei)
+;here A = (last+1) - (reach+1)
+          cpl           ; neg:dec a
+          add b
+          or a
+          ret
+
+update_cur_y_from_selected
+;Related: /select_line_in_view/ /get_current_line_number/
+;In: A= selected line
+          ld c,a
+          call get_line_at_top
+;Note: doesn't check if out of range.
+     ; buggy display as easy to debug than assert. Plus, less code.
+          ld b,a
+          ld a,c
+          sub b
+;enchaine
 update_cur_y
 ; Update cur_y and cursor Y (hack)
 ;In: a= new y
@@ -3202,6 +3294,7 @@ get_width_common
 
 select_line_in_view
 ; Current concrete ligne number and select it
+; See /update_cur_y_from_selected/ for opposite
 ; In: A=line# in view port 
 ;Out: Carry if line exists
     ; Note: we use get_line# to determinate "out of range",
@@ -3219,11 +3312,12 @@ select_line_in_view
           ret
 
 get_current_line_number
+;Related: update_cur_y_from_selected
           GET_STATE_BYTE(cur_y)
 _add_line_at_top
           push bc
           ld c,a
-          GET_STATE_BYTE(line_at_top)
+          call get_line_at_top
           add c
           pop bc
           ret
@@ -3425,7 +3519,7 @@ wv_text_pnt WORD
 wv_byte_pnt WORD 
 wv_edit_buffer SKIP 8
 
-end_of_ged
+ged_end
 
 
 
