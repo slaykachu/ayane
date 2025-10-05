@@ -16,6 +16,10 @@ do_profile = 0
       END
 
 ; /\/\/\/ 2025 \/\/\/\/\/
+   ; ----- v0.0ar ------
+  ; Oct 
+    ; 2 Add test_sync_on_off'''
+    ; 1 Use nrt_msb_tm instead of D' (which can be modified by rout)
    ; ----- v0.0aq ------
   ; Sep 
     ;30 Add test_fx_null
@@ -48,7 +52,7 @@ nrtfail = &BE00
 MAX_TM = &80
 
 tests
-          call test_sync_on_off''
+          call test_sync_on_off'''
       BRK
       2 ** [
           call test_null
@@ -58,6 +62,7 @@ tests
           call test_sync_on_off
           call test_sync_on_off'
           call test_sync_on_off''
+          call test_sync_on_off'''
           call test_change_sync_buzzer
           call test_stop_sync_buzzer
           call test_program_next_event
@@ -147,21 +152,19 @@ test_start_sync_buzzer_fx_end
 test_sync_on_off
 ;---------------
 ; Mainly test it doesn't hang
+; !! half-baked: since cut fx isn't removed (no set_timer_and_psg),
+               ; old events pile up.
+
           call nrt_init
 
           ld b,128
 .lp
           push bc
+    ;      ld a,b:cp &75:call z,fail
           ld hl,stack0_fx_end:call run_fx
-          ld hl,ref0
-          ld de,events
-          ld bc,ref0_
- ;         call compare_sized  ; event not properly cleared?
           call check_no_cut
-
           ld hl,stack_fx_null:call run_fx
           call check_cut
-
           pop bc
           djnz .lp
           ret
@@ -209,7 +212,47 @@ test_sync_on_off''
           call run_set_timer_and_psg
 ;Note: first event was reused
           ld a,(events+hdr_link_next)
+;No: test too strict. 2nd event still here (as cut_fx)
       ;    cp anchor_event:call nz,fail
+
+          pop bc
+          djnz .lp
+          ret
+
+
+test_sync_on_off'''
+;------------------
+; With simulation. No tests as links are updated by simulation
+; !! Warning. Invariant broken by this test: at most one instance of
+   ; each event in /events/. Because we simulate half a frame,
+   ; not all events are cleared
+   ; Solution: simulate whole frame or advance at 100hz (current_clock)
+          call nrt_init
+;init_timer set a lag, but we want run_simulation to start at first
+;event. no race condition, since nrt_timer_setup set hl'=timer_nop
+          xor a:ld (current_anchor),a
+
+          ld b,128
+.lp
+          push bc
+;Don't init list: handled by run_set_timer_and_psg
+          ld hl,stack_double:call run_fx_no_init_list
+          ld a,hdr_cpt:call check_at_most_one_event
+          call check_no_cut
+          call run_set_timer_and_psg
+          ld a,hdr_cpt:call check_at_most_one_event
+          call run_simulation
+          ld a,hdr_cpt:call check_at_most_one_event
+          ld a,hdr_cpt + EVENT_MAX_SIZE:call check_at_most_one_event
+          call check_no_self_loop
+
+          ld hl,stack_null_and_fx:call run_fx_no_init_list
+          call check_cut
+          call run_set_timer_and_psg
+          call run_simulation
+          ld a,hdr_cpt:call check_at_most_one_event
+          ld a,hdr_cpt + EVENT_MAX_SIZE:call check_at_most_one_event
+          call check_no_self_loop
 
           pop bc
           djnz .lp
@@ -260,7 +303,7 @@ test_double_event_at_0
 test_insert_event
 ;----------------
 ; Prerequisite for test_simulate_timer_double
-          call nrt_insert_event
+          call nrt_init
 
           ld hl,.evt00:ld bc,EVENT_MAX_SIZE:ld de,events
           ldir
@@ -309,6 +352,7 @@ nrtper1 = &0340
 ;Hardcoded. Brittle, but hey.
           ld hl,_evt1:ld bc,EVENT_MAX_SIZE:ld de,events
           ldir
+          ld a,hdr_cpt:ld (header_events),a ; 1st event
 
           call run_simulation
 
@@ -331,6 +375,7 @@ nrtper0 = &0240         ; 2.25 lines
           ldir
           ld hl,_evt1:ld bc,EVENT_MAX_SIZE:ld de,events+EVENT_MAX_SIZE
           ldir
+          ld a,hdr_cpt:ld (header_events),a ; 1st event
 
           call run_simulation
 
@@ -356,6 +401,7 @@ test_simulate_timer_double'
           ldir
           ld hl,_evt0':ld bc,EVENT_MAX_SIZE:ld de,events+EVENT_MAX_SIZE
           ldir
+          ld a,hdr_cpt:ld (header_events),a ; 1st event
 
           call run_simulation
 
@@ -408,12 +454,13 @@ _evt_dbg
 
           call nrt_insert_event
           ex af,af
-          PROGRAM_NEXT_EVENT(8 + 13 + insert_event_tm + 9)
+          SUB_TM(8 + 13 + insert_event_tm + 9)
+          PROGRAM_NEXT_EVENT()
 
 nrt_insert_event
 ;IN: hl = events + hdr_cpt
    ; de = period to add to clock
-          INSERT_EVENT()
+          COMPENSATE_AND_INSERT_EVENT()
           ret
 
 clear_markers
@@ -426,28 +473,44 @@ clear_markers
 
 run_simulation
 ;Well, do nothing for a while. SUB_TM_CALL will call HL'
-          ld a,hdr_cpt  ; 1st event
-          ld (header_events),a
 
-          ld hl,anchor + hdr_code
+          ld hl,anchor_code
           exx
-          xor a         ; To have consistent tm marking
-simulation_len = 152    ; half a frame
-          ld b,simulation_len
+;simulation_len = 39     ; half a frame
+simulation_len = 78     ; full frame to clear each events
+          xor a
+          ld (nrt_msb_tm),a
+; A= TM = 0 to trigger immediatly (doesn't matter much)
+          ld c,simulation_len
 .lp
-      IF do_profile AND 0
-!! no, cannot compare real tm against A,
- ; since A is updated with next event rdv.
+      IF do_profile
           push bc
           ld iy,nrt_sub_tm_call
-          call nrt_profile_check'
+          call nrt_profile_check_against_event
           pop bc
       ELSE
-          4 ** SUB_TM_CALL(0) ; 4* 12 nops
-          SUB_TM_CALL(4)
+;trigger all events but anchor_event
+;So that next frame with start with right anchor event
+.wait
+          ex af,af
+          exx
+          ld a,l:cp anchor_code AND &FF
+          exx
+          jr z,.nxt
+
+          ex af,af
+          SUB_TM_CALL(9+3)
+          jr .wait
       END
-          djnz .lp
-          ret
+.nxt
+          ld a,(nrt_msb_tm)
+          cp c
+          ret z
+      IF 1-do_profile
+          ex af,af
+          SUB_TM_CALL(9+8+3)
+      END
+          jr lp
 
 nrt_sub_tm_call
           SUB_TM_CALL(3)
@@ -561,10 +624,13 @@ stack_double
 ; Program two events -> pseudo conflit at time 0
       WORD sync_buzzer_register
       BYTE env_type0
+arp1  = 30
+  ;    BYTE arp1*2
       BYTE 1*2
       WORD shift0
       WORD sync_buzzer_register
       BYTE env_type1
+   ;   BYTE arp1*2
       BYTE 1*2
       WORD shift1
       WORD fx_end
@@ -669,10 +735,8 @@ ref_null
       BYTE anchor+hdr_cpt AND &FF ; link to next event
       BYTE clock0 / &0100
       BYTE clock0 AND &FF
-; routine replace by no-op
-          SUB_TM(4)
-          exx
-          ret
+; routine replaced by no-op
+          jp cut_fx
 ref_null_ = $ - ref_null
 
 
@@ -727,10 +791,13 @@ test_program_next_event_same_slot
 
       IF do_profile
 test_anchor
-;----------   
+;----------                
+;!! Warning, anchor called twice, because normally triggered when a<0
+; Here triggered with A=&80, PROGRAM_NEXT_EVENT adds &80-anchor_event_tm
+; which doesn't trigger Carry (the sign that we have free time again)
+;!! Actually helps us? A is updated with nxt event RDV, so unfit
+  ; for profile check. But done twice : +&100 -> no change
           call nrt_init
-
-; Current event cpt will be removed, so must be null for comparison
           ld iy,.nrt_anchor
           call nrt_profile_check
           ret
@@ -769,7 +836,28 @@ check_no_change
           or a:call nz,fail
           ret
 
+check_exactly_one_event
+          call check_at_most_one_event
+          dec c:call nz,fail
+          ret
 
+check_at_most_one_event
+;Note: the event might not be in header, but piggy-backed instead
+;in: a = evt pnt (hdr_cpt)
+          ld c,0
+          ld hl,header_events
+.lp
+          cp (hl):jr nz,.nxt
+          inc c:dec c:call nz,fail
+          inc c
+.nxt
+          inc l
+          jr nz,.lp
+          ret
+
+check_no_self_loop
+          ld a,(events + hdr_link_next):cp hdr_cpt:call z,fail
+          ret
 
 run_fx
 ;------
@@ -803,7 +891,6 @@ nrt_fx
 ; Setup sp (cannot do it before for profile)
           SUB_TM(12)
           ld (ret_sp),sp
-;      BRK
 nrt_sp    ld sp,0
           ret           ; sync_buzzer_register or fx_end
 ; Might also jump back to fx_end (eg /stack1/)
@@ -878,16 +965,29 @@ trap
           ret
 
 nrt_timer_setup
-; Reset D to 0 (Needed for profiling)
+; Reset nrt_msb_tm to 0 
+  ; Needed for profiling as Instr routine might > 256 nops 
+  ; Especially with dev_checks = 1 
 ; Set HL' (since we will jump into it)
 ; Preserve all registers
           di
           exx
-; Instr routine might > 256 nops.
-          ld d,0        ; MSB cpt
           ld hl,timer_nop
           exx
+;enchaine
+nrt_reset_msb
+          push af
+          xor a:ld (nrt_msb_tm),a
+          pop af
           ret
+nrt_reset_msb_compensate
+; We trigger event_anchor at the very start,
+; which INC (nrt_msb_tm)
+          push af
+          ld a,-1:ld (nrt_msb_tm),a
+          pop af
+          ret
+
 
       IF do_profile
 
@@ -909,9 +1009,7 @@ nrt_profile_check
    ; Can pass BC DE HL
    ; (we want to pass IX and HL, depending on the routine)
           ld (.jp),iy
-          exx
-          ld d,0
-          exx
+          call nrt_reset_msb
           ex af,af
           ld a,MAX_TM
           call profile_jp
@@ -920,35 +1018,56 @@ nrt_profile_check
           add a
           add MAX_TM*2-3 ;-3: final 'ret' not counted by profile
           cp l:call nz,fail
-          ld a,h:exx:cp d:call nz,fail:exx
+          ld a,(nrt_msb_tm)
+          cp h:call nz,fail
           ret
 
 
-nrt_profile_check'
+nrt_profile_check_against_event
 ;Same a nrt_profile_check but:
-   ; keep A = TM
-   ; expect TM < &100
+   ; set A to event cpt
           ld (.jp),iy
-          ld (.ref_tm+1),a
           exx
-          ld d,0
+          ld (nrt_cur_event),hl
+          ld a,l:cp anchor+hdr_code AND &FF
+          push af:call z,nrt_reset_msb_compensate
+          pop af:call nz,nrt_reset_msb
+          push hl
+          hdr_code - hdr_cpt ** dec l
+          ld a,(hl):ld (.ref_tm+1),a
+          pop hl
           exx
+          xor a         ; reset tm and force trigger
           call profile_jp
 .jp   WORD 0
-          push af
+; A' was reset to "remaining time before next event"
+; So time passed = next - current - remaining
+          exx
+          ex af,af
+          ld a,l
+          CHECK_EVENT_OFFSET(hdr_code)
+          ex af,af
           neg
-.ref_tm   add 0
+          push hl
+          hdr_code-hdr_cpt ** dec l
+          add (hl)
+.ref_tm   sub 0
+          pop hl
+          exx
           add a
+  ;  call c,fail   ; shouldn't happen as max rdv is &80
           add -3        ;-3: final 'ret' not counted by profile
           cp l:call nz,fail
-          ld a,h:or a:call nz,fail
-          pop af
+;Too complicated to test. E.G. when 
+ ;         ld a,(nrt_msb_tm)
+ ;         cp h:call nz,fail
           ret
       END
 
+nrt_cur_event WORD 
 
 nrt_init
-;-------
+;-------     
           call init_timer
           jr _nrt_init_com
 
@@ -973,6 +1092,7 @@ _nrt_init_com
           ld hl,timer_nop
           exx
           ret
+
 
       SKIP -$ AND &FF
 evtmarker0 SKIP &0100

@@ -1,9 +1,12 @@
 dev_checks = 0
-nrt_marker = 1          ; for timernrt
+nrt_marker = 0          ; for timernrt
 todo  = 1
 need_speed = 1
 border_col = &54
 border_col' = &44
+
+MAX_FX_CHANGE_PARAMS = 5 ; type, evtpnt. Syncbuzz: env, period 
+MAX_TIMER_FXS = 15      ; used here only -> no ui check.
 
 ; //////// Timer emulation  //////////////
 ; For special fx (sync buzzer, Square Ring Modulation, minisamples...)
@@ -25,6 +28,11 @@ border_col' = &44
 ; - sync_buzzer_register
 
 ; /// 2025 //////
+  ; ---- v0aq ---- 
+   ; Oct      
+     ; 3: Fix cut_fx: must do COMPENSATE_RDV
+     ; 1: Fix cut fx by introducing cut_fx!
+
   ; ---- v0ao ---- 
    ; Sep
     ; 16: PROGRAM_NEXT_EVENT: better tm check
@@ -66,6 +74,8 @@ EVENT_MAX_SIZE = 16
 ; -> if not power of 2, replace AND by modulo 
 
 track_fx_size = &10     ; 2 bytes by fx. Now &10 for easier debug
+; Strict < (see fxcutend) 
+          ASSERT(MAX_FX_BY_INSTR*2 < track_fx_size)
 
 ; ---- header event ----- 
 hdr_link_free = 0       ; next free slot
@@ -77,7 +87,7 @@ hdr_code = 5            ; execution
 fail  = &BE00
 
 ;---------------------------------------
-      MACRO INIT_LISTS
+      MACRO INIT_LISTS  ; also for timernrt
 init_lists_tm = 24
 ; IN/OUT: A = TM (when applicable)
           ld hl,fx_by_track:ld (fx_by_track_pnt),hl
@@ -85,7 +95,7 @@ init_lists_tm = 24
           ld hl,cut_list:ld (cut_pnt),hl
       ENDM
 
-      MACRO CLOSE_LISTS ; for timer.nrt
+      MACRO CLOSE_LISTS ; also for timernrt
 close_lists_tm = 15
 ; Mark end of lists, which were built by e.g sync_buzzer_register
 ; via instr.o      
@@ -151,8 +161,8 @@ correct_tm = 6          ; don't count last ex af to compensate djnz
           inc l
       IF dev_checks
           ld e,a
-          ASSERT(EVENT_MAX_SIZE == &10) ; if fail, update check itself
-          ld a,(hl):and &0F:cp hdr_cpt:call nz,fail
+          ld a,(hl)
+          CHECK_EVENT_OFFSET(hdr_cpt)
           ld a,e
           SUB_TM''(11)
       END
@@ -166,6 +176,11 @@ correct_tm = 6          ; don't count last ex af to compensate djnz
   ;  a= fine pos in double nops < &180
   ; hl= event (at hdr_cpt field)
   ; de= link field from **previous** event.  We have l = (de)
+      IF todo
+; timer interupt (SUB_TM_CALL), since  7+ fx -> 65+ nops (imprecise)
+; worse: for 14+ fx, we might miss event -> out of sync bug
+; No race condition, as events are keep ordered, but **must save A**
+      END
 .lp
           GOTO_NEXT_EVENT(5) ; 5: cp (hl):jp
           cp (hl)
@@ -173,23 +188,31 @@ correct_tm = 6          ; don't count last ex af to compensate djnz
 .found
       ENDM
 
+compensate_rdv_tm = 2
+
+      MACRO COMPENSATE_RDV
+; We want A' += next_rdv - cur_rdv  (add delai before next RDV)
+          sub (hl)      ; - cur_rdv
+      ENDM
+
 insert_event_tm = 34 + 13
-      MACRO INSERT_EVENT
+      MACRO COMPENSATE_AND_INSERT_EVENT
 ; Hl-1 points to clock. We add period to next RDV.
           ASSERT(hdr_clock == hdr_code -1)
           dec l
           ld a,(hl):add e:ld (hl),a:dec l:ld b,a
           ld a,(hl):adc d:ld (hl),a:dec l
-; --- Insert event ----
           dec l         ; start of event (hdr_cpt)
-; We want A' += next_rdv - cur_rdv  (add delai before next RDV)
-          ex af,af
+
 ; Must do that now, as rdv might be overwriten in insertion below
 ; (when event repeated after itself) 
-          sub (hl)      ; - cur_rdv
+          ex af,af
+          COMPENSATE_RDV()
+          ex af,af
 ; We don't know yet which event will be next, 
 ; so we'll do +next_rdv after insertion
-          ex af,af
+
+; --- Insert event ----
           ld c,l        ; C = this very event to insert
           ld d,h        ; events
           dec h         ; header_events
@@ -222,6 +245,13 @@ insert_event_tm = 34 + 13
           ld (hl),a     ; new cpt
           inc l
           ld a,(hl)     ; Current next event
+      IF dev_checks
+          CHECK_EVENT_OFFSET(hdr_cpt)
+          ld a,e
+          CHECK_EVENT_OFFSET(hdr_cpt)
+          ld a,(hl)
+          SUB_TM''(17)
+      END
           ld (hl),e     ; Plug next event for next instance
           ld l,a
       ENDM
@@ -232,14 +262,15 @@ program_next_event_tm = 11 + 8
 program_next_event_tm = 11
       END
 
-      MACRO PROGRAM_NEXT_EVENT tm
+      MACRO PROGRAM_NEXT_EVENT
 ; And jump to it if it's time
+; In: HL= nxt event (at hdr_cpt)
+    ; Carry flag after A=TM updated (SUB_TM)
       IF nrt_marker
           ld c,a
           ld a,(hl):ld (dbg_tm_marker),a
           ld a,c
       END
-          SUB_TM(tm + program_next_event_tm)
           jr c,.toomuch
           add (hl)
           ASSERT([hdr_code AND 4]==4 AND EVENT_MAX_SIZE==16)
@@ -317,6 +348,7 @@ init_timer
           ld hl,0:ld (current_clock),hl
 ; We need it to lag behind, otherwise, race condition:
 ; event set by first play/play_instr could be triggered too soon.
+; Alternative: set hl'=timer_nop for first play
           ld a,&80      ; Any < -312/4 so we don't reach 0 in 1 frame)
           ld (current_anchor),a
 
@@ -328,15 +360,15 @@ init_timer
           ld hl,header_events
 .fill     ld (hl),anchor_event:inc l:jr nz,.fill
 
-; ---- No current fx (0 use as sentinelle, must be present at
-; every level)
+; ---- No current fx (0 used as sentinelle)
+; Sentinelle invariant is kept in fx_end (cut fx are cleared)
           ASSERT_NOT(fx_type_none) ;expect 0
           ld hl,fx_by_track
           ld b,MAX_TRACKS*track_fx_size AND &FF ; &100 -> 0
           xor a
 .raz
-; We want to set fx_type = none
-; evt pnt at 0: nevermind as no fx
+; fx type = none
+; evt pnt = 0 : nevermind as no fx
           ld (hl),a:inc l
           djnz .raz
 
@@ -350,8 +382,8 @@ sync_buzzer_register
 ; Manage fx scheduling (start vs change vs stop)
 ; That is, update /fx_by_track/change_list/cut_list/
 ; When /.start/, directly encode an event (so no list needed for that)
-  ; -> Updates are "bufferized" and processed in set_timer_and_psg
-     ; (or when event is triggered for /.start/) 
+  ; -> Changes/cuts are "bufferized" and processed in set_timer_and_psg
+     ; Event start is triggered at the expected time
 
 ; Called by via instr's column fx.
 ; - Faster and simpler than storing virtual regs to read 
@@ -458,9 +490,20 @@ setup_tm = 48 + 20      ; until sbr_setup_tm
 ; --- Allocate slot in /events/
           ld de,(free_slot)
           ld a,(de)     ; next free slot
+      IF dev_checks
+          CHECK_EVENT_OFFSET(hdr_link_free)
+          ld a,(de)
+          SUB_TM''(9)
+      END
           ld (free_slot),a
 ;Note: we store hdr_link_free field, but that's arbritrary.
 ; Pointer is curated (differently) to populate change_list/cut_list
+      IF dev_checks
+          CHECK_EVENT_OFFSET(hdr_link_free)
+          ld a,e
+          CHECK_EVENT_OFFSET(hdr_link_free)
+          SUB_TM''(15)
+      END
           ld (hl),e:inc l
 ; For next fx on same track
           ld (fx_by_track_pnt),hl
@@ -518,7 +561,7 @@ sbr_setup_tm = 52       ; until RET_ROUT'
 
 ; Routine to poke:
 ; Note: TM is counted at end of set_psg_insert_and_program,
-;          ex af,af      ; &08
+;          ex af,af      
 skip_prelude = 1 +1     ; +1 also skip "ld a," opcode
 ;          ld a,0        ; env_type   ;&3e
 ;          ld de,0       ; period     ;&11
@@ -584,15 +627,16 @@ cut_pnt = $+1
           ld a,(hl):or a
           jr z,.fxcutend
 
-          ld (hl),0:inc l ; mustn't cut next time
+          ld (hl),0:inc l ; mustn't cut next time, and reinstall fx
           ld a,(hl):inc l
-; We pre-add dest offset:
-  ; - ready to use
-  ; - more importantly, we never get 0, which is used as a sentinelle
-    ; (poked in ply.track_end)
-          add hdr_code
+; We pre-add dest offset (ready to use by cutlp)
+          add hdr_code - hdr_link_free
           ld (de),a:inc e
-          SUB_TM''(20)  ; one whole iter
+      IF dev_checks
+          CHECK_EVENT_OFFSET(hdr_code)
+          SUB_TM''(7)
+      END
+          SUB_TM''(20)  ; whole iter
           jr .lp
 .fxcutend
 ; Update pnt for next track
@@ -663,24 +707,28 @@ cut_tm = close_lists_tm + 11 ; Until .cutend (taken)
           SUB_TM''(9)
       END
           ld l,a
-          ld (hl),&D6:inc l ; sub
-          ld (hl),3:inc l ; sub 3 (6 nops including sub itself)
-          ld (hl),&D9:inc l ; EXX
-          ld (hl),&C9   ; RET
-
+base_cut_fx_tm = 3      ; jp
+          ld (hl),&C3:inc l ; JP
+          ld (hl),cut_fx AND &FF:inc l
+          ld (hl),cut_fx / &0100
 ; -- release event (free_slot)
 ; (1) event.hdr_link_next = free
 ; (2) free_slot.pnt = event
           ld a,l
-          add hdr_link_free - hdr_code - 3
+          add hdr_link_free - hdr_code - 2
           ld l,a
           ld a,(free_slot) ;  
           ld (hl),a     ; (1)
           ld a,l
+      IF dev_checks
+          CHECK_EVENT_OFFSET(hdr_link_free)
+          ld a,l
+          SUB_TM''(8)
+      END
           ld (free_slot),a ;(2)
 
           ex af,af
-          SUB_TM_CALL(42)
+          SUB_TM_CALL(5+28+5)
           ex af,af
           inc e
           jr .cutlp
@@ -789,6 +837,7 @@ psg_2regs
           RET_ROUT(2*psg_l_hl_tm)
 
 
+
       SKIP -$ AND &FF
 
 ;!! cannot move these tables as we inject anchor below
@@ -813,6 +862,7 @@ anchor_tm = 17 + 16
 ; Use one common pointer for raster and anchor
 ; !!! Requires to fill rasters table each time
       END
+anchor_code
 raster_pnt = $+1
           ld hl,rasters
           ld b,&80:outi
@@ -828,7 +878,16 @@ current_anchor = $+1
           ld (current_anchor),hl
           ld l,c
           inc h
-          PROGRAM_NEXT_EVENT(anchor_tm)
+      IF nrt_marker
+          ex af,af
+          ld a,(nrt_msb_tm)
+          inc a
+          ld (nrt_msb_tm),a
+          ex af,af
+          SUB_TM(11)
+      END
+          SUB_TM(anchor_tm + program_next_event_tm)
+          PROGRAM_NEXT_EVENT()
 
       IF header_events AND &FF
   !!! error align
@@ -861,7 +920,7 @@ set_psg_insert_and_program
 
 ; timing psg, raster, insert, program (93 nops + 8 with nrt markers) 
 spiap_tm = 29 + 11 + insert_event_tm + 1
-set_reg13_insert_and_program_tm = spiap_tm + 3
+sr13iap_tm = spiap_tm + 3
 
 ; We select reg each time 
   ;- to handle interleaving with other fxs, psg setting, key scan.
@@ -880,30 +939,53 @@ set_reg13_insert_and_program_tm = spiap_tm + 3
 ; ---  raster for visu -----
           ld b,&7F:ld a,d:and &1F:or &40:out (c),a
 
-          INSERT_EVENT()
+          COMPENSATE_AND_INSERT_EVENT()
           ex af,af
 
-;!!! TM wrong in the future if coming from another FX
-          PROGRAM_NEXT_EVENT(base_fx_tm+set_reg13_insert_and_program_tm)
+          SUB_TM(base_fx_tm + sr13iap_tm + program_next_event_tm)
+_program_next_event
+          PROGRAM_NEXT_EVENT()
 ; ----------------------------------------------
+
+cut_fx
+; Do nothing: as we don't reprogram ourselves, no more triggered
+; Well, must still prepare next event.
+; Otherwise, we would keep calling this one instead of programmed events
+; anchor_event not called anywore, header_events not cleared
+cut_fx_tm = compensate_rdv_tm + 8
+          ASSERT(hdr_code == hdr_cpt+4 AND [hdr_cpt AND 4 == 0])
+          res 2,l
+          COMPENSATE_RDV()
+          ASSERT(hdr_link_next == hdr_cpt+1)
+          inc l
+          ld l,(hl)
+      IF dev_checks
+          ex af,af
+          ld a,l
+          CHECK_EVENT_OFFSET(hdr_cpt)
+          ex af,af
+          SUB_TM(10)
+      END
+          SUB_TM(base_cut_fx_tm + cut_fx_tm + program_next_event_tm)
+          jr _program_next_event
 
 timer_nop
 ;--------
 ;For NRTs (timernrt, instrnrt)
           add &80       ; reload
-          SUB_TM(7)
-          inc d         ; MSB TM
+          ex af,af
+          ld a,(nrt_msb_tm)
+          inc a
+          ld (nrt_msb_tm),a
+          ex af,af
           exx
-          ret
-
+          RET_ROUT(14)
 
 jp_m_hl'  ret p         ; 4 nops in any case
 ;enchaine
 jp_hl'    exx
 ;enchaine
 jp_hl     jp hl
-
-jp_bc     push bc:ret
 
 ;-----------------------------
 vsync_timed
@@ -955,10 +1037,7 @@ fx_by_track SKIP MAX_TRACKS*track_fx_size ; n**(type, event pnt)
           ASSERT_NOT(fx_by_track AND &FF) ; aligned
           CHECK_CONFINE(fx_by_track)
 
-
-MAX_FX_PARAMS = 4       ; pos, env, period (sync buzzer)
-
-change_list SKIP MAX_TIMER_FXS*MAX_FX_PARAMS +1 ; +1 for sentinelle
+change_list SKIP MAX_TIMER_FXS*MAX_FX_CHANGE_PARAMS +1 ; +sentinelle
           CHECK_CONFINE(change_list)
 
 cut_list SKIP MAX_TIMER_FXS +1
@@ -967,6 +1046,7 @@ cut_list SKIP MAX_TIMER_FXS +1
 free_slot WORD events
 replay_period_in_nops WORD replay_default
 
+nrt_msb_tm BYTE 
 dbg_tm_marker BYTE      ; tm of next event
 dbg1  WORD 
 dbg2  WORD 
