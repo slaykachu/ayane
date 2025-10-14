@@ -10,7 +10,7 @@ replay_300_48Hz = 52 * 64
 replay_default = replay_50_08Hz
 
 delai_ui_default = 6
-diapason_default = 440-256
+diapason_default = 440*128
 
 MAX_TRACKS = 16         ; used by track, ply, salo
 MAX_FX_BY_INSTR = 2     ; 7 max (see timer.fxcutend)

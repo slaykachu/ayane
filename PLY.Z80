@@ -17,6 +17,9 @@ need_room = 1
  ; See /track_stack/
 
 ; \/\/\/ 2025 \/\/\/\/\
+; ----- v0as -----
+  ; Oct
+   ;14 diapason on 16 bits
 ; ----- v0aq -----
   ; Sep
    ;28 end_of_track: handle end of song (null link)
@@ -1053,22 +1056,24 @@ Init_periods
 
       IF ayane
 get_diapason
-; Out: A = freq - 256
+; Out: HL = freq * 128
 ; Init in init.o
           call scope_bk_base
-          ld a,(diapason)
+          ld hl,(diapason)
           ret
 
 set_diapason
-; In: A = freq - 256
+; In: hl = freq in 9+7 bits
 ; Todo: rebuild period table if different!       
    ; for now only one diapasion...
-          cp diapason_default:call nz,programming_error
+
+          ld bc,diapason_default
+          or a:sbc hl,bc:add hl,bc:call nz,programming_error
       IF need_room
 ; use generic routine set_a_in_bk_base
       END
           call scope_bk_base
-          ld (diapason),a
+          ld (diapason),hl
           ret
 
 set_replay_period

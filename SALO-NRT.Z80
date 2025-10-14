@@ -365,7 +365,7 @@ almost_empty
           NO_TEXT()     ; author
           NO_TEXT()     ; album
       BYTE delai_ui_default
-      BYTE diapason_default
+      WORD diapason_default
 ; meta data
       WORD dummy_       ; size
 dummy_meta BYTE 0,1,2,3,4
@@ -404,7 +404,7 @@ empty_phrase
           NO_TEXT()     ; author
           NO_TEXT()     ; album
       BYTE delai_ui_default
-      BYTE diapason_default
+      WORD diapason_default
 ; meta data
       WORD dummy_       ; size
       BYTE 0,1,2,3,4

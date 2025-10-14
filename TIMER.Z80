@@ -1,5 +1,5 @@
-dev_checks = 0
-nrt_marker = 0          ; for timernrt
+dev_checks = 1
+nrt_marker = 1          ; for timernrt
 todo  = 1
 need_speed = 1
 border_col = &54
@@ -16,7 +16,7 @@ MAX_TIMER_FXS = 15      ; used here only -> no ui check.
  ; - Allow 2 nops resolution (we use signed, max = 128 -> 256 nops).
  ; - Perfect for 300Hz (as 78 entries is divisible by 6)
  ; - Still fit in 256 tables (78 * 3 = 218)
- ; - CON: more interruptions (50 nops each time without rasters). 
+ ; - CON: more interruptions (27 nops each time without rasters). 
 
 ; Main routines
 ; - init_timer
@@ -28,9 +28,13 @@ MAX_TIMER_FXS = 15      ; used here only -> no ui check.
 ; - sync_buzzer_register
 
 ; /// 2025 //////
-  ; ---- v0aq ---- 
-   ; Oct      
+  ; ---- v0as ---- 
+   ; Oct  
+     ; 8: cutlp: fix race condition    
+     ; 4: cutlp: remove event instead of replacing it by cut_fx
+  ; ---- v0ar ---- 
      ; 3: Fix cut_fx: must do COMPENSATE_RDV
+  ; ---- v0aq ---- 
      ; 1: Fix cut fx by introducing cut_fx!
 
   ; ---- v0ao ---- 
@@ -82,6 +86,7 @@ hdr_link_free = 0       ; next free slot
 hdr_cpt = 1             ; <--- we point here
 hdr_link_next = 2       ; next event 
 hdr_clock = 3           ; clock (MSB then LSB)
+hdr_clock_msb = 3
 hdr_code = 5            ; execution
 
 fail  = &BE00
@@ -121,6 +126,12 @@ close_lists_tm = 15
           SUB_TM(n+9)
 ; Cannot use call m,jp_hl', as it must take the same time in both case
           call jp_m_hl'
+      ENDM
+
+      MACRO CPT_TO_CODE
+          ASSERT([hdr_code AND 4]==4 AND EVENT_MAX_SIZE==16)
+          ASSERT(hdr_code == hdr_cpt+4)
+          set 2,l       ; +4 without having to ex af,af' twice
       ENDM
 
 correct_tm = 6          ; don't count last ex af to compensate djnz
@@ -273,9 +284,7 @@ program_next_event_tm = 11
       END
           jr c,.toomuch
           add (hl)
-          ASSERT([hdr_code AND 4]==4 AND EVENT_MAX_SIZE==16)
-          ASSERT(hdr_code == hdr_cpt+4)
-          set 2,l       ; +4 without having to ex af,af' twice
+          CPT_TO_CODE()
           exx
 ; We don't use RET_ROUT:
   ; events are fired only when tm<0, so we test Carry rather than M/P
@@ -297,7 +306,7 @@ program_next_event_tm = 11
 ; This code path is 4-1 nops shorter.
           ld a,a        ; compensate 1 nop
           adc (hl)      ; compensate 2 nops
-          set 2,l
+          CPT_TO_CODE()
           jp hl
       ENDM
 
@@ -391,23 +400,14 @@ sync_buzzer_register
 ; - We know which track we are in.
 ; - More optimised: No handling (E.g. cut scan) for non-active tracks  
 
-      IF todo
-; !!! When fx0 is cut in instr, fx1 will be seen as new fx0.
-; !!! -> Will introduce an artefact, since starting clock of fx0
-       ; will be used.
-      END
 ;----------
 
- ; In: (sp) = instr fx params 
+ ; In: (sp) = instr fx params   !! CANNOT use SUB_TM_CALL
      ; ixl = note
      ;   A = TM
 
-; --- First me must install routine (when fx starting)
-  ; before we can even setup params
-
 sbr_tm_start = 10       ; Until jr start (taken)
 sbr_tm_switch = 14
-
           ex af,af
 fx_by_track_pnt = $+1
           ld hl,fx_by_track
@@ -418,7 +418,7 @@ fx_by_track_pnt = $+1
           jr nz,.switch_fx
 ;-----
 ; Same fx, with different params.
-; Cannot change params of currently running fx,
+; Cannot change params of currently running evt,
 ; Much like we cannot program PSG right now. 
 sbr_params_tm = sbr_tm_switch-1 + 58 ; -1: jr not taken
           inc l
@@ -488,13 +488,8 @@ setup_tm = 48 + 20      ; until sbr_setup_tm
           ld (hl),fx_type_sync_buzzer
           inc l
 ; --- Allocate slot in /events/
-          ld de,(free_slot)
+          ld de,(free_slot) ; e= cur free slot
           ld a,(de)     ; next free slot
-      IF dev_checks
-          CHECK_EVENT_OFFSET(hdr_link_free)
-          ld a,(de)
-          SUB_TM''(9)
-      END
           ld (free_slot),a
 ;Note: we store hdr_link_free field, but that's arbritrary.
 ; Pointer is curated (differently) to populate change_list/cut_list
@@ -555,12 +550,9 @@ current_clock = $+1
    ; - Faster
    ; - We couldn't reuse "poke params" 
 sbr_setup_tm = 52       ; until RET_ROUT'
-      IF hdr_code-hdr_clock-2
-   !! review
-      END
-
 ; Routine to poke:
 ; Note: TM is counted at end of set_psg_insert_and_program,
+base_fx_tm = 9
 ;          ex af,af      
 skip_prelude = 1 +1     ; +1 also skip "ld a," opcode
 ;          ld a,0        ; env_type   ;&3e
@@ -570,7 +562,9 @@ skip_prelude = 1 +1     ; +1 also skip "ld a," opcode
   ;- for generic handling by /set_psg_insert_and_program/
 ;          jp set_reg13_insert_and_program
 
-base_fx_tm = 9
+      IF hdr_code-hdr_clock-2
+   !! review
+      END
           ld (hl),&08:inc l ; ex af,af
 ;- env type
           pop de        ; in instr param
@@ -691,46 +685,19 @@ correct_tm = 6          ; don't count last ex af to compensate djnz
           CLOSE_LISTS()
 
 cut_tm = close_lists_tm + 11 ; Until .cutend (taken)
-          ld de,cut_list
+          ld bc,cut_list
           ld h,events/&0100
 .cutlp
-          ld a,(de)
+cut_tm_lp = 17
+          ld a,(bc)
           or a
           jr z,.cutend
 
-; -- poke EXX:RET (no fx executed, no event re-programmed) 
-; Note: event is released below, so it could also be overwritten
-      ; by new fx, which is fine as well.
-      IF dev_checks
-          CHECK_EVENT_OFFSET(hdr_code)
-          ld a,(de)     ; restore
-          SUB_TM''(9)
-      END
-          ld l,a
-base_cut_fx_tm = 3      ; jp
-          ld (hl),&C3:inc l ; JP
-          ld (hl),cut_fx AND &FF:inc l
-          ld (hl),cut_fx / &0100
-; -- release event (free_slot)
-; (1) event.hdr_link_next = free
-; (2) free_slot.pnt = event
-          ld a,l
-          add hdr_link_free - hdr_code - 2
-          ld l,a
-          ld a,(free_slot) ;  
-          ld (hl),a     ; (1)
-          ld a,l
-      IF dev_checks
-          CHECK_EVENT_OFFSET(hdr_link_free)
-          ld a,l
-          SUB_TM''(8)
-      END
-          ld (free_slot),a ;(2)
+          call _do_cut
+          ex af,af
 
-          ex af,af
-          SUB_TM_CALL(5+28+5)
-          ex af,af
-          inc e
+          ld b,cut_list/&0100
+          inc c
           jr .cutlp
 .cutend
 ; --- enchaine
@@ -836,8 +803,103 @@ psg_2regs
           PSG_L_HL()
           RET_ROUT(2*psg_l_hl_tm)
 
+_do_cut
+; In a: evt pnt
+      IF dev_checks
+          CHECK_EVENT_OFFSET(hdr_code)
+          ld a,(bc)     ; restore
+          SUB_TM''(9)
+      END
+cut_tm1 = 29            ; until jr race1 (taken)
 
+; -- release event (free_slot)
+; (1) event.hdr_link_next = free
+; (2) free_slot.pnt = event
+          add hdr_link_free - hdr_code
+          ld l,a
+          ld a,(free_slot) ;  
+          ld (hl),a     ; (1)
+          ld a,l
+      IF dev_checks
+          CHECK_EVENT_OFFSET(hdr_link_free)
+          ld a,l
+          SUB_TM''(8)
+      END
+          ld (free_slot),a ;(2)
 
+; -- Remove event from timer list
+          hdr_cpt - hdr_link_free ** inc l
+          ld b,l        ; link pnt to this event
+          hdr_clock_msb - hdr_cpt ** inc l
+          ld e,(hl)
+          ld d,header_events/&0100
+          ld a,(de)
+          cp anchor_event
+          jr z,.race1
+cut_tm2 = 6 - 1         ; until jr .removefound (taken) -1: not .race1
+          ld l,a
+          hdr_link_next - hdr_cpt ** inc l
+          cp b
+          jr z,.removefound
+.removelp_
+          ld d,h
+.removelp
+          ex de,hl
+          ld a,(de)     ; link to nxt event
+          ld l,a
+          hdr_link_next - hdr_cpt ** inc l
+;shouldn't happen! exit to avoid infinite loop or corruption
+          cp anchor_event
+      IF dev_checks
+removelp_tm = 14
+          call z,fail
+      ELSE
+removelp_tm = 13
+          jr z,.mess
+      END
+      IF todo
+;Use SUB_TM_CALL. But then check how to avoid race condition
+;as the event we are searching for might have moved
+;Solution: restart to get actual pos after call (which trashes A BTW)
+      END
+          SUB_TM''(removelp_tm)
+          cp b
+          jp nz,.removelp ; jp: stable tm
+.removefound
+          ld a,(hl)
+          ld (de),a
+.mess
+          RET_ROUT'(cut_tm1 + cut_tm2 + 4 + cut_tm_lp)
+
+.race1
+; No hook in header_events: already cleared, hook in hl'
+cut_tm3 = 8             ; until jr .skip_hl' (taken)
+          ld a,b
+          add hdr_code - hdr_cpt
+          exx
+          cp l
+          jr z,.skip_hl'
+;           
+          ld a,l
+          add hdr_link_next - hdr_code
+          exx
+          ld l,a
+          SUB_TM''(cut_tm3-1 - cut_tm2 + 8 + 1) ;+1: ld d,h
+          jr .removelp_
+
+.skip_hl'
+;Replace evt we want to cut by next one
+          add hdr_cpt - hdr_code
+          ld l,a
+          ex af,af
+          sub (hl)
+          hdr_link_next - hdr_cpt ** inc l
+          ld l,(hl)
+          add (hl)
+          CPT_TO_CODE()
+          exx
+          RET_ROUT(cut_tm1 + cut_tm3 + 14 + cut_tm_lp) ;(68) 
+hu
       SKIP -$ AND &FF
 
 ;!! cannot move these tables as we inject anchor below
@@ -876,6 +938,15 @@ current_anchor = $+1
           ld (hl),anchor_event ;Clear for rolling buffer
           inc l
           ld (current_anchor),hl
+      IF dev_checks AND 0 ; !! for uilooptt 
+          ld b,l
+.dbgpnt   ld hl,&3C00
+          ld (hl),b
+          inc l
+          ld (.dbgpnt+1),hl
+          ld h,header_events/&0100
+          SUB_TM(14)
+      END
           ld l,c
           inc h
       IF nrt_marker
@@ -943,31 +1014,9 @@ sr13iap_tm = spiap_tm + 3
           ex af,af
 
           SUB_TM(base_fx_tm + sr13iap_tm + program_next_event_tm)
-_program_next_event
           PROGRAM_NEXT_EVENT()
 ; ----------------------------------------------
 
-cut_fx
-; Do nothing: as we don't reprogram ourselves, no more triggered
-; Well, must still prepare next event.
-; Otherwise, we would keep calling this one instead of programmed events
-; anchor_event not called anywore, header_events not cleared
-cut_fx_tm = compensate_rdv_tm + 8
-          ASSERT(hdr_code == hdr_cpt+4 AND [hdr_cpt AND 4 == 0])
-          res 2,l
-          COMPENSATE_RDV()
-          ASSERT(hdr_link_next == hdr_cpt+1)
-          inc l
-          ld l,(hl)
-      IF dev_checks
-          ex af,af
-          ld a,l
-          CHECK_EVENT_OFFSET(hdr_cpt)
-          ex af,af
-          SUB_TM(10)
-      END
-          SUB_TM(base_cut_fx_tm + cut_fx_tm + program_next_event_tm)
-          jr _program_next_event
 
 timer_nop
 ;--------

@@ -2,10 +2,14 @@ dev_checks = 1
 todo  = 1
 makeroom = 1
 
-; 2025 Sep 26: track_code: jump table for ayana
-     ; Aug  9: Add Set_last_hook_duration
-          ; 8: s/Reset_tracks/Reset_tracks_and_subsongs
-            ; Do set loop for chipn import (not handled by salo yet) 
+; 2025
+; -- v0as --
+ ; Oct 14: Subsong_add_track: take extra params
+; -- v0a? --
+ ; Sep 26: track_code: jump table for ayane
+ ; Aug  9: Add Set_last_hook_duration
+      ; 8: s/Reset_tracks/Reset_tracks_and_subsongs
+         ; Do set loop for chipn import (not handled by salo yet) 
 do_set_loop = 0
 
 ; ----------------------------------------------------------------
@@ -2430,7 +2434,7 @@ Subsong_add
 
 Subsong_add_track
 ;-- Append track id in current subsong
-; in: a= track id
+; in: hl= params: track id, output channel, psg mix, sample mix
 ;out: af,de preserved
           push af
           ld c,a

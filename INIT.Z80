@@ -42,7 +42,7 @@ full_init
           call setup_keys
           call init_widget ; compute RGB so we see the boxes
 
-          ld a,diapason_default
+          ld hl,diapason_default
           call set_diapason
 ; replay_period init in Init_track_module
           ret

@@ -26,16 +26,16 @@ memcpc = &40
 scankey = &0200
 conv  = &0220
 ply   = &1212
-dispjp = &1C00
-instrui = &1C50
-piano = &20D8
-phrase = &22A0
-track_module = &2D91
-init_module = &3C40
-instrsel = &3CE0
-uiloop = &3D60
+dispjp = &1D00
+instrui = &1D50
+piano = &21D8
+phrase = &23A0
+track_module = &2E91
+init_module = &3D40
+instrsel = &3DE0
+uiloop = &3E60
 
-code_main = &3EC0       ; ayane.o
+code_main = &3FC0       ; ayane.o
 ramlimit = &4000
 
 ; ----------------------------------------------
@@ -94,7 +94,7 @@ subsongs SKIP &0100     ; &100 for chained list with just LSB
 current_subsong BYTE 
 nb_subsong BYTE 
 delay_ui BYTE           ; Only impact display
-diapason BYTE           ; 432hz vs 440hz -256 so it fits in bytes
+diapason WORD           ; 9 + 7 bits
 
 ; ! Actually those 2 variables must be populated when switching subsong.
 ; ! For now set to default by Track_init_module

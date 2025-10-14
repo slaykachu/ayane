@@ -63,20 +63,14 @@ testkey
     ; C = bitmap keys 
         ; !!! Cannot use A(') since might be destroyed by timer routine 
 testkey_tm = 44
-          ld bc,&F40E
-          out (c),c
-          ld bc,&F692
-          out (c),0     ; For amstrad plus
-          inc b
-          out (c),c
-          dec b
-          out (c),a
+          ld bc,&F40E:out (c),c
+          ld bc,&F692:out (c),0 ; For amstrad plus
+          inc b:out (c),c
+          dec b:out (c),a
           ld a,&F4
           in a,(&FF)
-          ld bc,&F782
-          out (c),c
-          ld bc,&F6C0
-          out (c),c
+          ld bc,&F782:out (c),c
+          ld bc,&F6C0:out (c),c
           ld c,a
           RET_ROUT'(testkey_tm)
 

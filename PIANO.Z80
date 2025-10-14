@@ -1,10 +1,15 @@
 dev_checks = 1
+dev_checks_anchor = dev_checks AND 1
 tmp_dbg = 0
 tmp_rast = 0
 ; <<<< Handling cpc keyboard as piano >>>>
 ; -> Using hardware keycode: locale agnostic (azerty/qwerty)
 
  ; 2025                
+    ; -- v0as --
+  ;Oct
+   ;11: more checks
+      ; _play_lp: remove waits when tmp_rast = 0 (less code)
     ; -- v0aq --
   ;Sep
    ;27: Add play_song (mechanical piano!)
@@ -113,15 +118,30 @@ start_note
           call debug'
       END
           call play_prelude'
-          jr .play_entry
+          jr _play_entry
 
-.play_lp
+_play_lp
 ;------
 ; Playing loop      
 ; Here A=TM  (value doesn't matter for first iteration)
           call vsync_timed
 ; Must be done at stable position
-.play_entry
+_play_entry
+      IF dev_checks_anchor
+          ex af,af
+_refa     ld a,0
+          ld hl,current_anchor:cp (hl):jr z,.ok
+; anchor event could have been trigered
+; (e.g. fx evt happening just at vsync time: since it's long, we reach
+  ;anchor rdv)
+          inc a:cp (hl):call nz,fail:dec a
+          SUB_TM''(7-1)
+.ok
+          add 39*2
+          ld (_refa+1),a
+          ex af,af
+          SUB_TM(18)
+      END
           call set_timer_and_psg
 
       IF tmp_dbg
@@ -146,13 +166,13 @@ start_note
 ; nevermind.      
 ;          ld b,16:call waitlines
 ; For visual debug!
+      IF tmp_rast
           ld b,80:call waitlines_tm
-
-;          call debug
-
           DBG_RAST(&44)
-
           SUB_TM_CALL(25)
+      ELSE
+          SUB_TM_CALL(18)
+      END
 
           ex af,af
           call scan_piano_keys
@@ -161,28 +181,42 @@ start_note
           cp (hl)
           jr nz,start_note
 
+      IF tmp_rast
           push af
 ; For visual debug!
           ex af,af
           ld b,10:call waitlines_tm
-
           DBG_RAST(&59)
-
           ld b,30:call waitlines_tm
-          SUB_TM_CALL(34)
-
+          SUB_TM_CALL(15+23)
           ex af,af
           pop af
-
           DBG_RAST(&46)
+      ELSE
+          ex af,af
+          SUB_TM(15+2)  ; !!! sub_tm_call would thrash A
+          ex af,af
+      END
 
           call instr_play ; for next frame
+      IF 0
+          ex af,af
+.toot     ld a,14
+          dec a
+          ld (.toot+1),a
+          call z,&BE00
+          ex af,af
+          SUB_TM(12)
+      END
 
+      IF tmp_rast
           ld b,30:call waitlines_tm
           DBG_RAST(&4E)
-
-          SUB_TM_CALL(16+3)
-          jr .play_lp
+          SUB_TM_CALL(5 + 7 + 3)
+      ELSE
+          SUB_TM_CALL(5 + 3)
+      END
+          jr _play_lp
 
 _stop_play
 ; Stop playing
@@ -225,9 +259,13 @@ play_prelude'
       IF tmp_dbg
           call debug'
       END
-          call anti_vsync
-          call vsync
           SYNC_ANCHOR()
+      IF dev_checks_anchor
+          ld (_refa+1),a
+      END
+          call vsync_start
+;initial tm should not matter. But we reset it for reproductibility
+          xor a
           ret
 
 ;-----------------------------
