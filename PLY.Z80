@@ -17,45 +17,22 @@ need_room = 1
  ; See /track_stack/
 
 ; \/\/\/ 2025 \/\/\/\/\
-; ----- v0as -----
+; ----- v0at -----
+  ; Nov
+   ; 5 Move get/set_diapasion in periods.o
   ; Oct
+   ;28 Move Init_periods in periods.o
+   ;16 Amorce_song: use channel info from subsong (moved from tracks)
+
+; ----- v0as -----
    ;14 diapason on 16 bits
-; ----- v0aq -----
-  ; Sep
-   ;28 end_of_track: handle end of song (null link)
-   ;27 Init_periods: Put 0 at /note_c_10/
-     ; fix tm tracking (A was corrupted to set r7)
-   ;26 ply_code: jump table for ayane
-; ----- v0am -----
-  ; Aug
-   ;23 Move common macro in macro.i
-     ; Move timer list handing in ... timer.o
-; ----- v0ak -----
-  ; Jun
-   ;15 Padding for fx.o
-  ; Apr
-   ;23 Re-put r7 first, to match instr.o
-; ----- v0l2 -----
-  ; Mar
-; Mar 24: Handle constant /pattern_size/ 
-   ;21 Handle loop for compiled version  
-      IF todo
-         ; (in-tool use link, check if it's done properly)
-      END
-   ;19 De-unroll psg routine
-     ; Remove stop when ayane=0
-     ; kim= empty row encoded by instr lsb=0
-          ; (before: was replaced by instr null which stopped the instr:
-                   ; but note from last instr was still set)
-; -----------------------------
-n     = 20              ;a changer par TM correct au cas par cas
 
       IMPORT "plyconf.i"
 
       IF 1-ayane
       ORG compiled_player
       END
-dev_checks = 0 AND ayane
+dev_checks = 1 AND ayane
 
       IMPORT "memmap.i"
       IMPORT "const.i"
@@ -67,7 +44,9 @@ check_pc
  !!! periods must be imported at the right location by instr.o
       END
       IF ayane
-      IMPORT "memcpc.o" ; connect_bk_track
+      IMPORT "memcpc.o" ; scope_bk_base
+      IMPORT "song.o"   ; Song_get_first_track and co
+      IMPORT "tracknub.o" ; get_track_header
       ELSE
 psg_regs = compiled_psg_regs
       END
@@ -80,7 +59,6 @@ psg_regs = compiled_psg_regs
 
       IF nb_fx
       IMPORT "timer.o"  ; Only for replay_period_in_nops
-      FILL -$ AND &0F,&F7 ; padding for confinement
       IMPORT "fx.o"
 
 ply_code
@@ -778,6 +756,49 @@ tick_pitch_tm = 0
 ; Jump to fx_0, fx_1, instr, and then track_loop   
           RET_ROUT(play_tick_tm + tick_vol_tm + tick_pitch_tm)
 
+track_end
+;All tracks have been handled
+          ld hl,(tick+1)
+          inc hl
+          ld (tick+1),hl
+savesp    ld sp,&3131
+          RET_ROUT(15)
+
+      IF ayane
+; ----------------------
+; Getter/setters        
+; (put before /events/ to help with alignement
+; ----------------------
+
+set_replay_period
+; In: hl = period
+; Init in Track_init_module
+          xor a         ; id tool box. 
+; Start with highest periods to keep NC
+          ex de,hl
+          ld hl,replay_25_04Hz:sbc hl,de:jr z,.ok
+          inc a
+          ld hl,replay_50_08Hz:sbc hl,de:jr z,.ok
+          inc a
+          ld hl,replay_100_16Hz:sbc hl,de:jr z,.ok
+          inc a
+          ld hl,replay_300_48Hz:sbc hl,de
+
+          call nz,programming_error
+.ok
+          ex de,hl
+          call scope_bk_base
+          ld (replay_period),hl
+          ld (replay_period_ui),a
+          ld (replay_period_in_nops),hl
+          ret
+
+      END
+
+; ------
+; Events
+; ------
+
       MACRO SIGN_EVT type
       IF ayane
       BYTE type
@@ -839,13 +860,6 @@ evt_change_phrase
           SUB_TM(tm1+tm_evt_iter+change_phrase_tm+4)
           jp read_row
 
-track_end
-;All tracks have been handled
-          ld hl,(tick+1)
-          inc hl
-          ld (tick+1),hl
-savesp    ld sp,&3131
-          RET_ROUT(15)
 
 ;-------------------------------------
       IF 1-ayane
@@ -893,55 +907,52 @@ Amorce_song
 ; Setup internal variables and stacks.
 ; + init period table
 
-;in: HL= tracks (determines which sub_song)
       IF ayane
-   ;  A= nb tracks (more versatile than using a sentinelle)
-          or a:call z,mess ; Prevent misuse
-      IF todo
-; Actually could occur if use delete all tracks
-; Make sure then we don't try to play the song!
-      END
-; Not stricly needed for need as both index and are out of bank
-; Nevermind
-          call connect_bk_track
+;In: N/A (subsong selected)
+      ELSE
+;IN HL= tracks (determines which sub_song)
       END
 
           ld de,track_stack
       IF ayane
+          call Song_get_first_track
 .tracklp
-          push af
+          push hl
+          ss_trackid ** inc l
+          ld a,(hl)
+          push hl
+          call get_track_header
       ELSE
           lb bc,&336 ; cpt, mask chan A
 .tracklp
           push bc
       END
           ld c,(hl):inc hl
-          ld b,(hl):inc hl
+          ld b,(hl)
       IF ayane
-          ld a,c:or b:jr z,.next
+          ld a,c:or b:jr nz,.not0
+          pop hl
+          jr .next
+.not0
+      ELSE
+          inc hl:push hl
       END
 ; RDV event: 0 (triggered at first iter)
           xor a
           ld (de),a:inc e
           ld (de),a:inc e
 
-      IF ayane
-          ld a,(hl):inc hl ; output channel
-      END
-          push hl
-
       IF dev_checks
  ; Check for buffer overflow (in case index corrupted or wrong address
  ; passed in hl).  
-          push hl
           ld hl,track_stack_ - 1 ; -1 for compare
           or a
           sbc hl,de:add hl,de
           call c,fail
-          pop hl
       END
+
 ; Track pnt   
-          ex de,hl      ; must preserve A
+          ex de,hl
           ld (hl),c:inc hl
           ld (hl),b:inc hl
           ex de,hl
@@ -949,8 +960,10 @@ Amorce_song
           ld bc,track_stack_init_size
           ldir
           ex de,hl
-          ld d,psg_regs/&0100
       IF ayane
+          pop de        ; was hl: subsong params
+          ss_channel-ss_trackid ** inc e
+          ld a,(de)
 ; A= Channel (1=A, 2=B, 3=C)
           or a:call z,mess ; "no output channel: not tracked now|
           ld bc,&0836   ; volume, OR mask channel A
@@ -960,13 +973,13 @@ Amorce_song
           ld bc,&0A1B
 .ok
           ld (hl),c:inc hl
-          ld (hl),d:inc hl
+          ld (hl),psg_regs/&0100:inc hl
           ld (hl),b:inc hl ;volume
       ELSE
           pop bc
           ld (hl),c:inc hl
           ld a,8+3:sub b
-          ld (hl),d:inc hl
+          ld (hl),psg_regs/&0100:inc hl
           ld (hl),a:inc hl ;volume
 ;update mask
           sl1 c
@@ -975,7 +988,7 @@ Amorce_song
 ;101101
 ;011011
       END
-          ld (hl),d:inc hl
+          ld (hl),psg_regs/&0100:inc hl
           ld (hl),track_loop AND &FF:inc hl
           ld (hl),track_loop / &0100:inc hl
           ex de,hl
@@ -983,17 +996,7 @@ Amorce_song
 .next
           pop hl
       IF ayane
-      IF tf_mix - 3
- !! review that
-      END
-          inc hl        ; no used for now : skip
-      IF tf_struct_size -4
- !! review
-      END
-      END
-      IF ayane
-          pop af
-          dec a
+          call Song_get_next_track
           jr nz,.tracklp
       ELSE
           djnz .tracklp
@@ -1012,93 +1015,10 @@ Amorce_song
 
       IF ayane
           ld hl,0:ld (tick+1),hl
-      END
-
+          jp init_periods
+      ELSE
 ;Enchaine (save a call)
-Init_periods
-; Fill whole table. 10 octaves + 8 notes. Put 0 at C-10
-; Adapted from lab/miniplyi
-    ; More compact
-; Need to keep working note without rounding
-; otherwise error would be propagated.
-; Ok    %101 -> %11 (%10.1) ->  %1 (%1.01)
-; Wrong %101 -> %11 (%10.1) -% %10 (%1.1)  if we reload from %11
-
-          ld hl,c0
-          ld de,c1
-.note_lp
-          ld c,(hl):inc l
-          ld b,(hl):inc l
-          push de
-.octave_lp
-          srl b:rr c
-;round to closer
-          ld a,c:adc 0
-          ld (de),a:inc e
-          ld a,b:adc 0
-          ld (de),a
-          ld a,e:adc 23:ld e,a ; adc for crunch (NC guaranteed)
-          jr nc,.octave_lp
-          pop de
-          inc e
-          inc e
-          ld a,e
-          cp c1+24 AND &FF
-          jr c,.note_lp
-
-;C-10: period 0 for percussions.
-;C#10 and after: leave as is, nevermind
-          ld l,note_c_10*2
-          xor a
-          ld (hl),a:inc l
-          ld (hl),a
-          ret
-
-      IF ayane
-get_diapason
-; Out: HL = freq * 128
-; Init in init.o
-          call scope_bk_base
-          ld hl,(diapason)
-          ret
-
-set_diapason
-; In: hl = freq in 9+7 bits
-; Todo: rebuild period table if different!       
-   ; for now only one diapasion...
-
-          ld bc,diapason_default
-          or a:sbc hl,bc:add hl,bc:call nz,programming_error
-      IF need_room
-; use generic routine set_a_in_bk_base
-      END
-          call scope_bk_base
-          ld (diapason),hl
-          ret
-
-set_replay_period
-; In: hl = period
-; Init in Track_init_module
-          xor a         ; id tool box. 
-; Start with highest periods to keep NC
-          ex de,hl
-          ld hl,replay_25_04Hz:sbc hl,de:jr z,.ok
-          inc a
-          ld hl,replay_50_08Hz:sbc hl,de:jr z,.ok
-          inc a
-          ld hl,replay_100_16Hz:sbc hl,de:jr z,.ok
-          inc a
-          ld hl,replay_300_48Hz:sbc hl,de
-
-          call nz,programming_error
-.ok
-          ex de,hl
-          call scope_bk_base
-          ld (replay_period),hl
-          ld (replay_period_ui),a
-          ld (replay_period_in_nops),hl
-          ret
-
+          INIT_PERIODS()
       END
 
 ; -----------------------------

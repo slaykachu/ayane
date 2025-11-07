@@ -1,5 +1,6 @@
-dev_checks = 1
-nrt_marker = 1          ; for timernrt
+dev_checks = 0
+tmp_dbg = 0
+nrt_marker = 0          ; for timernrt
 todo  = 1
 need_speed = 1
 border_col = &54
@@ -28,31 +29,17 @@ MAX_TIMER_FXS = 15      ; used here only -> no ui check.
 ; - sync_buzzer_register
 
 ; /// 2025 //////
+  ; ---- v0at ---- 
+   ; Nov
+     ; 6: sync_buzzer_register: reset r13 so no spurious trigger 
+        ; set_timer_and_psg: more ints + PSG_L_HL_FAST
+                           ; to alleviate artefacts (hmm, pas flagrant)
+   ; Oct
+     ;16: Reorder tables for wasteless align
+        ; Move fx_by_track at 8100  
   ; ---- v0as ---- 
-   ; Oct  
      ; 8: cutlp: fix race condition    
      ; 4: cutlp: remove event instead of replacing it by cut_fx
-  ; ---- v0ar ---- 
-     ; 3: Fix cut_fx: must do COMPENSATE_RDV
-  ; ---- v0aq ---- 
-     ; 1: Fix cut fx by introducing cut_fx!
-
-  ; ---- v0ao ---- 
-   ; Sep
-    ; 16: PROGRAM_NEXT_EVENT: better tm check
-        ; Anchor: 1 nop faster!
-   ; Aug  
-    ; 28: INSERT_EVENT: Fix A trashed for self-insert check
-                      ; -> fix double sync timer.
-    ; 27: Add nrt_marker for analysis 
-  ; ---- v0an ----
-    ; 26: Turn period 0 to &fe00 (instead of assert)
-    ; 25: Fix anchor_tm
-        ; Clean-up, comment
-        ; vsync_timed: take A=TM
-  ; ---- v0am ----
-    ; 23: Double period while < &100. See rational at /
-        ; Move common macros in macro.i
 
       IMPORT "const.i"
       IMPORT "plyconf.i"
@@ -68,11 +55,8 @@ RDV_SENTINELLE = TM_MAX ; Max RDV
 ;Note: Timer counter is signed, but we can use &80 = 128, since
      ; it will be decremented before any sign test.
 
-;ENTRIES_FOR_50HZ = 78   ; 312/4
-;ENTRIES_FOR_100HZ = 39  ; 156/4
-
 ; Size Header+code for each event.
-; 16 is more than necessary (see for sample+volume if it's true).
+; 16 is more than necessary 
 EVENT_MAX_SIZE = 16
           ASSERT_NOT(EVENT_MAX_SIZE AND EVENT_MAX_SIZE-1)
 ; -> if not power of 2, replace AND by modulo 
@@ -326,6 +310,30 @@ program_next_event_tm = 11
     ; PPI in select mode (F6C0)
 ;Out: HL +=1
 psg_l_hl_tm = 26
+      IF tmp_dbg
+      IF 0
+;dump regs
+          push de:push hl
+          ld b,l
+          ld d,(hl)
+          ld hl,(dbg1)
+          ld (hl),b:inc l
+          ld (hl),d:inc l
+          ld (dbg1),hl
+          pop hl:pop de
+      ELSE
+          ld a,l:cp 8:jr nz,.ok8
+          ld a,(hl):or a:call nz,&BE00
+.ok8
+          ld a,l:cp 9:jr nz,.ok9
+          ld a,(hl):cp &10:call nz,&BE00
+.ok9
+          ld a,l:cp 10:jr nz,.ok10
+          ld a,(hl):or a:call nz,&BE00
+.ok10
+          ld a,l:cp 13:call z,&BE00
+      END
+      END
           ASSERT(psg_regs AND &FF == 0) ; to use lsb=reg
           ASSERT(psg_regs / &0100 == &80) ; out (c),h
           ld b,&F4:out (c),l ; assume PPI:F6 already in select mode
@@ -335,7 +343,78 @@ psg_l_hl_tm = 26
           ld b,d:out (c),h:out (c),e
       ENDM
 
+      MACRO PSG_L_HL_FAST
+; Direct from C0 to 80 (temporarily send reg to itself: ok for
+; all regs but periods LSB. See psgtst1.o)
+psg_l_hl_fast_tm = 22
+          ld b,&F4:out (c),l ; assume PPI:F6 already in select mode
+          ld b,d:out (c),h
+          dec b
+          outi
+          ld b,d:out (c),e
+      ENDM
+
 ;---------------------------------------
+          ASSERT($ AND &FF == 0)
+
+;!! tables must remain inlined as we inject anchor below
+header_events FILL &0100,0
+events FILL MAX_TIMER_FXS * EVENT_MAX_SIZE,0
+          ASSERT(events == header_events+&0100) ; must be contiguous
+anchor
+;-----
+anchor_event = anchor + hdr_cpt AND &FF
+;hardcoded in /events/ table
+      BYTE &DB          ; N/A: no link used for free slot (DB=debug)
+      BYTE RDV_SENTINELLE
+      FILL hdr_code-2,0 ; period: N/A
+
+          ASSERT($/&0100 == events/&0100) ; confined
+
+anchor_tm = 17 + 16
+      IF need_speed
+; Use one common pointer for raster and anchor
+; !!! Requires to fill rasters table each time
+      END
+anchor_code
+raster_pnt = $+1
+          ld hl,rasters
+          ld b,&80:outi
+; Loop after 2 iters
+          res 1,l
+          ld (raster_pnt),hl
+; =====  program_next_event   ====
+current_anchor = $+1
+          ld hl,header_events
+          ld c,(hl)
+          ld (hl),anchor_event ;Clear for rolling buffer
+          inc l
+          ld (current_anchor),hl
+      IF dev_checks AND 0 ; !! for uilooptt 
+          ld b,l
+.dbgpnt   ld hl,&3C00
+          ld (hl),b
+          inc l
+          ld (.dbgpnt+1),hl
+          ld h,header_events/&0100
+          SUB_TM(14)
+      END
+          ld l,c
+          inc h
+      IF nrt_marker
+          ex af,af
+          ld a,(nrt_msb_tm)
+          inc a
+          ld (nrt_msb_tm),a
+          ex af,af
+          SUB_TM(11)
+      END
+          SUB_TM(anchor_tm + program_next_event_tm)
+          PROGRAM_NEXT_EVENT()
+
+      IF events - header_events - &0100
+  !!! must be contiguous
+      END
 
 init_timer
 ;---------     
@@ -406,13 +485,14 @@ sync_buzzer_register
      ; ixl = note
      ;   A = TM
 
-sbr_tm_start = 10       ; Until jr start (taken)
-sbr_tm_switch = 14
+sbr_tm_start = 14       ; Until jr start (taken)
+sbr_tm_switch = 18
           ex af,af
+; Reset "normal" r13 so no spurious trigger at /psg/ setting.
+          xor a:ld (psg_regs+13),a
 fx_by_track_pnt = $+1
           ld hl,fx_by_track
-          ld a,(hl)
-          or a
+          or (hl)       ; use xor a above
           jr z,.start
           cp fx_type_sync_buzzer
           jr nz,.switch_fx
@@ -736,6 +816,9 @@ change_params_tm = 10   ; until chgend taken
           jr .chglp
 .chgend
 
+          ex af,af
+          SUB_TM_CALL(cut_tm + change_params_tm)
+
           INIT_LISTS()  ; Reset pnts for next time
 
 ; Now update clock for next time (can be done anytime).
@@ -749,32 +832,38 @@ update_clock_tm = 16
       END
       IF dev_checks
 ; Todo [persitence] make sure it is repopulated
+          ex af,af
           ld a,c:cp replay_default AND &FF:call nz,programming_error
           ld a,b:cp replay_default / &0100:call nz,programming_error
-          SUB_TM''(12)
+          ex af,af
+          SUB_TM(14)
       END
           add hl,bc
           ld (current_clock),hl
 
-          ex af,af      ; A = tm
-          SUB_TM(init_lists_tm + update_clock_tm + 1)
+          SUB_TM_CALL(init_lists_tm + update_clock_tm)
 
 ; Enchaine
 psg
-psg_tm = 53             ; ld and calls
+psg_tm = 27             ; ld and calls until SUB_TM_CALL
           ld hl,psg_regs
           ld de,&F6C0
+;          ld b,d:out (c),0:out (c),c ;try  (+9)
           call psg_channel ; regs 0,1,8
           ld l,2
           call psg_channel ; regs 2,3,9
           ld l,4
           call psg_channel ; regs 4,5,10
           ld l,6
+          PSG_L_HL_FAST()
 ;todo for sid: and with sid_mask
 ; (or skip r7 setting if current sid. More complicated?)
-          call psg_2regs ; regs 6,7
+          PSG_L_HL_FAST()
+          SUB_TM_CALL(2*psg_l_hl_fast_tm + [psg_tm MOD 3])
           ld l,11
-          call psg_2regs ; regs 11,12
+          PSG_L_HL()
+          PSG_L_HL_FAST()
+          SUB_TM_CALL(psg_l_hl_tm + psg_l_hl_fast_tm + 2)
           ex af,af
           ld a,(hl)
 ;If bit 4 set or different val: force trigger
@@ -784,24 +873,21 @@ oldr13 = $+1
           ld (oldr13),a
           jr nz,$+3:inc l ; reg 14: dev/null
           PSG_L_HL()
-          RET_ROUT'(cut_tm + change_params_tm + psg_tm + psg_l_hl_tm)
+          RET_ROUT'(14+psg_l_hl_tm)
 
 psg_channel
 ; Program period and volume
 ; IN: hl: points to periods
     ;  A: tm
           PSG_L_HL()
-          PSG_L_HL()
+          PSG_L_HL_FAST()
+          SUB_TM_CALL(psg_l_hl_tm + psg_l_hl_fast_tm)
 ; period to volume without using A
           dec l         ; compensate 2nd OUTI
           srl l:set 3,l
-          PSG_L_HL()
-          RET_ROUT(3*psg_l_hl_tm + 5)
+          PSG_L_HL_FAST()
+          RET_ROUT(psg_l_hl_fast_tm + psg_tm/3 + 5)
 
-psg_2regs
-          PSG_L_HL()
-          PSG_L_HL()
-          RET_ROUT(2*psg_l_hl_tm)
 
 _do_cut
 ; In a: evt pnt
@@ -899,74 +985,8 @@ cut_tm3 = 8             ; until jr .skip_hl' (taken)
           CPT_TO_CODE()
           exx
           RET_ROUT(cut_tm1 + cut_tm3 + 14 + cut_tm_lp) ;(68) 
-hu
-      SKIP -$ AND &FF
 
-;!! cannot move these tables as we inject anchor below
-header_events FILL &0100,0
-events
-      FILL MAX_TIMER_FXS * EVENT_MAX_SIZE,0
-
-          ASSERT(events == header_events+&0100) ; must be contiguous
-
-anchor
-;-----
-anchor_event = anchor + hdr_cpt AND &FF
-;hardcoded in /events/ table
-      BYTE &DB          ; N/A: no link used for free slot (DB=debug)
-      BYTE RDV_SENTINELLE
-      FILL hdr_code-2,0 ; period: N/A
-
-          ASSERT($/&0100 == events/&0100) ; confined
-
-anchor_tm = 17 + 16
-      IF need_speed
-; Use one common pointer for raster and anchor
-; !!! Requires to fill rasters table each time
-      END
-anchor_code
-raster_pnt = $+1
-          ld hl,rasters
-          ld b,&80:outi
-; Loop after 4 iter
-          res 2,l
-          ld (raster_pnt),hl
-; =====  program_next_event   ====
-current_anchor = $+1
-          ld hl,header_events
-          ld c,(hl)
-          ld (hl),anchor_event ;Clear for rolling buffer
-          inc l
-          ld (current_anchor),hl
-      IF dev_checks AND 0 ; !! for uilooptt 
-          ld b,l
-.dbgpnt   ld hl,&3C00
-          ld (hl),b
-          inc l
-          ld (.dbgpnt+1),hl
-          ld h,header_events/&0100
-          SUB_TM(14)
-      END
-          ld l,c
-          inc h
-      IF nrt_marker
-          ex af,af
-          ld a,(nrt_msb_tm)
-          inc a
-          ld (nrt_msb_tm),a
-          ex af,af
-          SUB_TM(11)
-      END
-          SUB_TM(anchor_tm + program_next_event_tm)
-          PROGRAM_NEXT_EVENT()
-
-      IF header_events AND &FF
-  !!! error align
-      END
-
-      IF events - header_events - &0100
-  !!! must be contiguous
-      END
+;-------------------------------------
 
 ;--------------------------------------
 
@@ -1049,6 +1069,7 @@ vsync_timed_lp_tm = 9
           jr nc,.lp
           ret
 
+      IF 0
 waitlines_tm
 ; !!! Bugged !!! Fluctuate depending on events!!!
   ; Sub-bug -> return earlier when more events!?!
@@ -1069,22 +1090,17 @@ waitlines_tm
           pop bc
           djnz waitlines_tm
           RET_ROUT(-1)  ;-1 last djnz
+      END
 ;-----------------------------
-
+      IF tmp_dbg
       SKIP -$ AND &FF
-rasters
-;  78 ** BYTE # AND &1F OR &40
-;          39 ** BYTE &5C,&4C
-          39 ** BYTE border_col,border_col'
-;          20 ** BYTE &54,&44,&58,&5D
-      FILL -$ AND &FF,&4C ; safety
-      IF rasters AND 3
- !! for now use RES 2,L for wrapping
+dbg   SKIP &0100
       END
 
-fx_by_track SKIP MAX_TRACKS*track_fx_size ; n**(type, event pnt)
-          ASSERT_NOT(fx_by_track AND &FF) ; aligned
-          CHECK_CONFINE(fx_by_track)
+      SKIP -$ AND 3     ; use res 1,l
+rasters BYTE border_col,border_col'
+
+          ASSERT(fx_by_track AND &FF == 0) ; aligned
 
 change_list SKIP MAX_TIMER_FXS*MAX_FX_CHANGE_PARAMS +1 ; +sentinelle
           CHECK_CONFINE(change_list)
@@ -1097,5 +1113,7 @@ replay_period_in_nops WORD replay_default
 
 nrt_msb_tm BYTE 
 dbg_tm_marker BYTE      ; tm of next event
-dbg1  WORD 
+      IF tmp_dbg
+dbg1  WORD dbg
 dbg2  WORD 
+      END

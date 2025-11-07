@@ -29,6 +29,7 @@ sfx   = 1
 
 ; How many simultaneous fx are handled
 nb_fx = 1               ; warning: 0 won't work for chung
+;see const.nb_fx_max for encoding itself
 
 pattern_size = 32*3     ; 0 for dynamic
 

@@ -39,7 +39,7 @@ todo  = 1
       IMPORT "chunk.o"  ; salo:Next_node
       IMPORT "chung.o"  ; salo:instr
       IMPORT "ply.o"    ; salo:/events/ mapping
-      IMPORT "disp-jp.o" ; salo: future
+   ;   IMPORT "disp-jp.o" ; salo: future (no: use disp directly)
       ENDM
 
 ;-----------------------------
@@ -63,9 +63,8 @@ todo  = 1
       ENDM
 
 ;-----------------------------
-      MACRO IMPORT_SALO_DEPS
+      MACRO IMPORT_SALO_DEPS with_track
 ; Used by both salo and ayalib
-.pc
           IMPORT_SHARED_DEPS()
 ; doesn't work, don't know why
 ; When imported from salo.o for the 2nd time (after salo-nrt),
@@ -76,7 +75,12 @@ todo  = 1
       SKIP phrase-$     ; needed to skip instrui, piano...
       END
       IMPORT "phrase.o"
+      IF with_track     ; doesn't fit in ayalib
       IMPORT "track.o"
+      END
+      IMPORT "tracknub.o" ; get_track_header
+      IMPORT "periods.o" ; set_diapason
+      IMPORT "song.o"   ; Subsong_add ...
       ENDM
 
 ;-----------------------------
@@ -110,6 +114,15 @@ status_off = bandaya +8
       ORG disp
       IMPORT "disp.o"
           LIMIT(pianoui)
+      ORG .save
+      ENDM
+
+;-------------------------------
+      MACRO IMPORT_STRINGS
+;!! BANK done by caller
+.save
+      ORG strings
+      IMPORT "doc-in/strings.o"
       ORG .save
       ENDM
 

@@ -1,5 +1,8 @@
 ; ------------- Tests for instr.o ----------------
 
+; --- v0.0at ---
+   ; Oct 16 Move "prof.o" at the end to fit in ram.
+          ; Use nrt_msb_tm instead of d' (consistent with timernrt & co)
 ; --- v0.0aq ---
    ; Sep 27 c-0 is now 0
           ; nrt_init: call init_timer
@@ -18,7 +21,7 @@
       IMPORT "instr.o"
       IMPORT "timer.o"  ; set_reg13_insert_and_program/_tm init_timer
       IMPORT "testlib.o"
-      IMPORT ":orgrel/prof.o"
+;prof.o at the end
 
 tests
           call nrt_init
@@ -79,7 +82,6 @@ test_instr
           call check_fx
           ret
 
-; See /row_struct/
 .ref0 WORD &EEE4,0:BYTE 0,&3D,0,15
 .ref1 WORD &7772,0:BYTE 0,&3D,0,13
 .ref2 WORD &EEE4,0:BYTE 3,&2D,0,&10,0
@@ -95,11 +97,8 @@ ref2code_ = $ - .ref2code
 
 nrt_instr_play
           di
-          ex af,af
-          ld a,MAX_TM
-          ex af,af
+          xor a:ld (nrt_msb_tm),a
           exx
-          ld d,0
           ld hl,timer_nop
           exx
           ex af,af
@@ -109,9 +108,9 @@ nrt_instr_play
           call profile
           neg
           add a
-          add MAX_TM*2-3 ;-3: final 'ret' not counted by
+          add MAX_TM*2-3 ;-3: final 'ret' not counted by prof
           cp l:call nz,fail
-          ld a,h:exx:cp d:call nz,fail:exx
+          ld a,(nrt_msb_tm):cp h
           ret
 
 
@@ -148,6 +147,6 @@ check_fx
 
       SKIP ramlimit - $
 
-row_struct
-; Period (16 bits) 
+      ORG free_ram_for_nrt
+      IMPORT ":orgrel/prof.o"
 

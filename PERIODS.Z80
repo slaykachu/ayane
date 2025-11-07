@@ -1,8 +1,12 @@
 ; Periodic table of notes!
-; Note (ah!): table building done in ply.o
 todo  = 1
+need_room = 1
 
 ; 2025
+; ----- v0as -----
+ ; Oct 28
+    ; Init periods here: - easier for reg2note
+                       ; - doesn't have to depend on ply anymor
 ; ----- v0aq -----
  ; Sep 27
     ; Don't reserve anymore before c0. 
@@ -15,6 +19,77 @@ todo  = 1
 
 
       IMPORT "plyconf.i"
+      IMPORT "const.i"  ; note_c_10
+      IF ayane
+      IMPORT "memmap.i" ; diapason
+      IMPORT "memcpc.o" ; scope_bk_base
+      END
+
+      MACRO INIT_PERIODS
+; Fill whole table. 10 octaves + 8 notes. Put 0 at C-10
+; Adapted from lab/miniplyi
+    ; More compact
+; Need to keep working note without rounding
+; otherwise error would be propagated.
+; Ok    %101 -> %11 (%10.1) ->  %1 (%1.01)
+; Wrong %101 -> %11 (%10.1) -% %10 (%1.1)  if we reload from %11
+
+          ld hl,c0
+          ld de,c1
+.note_lp
+          ld c,(hl):inc l
+          ld b,(hl):inc l
+          push de
+.octave_lp
+          srl b:rr c
+;round to closer
+          ld a,c:adc 0
+          ld (de),a:inc e
+          ld a,b:adc 0
+          ld (de),a
+          ld a,e:adc 23:ld e,a ; adc for crunch (NC guaranteed)
+          jr nc,.octave_lp
+          pop de
+          inc e
+          inc e
+          ld a,e
+          cp c1+24 AND &FF
+          jr c,.note_lp
+
+;C-10: period 0 for percussions.
+;C#10 and after: leave as is, nevermind
+          ld l,note_c_10*2
+          xor a
+          ld (hl),a:inc l
+          ld (hl),a
+      ENDM
+
+      IF ayane
+init_periods
+          INIT_PERIODS()
+          ret
+
+get_diapason
+; Out: HL = freq * 128
+; Init in init.o
+          call scope_bk_base
+          ld hl,(diapason)
+          ret
+
+set_diapason
+; In: hl = freq in 9+7 bits
+; Todo: rebuild period table if different!       
+   ; for now only one diapasion...
+
+          ld bc,diapason_default
+          or a:sbc hl,bc:add hl,bc:call nz,programming_error
+      IF need_room
+; use generic routine set_a_in_bk_base
+      END
+          call scope_bk_base
+          ld (diapason),hl
+          ret
+      END
 
       FILL -$ AND &FF,0
 

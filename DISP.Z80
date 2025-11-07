@@ -1,16 +1,12 @@
-; Disp: Routines d'affichage text. Tirees de Orgams.
+; Disp: text display. From Orgams.
    ; Difference: status_*: same API than disp_* (e.g. BC for text)
 
 ; 2025     
-; -- v0m -- 
- ; Aug
-     ;24 Use put_deci_a & co from conv.o (used out of bank by ged)
-       ; Remove dump_hexa
-; -- v0a? --
-     ; 2 Fix _status_num: must past buffer in BC
-       ; Add status_deci_a_pad0_at
- ; Jun 9
-  ; Adapt status_set_cursor and co to new bandeau (page &4000, r9=7)
+; -- v0aq -- 
+ ; Oct
+     ;15 Add status_paragraph_at:
+            ; - less code in client area
+            ; - C1 connected to read final 0
 
 todo  = 1
 dev_checks = 1
@@ -27,25 +23,12 @@ r1'   = 48
 enable = 1
 
       IMPORT "memmap.i"
+      IMPORT "macro.i"
 pccheck = $
       IMPORT "conv.o"
       IF $ != pccheck
   !! must have been imported beforehand
       END
-
-      ORG disp_start
-; Subroutines common to normal disp (c7)
-;  and bandaya status (c1) must be out of bank 
-
-      BRK
-; Nothing for now: was dpfig now in conv.o 
-      SKIP &4000 - $
-
-; Files generated with ums:orgrel/#burnfnt.bas (using 'convfnt.o)
-fonte_gris
-      LOAD ":lib/fntgris.bin"
-fonte
-      LOAD ":lib/fntorg.bin"
 
       IF fonte_gris AND &03FF
  !! error align   ; must be 0 mod &400
@@ -55,10 +38,10 @@ fonte
  !! error align   
       END
 
+      ORG disp
       IF $-&4800
  !! review "disp-jp.o"
       END
-
 
 ; -------------
 
@@ -137,6 +120,8 @@ m         jp status_set_cursor
 
           jp status_char
           jp status_str
+      IF 0
+;Shall be called directly
           jp status_pad
           jp status_deci_a
           jp status_deci_a_pad0
@@ -144,10 +129,10 @@ m         jp status_set_cursor
           jp status_hexa_a
           jp status_hexa_hl
           jp status_inv_cursor_at
-          jp status_clear_line_at
+          jp status_clear_from
           jp status_str_shaded_at
           jp status_str_shaded
-
+      END
 
       IF enable
 str_pad
@@ -269,7 +254,6 @@ mess  = &BE00
 
 init_disp
 ;in A = Reg1
-
           ld (vo_reg1),a
           ld de,&C000
 disp_locate_scr
@@ -805,7 +789,8 @@ _status_ret_
           ret
 
 status_prelude
-; save ix, hl, de
+; save ix, hl, de     
+; Out: DE: screen pos
           ex (sp),ix
           push de:push hl
           call status_get_pos
@@ -857,28 +842,45 @@ stapae_lp
 
           jr _status_ret
 
+status_paragraph_at
+; Display several lines
+;In: BC: point nt strings
+   ; DE: cursor
+.lp
+          push de
+          call status_str_at
+          pop de
+          inc e
+          ld a,(bc):or a
+          jr nz,.lp
+          ret
 
-      IF enable
-status_clear_line_at
-      BRK
-; TODO : adapt to new bandeau
+status_clear_from
+; Clear line until right end 
+;In: d=x (0 based) e=y (0 based) <= 7
+;Out: AF BC trashed
           call status_set_cursor
+
+; C:= width to clear (-1 for ldir)
+          ld a,r1'*2 -1
+          sub e
+          ld c,a
+          ret z
+
           call status_prelude
-          call .clr1
-          set 3,d
-          call .clr1
+          ld b,8
+.ylp
+          push bc
+          push de
+          ld l,e:ld h,d
+          inc de
+          ld b,0:ld (hl),b:ldir
+          pop de
+          pop bc
+          ld a,d:add 8:ld d,a
+          djnz .ylp
           jp _status_ret_
 
-.clr1
-          push de
-          xor a
-          ld b,4*r1'    ; Words so that < &100
-.lp
-          ld (de),a:inc de
-          ld (de),a:inc de
-          djnz .lp
-          pop de
-          ret
 
 status_deci_a_at
           call status_set_cursor
@@ -915,13 +917,14 @@ _status_num
           push de:push hl
           ld de,vo_status_tmp
           push de
-          call jp_ix
+          ASSERT(jp_ix AND &C000 == &4000)
+          call jp_ix + &8000
+          xor a:ld (de),a
           pop bc
           call status_str
           pop hl:pop de
           pop ix
           ret
-      END
 
 status_inv_cursor_at
 ; NB: doesn't change internal cursor position

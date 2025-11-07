@@ -63,6 +63,9 @@ r14   = psg_regs+14     ; Reset by ply before iteration
       END
 
 ; \\\\\ 2025 ///
+; ---- v0at ----
+;Oct
+ ; 16 _instr_end: fix tm
 ; ---- v0aq ----
 ;Sep  
  ; 29 _instr_end: must call _fx_end to cut fx
@@ -218,7 +221,7 @@ tm1_  = 8               ; from .exec to jr instr_end (taken)
           pop hl        ; consume regs+vol
           pop hl        ; consume regs+mask            
       IF sfx
-          SUB_TM(tm1_+6+3)
+          SUB_TM(tm1_+6+3-3) ;-3: no ld sp,0 (from fx_end)
           jp fx_end_
       ELSE
           RET_ROUT(tm1_+6)
@@ -459,7 +462,7 @@ tm2   = 10              ; until jr no_hard_env (taken)
           jr nc,.no_hard_env
 
 ;env_type (bit 4 set for retrig)
-tm_hard = 17            ; until jr abs_hard (taken)
+tm_hard = 17-1          ; until jr abs_hard (taken)
           ld a,(hl):INC_HL_INSTR()
           ld (r13),a
 ;arp
@@ -488,7 +491,7 @@ tm_hard = 17            ; until jr abs_hard (taken)
           ld (r11_12),hl
           ld a,&10
           EX_AF'()
-          SUB_TM(tm_hard+37-1) ; -1 jr abs_hard not taken
+          SUB_TM(tm_hard-1+38) ; -1 jr abs_hard not taken
           jr .ok_vol
 
 .abs_hard

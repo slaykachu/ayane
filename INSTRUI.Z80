@@ -1,35 +1,12 @@
 ; <<<<<<<< Instrument editor >>>>>>>>>
 
 ; 2025                           
- ; -- v0ap --
- ; Sep
-   ; 18 Only create instrument when displaying it 
-      ; not with f5/f8 outside of editor
-         ; -> prevent spurious creation when instrsel lists them!
- ; Aug      
- ; -- v0am --
-   ; 24 Inverse pitch for user comfort (+N= higher pitch)
- ; -- v0al --
-   ; 21 deactivate main r13 when there is buzz
-      ; _del_row: cursor up if it's the last
-   ; 20 Fix sep after retrig          
- ; -- v0ak --          
-   ; 07 smarter flip-flops for volume and co 
-          ; e.g. activating sync buzz automatically set hard env
-   ; 04 instr_row_ui: Add separators
-      ; 8 lines of instr
-   ; 02 instr_cold_refresh: display fields
-   ; 01 Add jp instr_cold_refresh
- ; Jul
-   ; 15 Extract ui loop   o  in uiloop.o
-   ; 14 Extract manual setup in instruit.o 
-
-;Lp X Vol  Arp Pitch Noise  H R Arp Pitch  Buz1 Arp Pitch Buz2 
-;x  x F -- +12 -4095  x 31  A x +12 +1000   x A +10 +1000    
-;   x 8 -  +12 -4095  x 31  A   +12 +1000   x A +10 +1000    
-;   x 0    +12 -4095  x 31  A   +12 +1000   x A +10 +1000    
-
-;todo: don't delete when only one row
+ ; -- v0at --
+ ; Oct 
+   ; 16 Use disp.o directly
+         ; Try to remove disp-jp dep altogher
+         ; Already imported by uiloop and ??
+   ; 15 Move instr_fields to doc-in/strings.o
 
 to_be_implemented = &BE00
 dev_checks = 1
@@ -38,23 +15,23 @@ hack_refresh = 1
       IMPORT "const.i"
       IMPORT "memmap.i"
       IMPORT "macro.i"
+      IMPORT "import.i"
 
       IMPORT "memcpc.o" ; reset_sp
       IMPORT "chung.o"  ; Model (instr get/set row)
       IMPORT "ged.o"
       IMPORT "timer.o"  ; for fx_null/sync_buzzer_register
-      IMPORT "disp-jp.o"
-
-      FILL -$ AND &0F,&F7
+;      IMPORT "disp-jp.o"
+      BANK BK_DISP
+          IMPORT_DISP()
+          IMPORT_STRINGS()
 
 ;--------------------------------
       MACRO CALL_DS adr
  ; ds="disp status" status_* in disp.o
- ; disp-jp does the connection
-      IF BK_DISP - &C7
- !!!! review
-      END
-          call adr
+          ASSERT(BK_DISP == &C7)
+          ASSERT(adr AND &C000 == &C000)
+          call call_status:WORD adr
       ENDM
 
       MACRO RET_C_Z
@@ -72,7 +49,7 @@ instr_cold_refresh
 ;-----------------
  ; -- bandaya
           LOCATION(x_pos_instr_ed,y_pos_instr_ed)
-          ld bc,_fields
+          ld bc,instr_fields + &8000
           CALL_DS(status_str_at)
 
  ; -- Create instrument if empty 
@@ -201,11 +178,6 @@ _instr_refresh
           ret
 
 ;----------------
-_fields
-      BYTE "Lp T Vol  Arp Pitch Noise  H Arp Pitch R "
-      BYTE "Buz1 Arp Pitch  "
-      BYTE "Buz2 Arp Pitch",0
-
 instr_row_ui
       BYTE w_struct
       IF 1

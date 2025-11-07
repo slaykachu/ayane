@@ -4,22 +4,6 @@
   ; Sep 28. Split set_hard_envs set_hard_type / _arp / ...
               ; Rationale: Will allow type by column (const, tab...)
           ; Add set_fx0_type/get_fx0_type and co
- ; -- v0a? --
-  ; Aug  9. Remove st-related code:
-                   ; - dead code
-                   ; - can pick it up from older chung versions
-                   ; - i need memory
-       ; 8. Deactivate st-related code
-       ; 7. Move column_type_default & co in salo 
-          ; get_column: return size
-       ; 4. add instr_remove_loop
-
-     ; Jun 20. Jump table
-; hist in journal.o
-; ------ For v0l2 -------
-; Mar   
-  ; 20 Remove check instr_null (which has been removed as useless)
-  ; 18 Use use_instr_chip_down_vib_noise
 dev_checks = 1
 todo  = 1
 todo_later = 1          ; non urgent/critical todo

@@ -1,5 +1,5 @@
-dev_checks = 1
-dev_checks_anchor = dev_checks AND 1
+dev_checks = 0
+dev_checks_anchor = dev_checks AND 0
 tmp_dbg = 0
 tmp_rast = 0
 ; <<<< Handling cpc keyboard as piano >>>>
@@ -10,19 +10,6 @@ tmp_rast = 0
   ;Oct
    ;11: more checks
       ; _play_lp: remove waits when tmp_rast = 0 (less code)
-    ; -- v0aq --
-  ;Sep
-   ;27: Add play_song (mechanical piano!)
-    ; -- v0a? --
-  ;Aug   
-   ;25: Must init hl' !!!  
-   ;24: Split check_note into is_piano_key_pressed/play_piano 
-   ;20: tmp add .dbgcpt      
-      ; Remove bandaya dependencies: let caller do status_on/off
-      ; Fix check key when octave = 0
-   ; 4: quick_exit if no pianod key pressed
-   ; 3: exit: use status_on to ensure int0 properly re-sync
-   ; 1: _check_regs': ok when mode <> 2!
 
       IMPORT "const.i"
       IMPORT "memmap.i"

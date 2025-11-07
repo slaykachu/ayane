@@ -1,7 +1,12 @@
 ; ====== Handling of phrases and rows ======
-; 2025
-; Aug 8 v0.0ai set row_set_vol_encoded     ; for salo
-             ; s/song_reset/phrase_reset
+; 2025    
+ ; -- v0.0at --
+; Oct
+   ; 17 Add copy_row_at/copy_next_row
+      ; Reorder: note before vol to match ply
+ ; -- v0.0ai --
+; Aug 8 set row_set_vol_encoded     ; for salo
+      ; s/song_reset/phrase_reset
 ; v0.0ac 5 Mar 2025
 dev_checks = 1
 todo  = 1
@@ -51,6 +56,7 @@ makeroom = 1
       END
       IMPORT "plyconf.i"
       IMPORT "memmap.i"
+      IMPORT "macro.i"
 
       IMPORT "chung.o"  ; new_chunk_ext
       IMPORT "ply.o"    ; for fx_set_phrase
@@ -81,8 +87,6 @@ phrases_idx = &7600     ; start chunk for each phrase &100 ** word
 phrases_rows = &7800    ; nb rows for each phrase
 ;nb: for now, no discrimination between tables (arp, instr, ...)
 ;-> we should keep it that way (more flexible, less ram & code needed)
-
-va    = &7C00
 
       IF nb_fx:ELSE
 !!! We must have at least 1 fx
@@ -349,6 +353,91 @@ ssr_com
           ld (va_row_pnt),hl
           jp _postlude
 
+unpack_row_at
+;----------
+; Flatten and reorder row at exactly time t
+                  ; note, instr, vol  (-1 if absent)
+; In: HL = t
+    ; DE = dest buf
+;Out: If such row,    Carry, NZ
+    ; If no row at t  Carry, Z   
+       ; In both cases BC = time next (non-empty) row
+    ; If past phrase, NC, BC preserved
+    ; HL, DE preserve d
+          call scope_bk_phrase
+          push hl:push de
+          ex de,hl      ; de = t
+          call phrase_get_row_at
+          pop de
+          jr c,.ok
+;past phrase: NC here
+          pop hl
+          ret
+.ok
+          ex (sp),hl    ; pop t, push row
+          ld bc,(row_t0):or a:sbc hl,bc:add hl,bc
+          ex (sp),hl
+          ld bc,(row_t1):ld (time_next_row),bc
+          jr z,_unpack_row_com
+
+; When t0 < t, it means no row until t1    
+      IF dev_checks
+          call c,mess   ; cannot have t < t0
+      END
+          call skip_all
+          ld (pnt_next_row),hl
+          pop hl
+          cp a          ; z
+          scf           ; !! after cp a
+          ret
+
+_unpack_row_com
+          push de
+          push bc
+          inc l         ; skip duration
+          ld a,(hl):and &1F:call nz,mess ; no fx for now
+          ld b,(hl):inc l
+          ld c,-1
+          push hl
+          ld a,c:bit bit_note,b:jr z,$+4:ld a,(hl):inc l
+          ld (de),a:inc e
+          ex (sp),hl
+          ld a,c:bit bit_instr,b:jr z,$+4:ld a,(hl):inc l
+          ld (de),a:inc e
+          pop hl
+          ld a,c:bit bit_vol,b:jr z,$+4:ld a,(hl):inc l
+          ld (de),a:inc e
+          SKIP_RESERVED()
+          ld (pnt_next_row),hl
+          pop bc        ; time next row
+          pop de        ; buffer   
+          pop hl        ; t
+          scf:sbc a     ; C, NZ
+          ret
+
+unpack_next_row
+; Necesseraly called on non-empty row or at end of phrase
+; IN: de = buffer
+;Out: If such row,    Carry, NZ
+                   ;  BC = time next row
+    ; If past phrase, NC, BC preserved
+          call scope_bk_phrase
+          push hl
+          ld hl,(pnt_next_row)
+          call follow_link_if_eoc
+          jr z,.past
+          ld a,(hl)     ; duration
+          ld bc,(time_next_row)
+          or a:jr nz,$+3:inc b ; 0 = &100
+          add c:ld c,a:jr nz,$+3:inc b
+          ld (time_next_row),bc
+          jr _unpack_row_com
+
+.past
+          or a
+          pop hl
+          ret
+
 phrase_select_row_at
 ;-------------------
 ; Create a new row at t (if not existing)
@@ -555,7 +644,7 @@ row_set_note
           call connect_current_row_skip_length
           bit bit_note,(hl)
           push af
-          call skip_fx_ins_vo
+          call skip_fx_ins
           pop af
           jr nz,_change_byte
 
@@ -584,7 +673,7 @@ row_get_note
           bit bit_note,(hl)
           jp z,_postlude
 
-          call skip_fx_ins_vo
+          call skip_fx_ins
           xor a:inc a   ; NZ
           ld a,(hl)
           jp _postlude
@@ -600,7 +689,7 @@ row_set_vol_encoded     ; for salo
           call connect_current_row_skip_length
           bit bit_vol,(hl)
           push af
-          call skip_fx_ins
+          call skip_fx_ins_note
           pop af
           jr nz,_change_byte
 
@@ -624,7 +713,7 @@ row_get_vol
           bit bit_vol,(hl)
           jp z,_postlude
 
-          call skip_fx_ins
+          call skip_fx_ins_note
           xor a:inc a   ; NZ
           ld a,15:sub (hl)
           jp _postlude
@@ -842,8 +931,8 @@ skip_all
 ;Out: HL: post skip. BC, DE preserved.
           SKIP_LENGTH()
 skip_post_length
-          call skip_fx_ins_vo
-          call _skip_byte ; note
+          call skip_fx_ins_note
+          call _skip_byte ; vol
           SKIP_RESERVED()
           ret
 
@@ -861,11 +950,11 @@ _skip_byte
           rra:jr nc,$+3:inc l
           ret
 
-skip_fx_ins_vo
+skip_fx_ins_note
 ;In: HL: post length
 ;Out: HL: post skip. BC, DE preserved.
           call skip_fx_ins
-          jr _skip_byte ; vol
+          jr _skip_byte ; note
 
       IF 0
 _skip_word
@@ -877,7 +966,7 @@ _skip_word
 
 skip_fx
           push bc
-          ld b,4
+          ld b,nb_fx_max
           call skip_nfx
           pop bc
           ret
@@ -1080,7 +1169,7 @@ Get_phrase
 
 _prelude
 ; save registers and sp (for 'exception mechanisme)
-; then connect work bank
+; then connect work bank. note: caller bank not reconnect at /_postlude/
 ; More space-efficient, we don't need to be fast
 
           push de:push ix:push hl
@@ -1823,7 +1912,7 @@ def
       BYTE 
 def_size = $-def
 
-      ORG va
+      ORG phrase_vars
 var
 delai_ui BYTE           ; root value
 
@@ -1838,8 +1927,10 @@ zero_start              ; Not loaded, must follow def (see check below)
 va_current_phrase BYTE 
 va_row_pnt WORD         ;address of currently selected row 
 va_position WORD        ; position in phrase (in ticks)
-
 zero_size = $-zero_start
+
+pnt_next_row WORD 
+time_next_row WORD 
 
       ORG save_pc
 

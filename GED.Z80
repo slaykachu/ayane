@@ -5,31 +5,6 @@
   ;29 multiline_ctrl_dwn: Musn't scroll when line in view
     ; Deactivate multiline scrolling: too slughish
 do_scroll_multiline = 0
-; -- v0ao --
-   ;6 Add jump table (cancelled: not needed, as uiloop calls directly)
-;Aug       
-; -- v0am --
-  ;24 noline: shorter ----- 
-; -- v0al -- 
-  ;23 multiline: +params insert_line/delete_line
-  ;22 multiline_top: don't refresh if line_at_top already 0
-    ; multiline_bottom: don't scroll if line reachable
-  ;21 Don't validate if not modified
-    ; Add multiline_del to handle scroll up when last line
-    ; Remove check Z when event returns Carry
-; -- v0ak --  
-  ; 5 multiline_up: fix invalid check
-  ; 4 toggle_char_off = " "  (less crowed in screen)
-  ; 3 Remove export flag (rotten code) 
-  ; 1 setup_widget: Remove test hl > end_of_ged since ged is 
-                      ; placed now at &8b00
-                  ; Allow w_brk to be (null) init
-                    ; Used to create an empty ui.
-; v0.ag 15 Remove unused widget (w_table, wc_frame, w_sprite)
-             ; - avoid mem full in orgams
-             ; - rotting code anyway
-; v0.ae 14 Jun wv_tmp_buffer: reserve 80.
-     ;  3 Jun s/CALL_STATE/call_state_on_exit and co
 
 dev_checks = 1
 dev_checks_display = 0  ; 0: let display fails, easier to see problem

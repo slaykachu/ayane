@@ -1,5 +1,12 @@
-; ---- Tests for phrase.o ---
+; ---- Tests for phrase.o ----
 
+; 2025
+; Oct
+  ; 17: Add test_unpack_row_at
+; -- v0.a? ---
+
+
+; -- v0.a? ---
 ; Aug  8: Use testlib for init
         ; Add test_phrase_get_rows#
 ; Jun 12: Just version
@@ -7,13 +14,15 @@
       ORG &0100
       ENT tests
 
-      IMPORT "phrase.o"
       IMPORT "testlib.o"
+      IMPORT "phrase.o"
       IMPORT "memmap.i" ; for phrases_
 
 fail  = &BE00
 
 tests
+          call test_unpack_row_at
+      BRK
           call test_phrase_get_rows#
           call test_phrase_get_row_at
           call test_phrase_get_row_at'
@@ -25,12 +34,13 @@ tests
           call test_get_duration_16bits
           call test_intermediate_row
           call test_row_set
+          call test_unpack_row_at
           ret
 
 nrt_init
           ld a,".":call &BB5A
           call init_for_test
-          call song_reset
+          call phrase_reset
           ret
 
 test_phrase_get_rows#
@@ -276,4 +286,81 @@ check_row_set
           call row_get_vol:cp &0E:call nz,fail
           call row_get_note:cp 43:call nz,fail
           ret
+
+
+test_unpack_row_at
+          call nrt_init
+          call dummy_phrase
+
+          ld b,nrt_rows#
+          push bc
+
+          ld hl,0       ; time
+          ld de,nrt_buf
+          call unpack_row_at
+          call nc,fail
+          call z,fail
+          ld ix,0       ; time
+          jr .entry
+.lp
+          push bc
+          ld de,nrt_buf
+          call unpack_next_row
+          call nc,fail
+          call z,fail
+.entry
+;check de was preserved
+          ld a,e:cp nrt_buf AND &FF:call nz,fail
+          ld a,d:cp nrt_buf / &0100:call nz,fail
+;check hl was preserved
+          ld a,l:cp ixl:call nz,fail
+          ld a,h:cp ixh:call nz,fail
+;next row time
+          ld de,nrt_delai:add ix,de
+          add hl,de
+;check "row next time"
+          ld a,c:cp ixl:call nz,fail
+          ld a,b:cp ixh:call nz,fail
+;check unpacked
+          pop bc
+          ld a,nrt_rows#:sub b
+          push hl
+          ld hl,nrt_buf
+          cp (hl):call nz,fail ; note
+          inc l
+          ld a,(hl):cp &FF:call nz,fail ; instr not set
+          inc l
+          ld a,(hl):cp &FF:call nz,fail ; vol not set
+          pop hl
+          djnz .lp
+
+;no more row
+          ld de,nrt_buf ; sanity
+          call unpack_next_row:call c,fail
+          ret
+
+.check_unpacked
+; IN: A = expected note
+dummy_phrase
+; Create phrase spanning on several chunks
+          xor a:call song_select_new_phrase
+nrt_delai = 6
+nrt_rows# = 100
+          ld b,nrt_rows#
+.lp
+          push bc
+          ld a,nrt_delai:call phrase_select_new_row:call nc,fail
+          pop bc
+          push bc
+;note 0,1,2 ...
+          ld a,nrt_rows#:sub b
+          call row_set_note
+          pop bc
+          djnz .lp
+          ret
+
+      SKIP -$ AND &FF
+nrt_buf SKIP &0100
+
+      SKIP ramlimit - $
 

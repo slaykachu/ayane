@@ -1,0 +1,14 @@
+; <<<< Diverses strings and messages >>>>
+
+bandfields
+      BYTE "   '\   / \   |/'>  \__   /''\    Demo "
+      BYTE "(pre-pre-alpha) --28 Sep 2025-- For Bun",0
+      BYTE "  /'''  |__>  /  /  <  |  ,,,/    (f6/f9)  Octave",0
+      BYTE "  \,,/     \  <,/|   \ /   \,     (CTRL-I) Instr   :",0
+      BYTE 0
+
+instr_fields
+      BYTE "Lp T Vol  Arp Pitch Noise  H Arp Pitch R "
+      BYTE "Buz1 Arp Pitch  "
+      BYTE "Buz2 Arp Pitch",0
+

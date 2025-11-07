@@ -1,5 +1,6 @@
 ; ========= Shared buffers and variables ==========
-; 2025 Aug  8  Cleanup unused buffers
+; 2025 Oct 16  tracks in bank
+     ; Aug  8  Cleanup unused buffers
      ; Jun 23  Move disc_buffer at &4000
 todo  = 1
 need_room = 1
@@ -25,17 +26,20 @@ code_start = &40
 memcpc = &40
 scankey = &0200
 conv  = &0220
-ply   = &1212
-dispjp = &1D00
-instrui = &1D50
-piano = &21D8
-phrase = &23A0
-track_module = &2E91
-init_module = &3D40
-instrsel = &3DE0
-uiloop = &3E60
+;dispjp = &1900   ; not a dep anymore
+ply   = &0F8C
+instrui = &1900
+piano = &1D48
+phrase = &1E90
+instrsel = &2560
+;via salo-nrt
+track_module = &2991
+init_module = &3660
+;via uilooptt
+uiloop = &3A90
 
-code_main = &3FC0       ; ayane.o
+code_main = &3B20       ; ayane.o
+
 ramlimit = &4000
 
 ; ----------------------------------------------
@@ -84,15 +88,25 @@ instr_pool_
 instr_idx SKIP instr_head_size*&0100 ; chung, ply
 instr_idx_
       IF $ AND &FF
- !! align issue for subsongs
+ !! align issue 
       END
 subsongs SKIP &0100     ; &100 for chained list with just LSB
-; --- Vars ---        
+tracks SKIP MAX_TRACKS * tf_struct_size ; track and tracknub
+; --- Vars ---                                              
+used_tracks BYTE 
+current_track BYTE 
+; subsong: for now mixed with track setup
+nb_subsong BYTE 
+current_subsong BYTE 
+track_zero_ = $-tracks
+      IF used_tracks != [tracks + MAX_TRACKS*tf_struct_size]
+ !! must be contiguous
+      END
+
       IF need_room
 ; Bulk load/save in salo.o
       END
-current_subsong BYTE 
-nb_subsong BYTE 
+subsong_pool_pnt BYTE 
 delay_ui BYTE           ; Only impact display
 diapason WORD           ; 9 + 7 bits
 
@@ -106,6 +120,7 @@ replay_period WORD      ; value saved in .aya
 replay_period_ui BYTE   ; id in drop down list (no free setting for now)
 ;replay_period_in_nops WORD  ; in ply.o
 ; ----
+phrase_vars
 
 ;79xx-7f00 : free
 
@@ -129,13 +144,20 @@ fonte = &4400
 disp  = &4800           ; start of code after fonts
 pianoui = &4F00
 disp_ayane = &5620      ; other modules imported by ayane.o
+strings = &7C00
 
       ORG &8000
 psg_regs                ;  Room for pseudo registers and ??? 
 ;!! Shared with other buf, as we never play while loading or saving!
 workzone SKIP &0200     ; salo, &8100:pianoui (tmp for display)
 salo_buf1 = workzone
+phradisp_buf = workzone
+track_tmp = workzone + &80
 salo_buf2 = workzone + &0100
+fx_by_track = workzone + &0100 ; MAX_TRACKS*track_fx_size 
+; Reserve &100 so we can easily go from one track to the next
+; (8100, 8110, 8120, 8130 ...)
+; n**(type, event pnt)
 
 salo
 ged   = &8B10
@@ -149,8 +171,6 @@ ramlimit' = &A400
 ; -> No corruption if " < &a400 
 ; Note, when detecting himen, check it is > tables
       END
-
-   ; also fx pnt for /append_fx/   !?!
 
       ORG savepc,saveobj
 

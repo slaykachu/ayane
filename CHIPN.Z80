@@ -95,7 +95,7 @@ v0l2  = 1               ; Activate changes for kim9.chp
       IMPORT "plyconf.i" ; tmp hack: some stuff deactivated
 
 connect_bk_chip = connect_bk_io
-workzone_chipn = &9000  ; After testlib in chipconv.o!
+workzone_chipn = &9800  ; After testlib+chipn in chipconv.o!
 workzone = workzone_chipn
 workzone_size = &0600   ; actually less used, see /max_rows/
 

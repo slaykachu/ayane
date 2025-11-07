@@ -1,6 +1,9 @@
 ; Tests ply.o            
 do_profile = 1
 ; 2025 
+; --- v0.0at ---
+  ; Oct 16 Use "macro.i"
+         ; Fix nrt_play (when do_profile = 0)
 ; --- v0.0aq ---
   ; Sep 27 Fix changed api
          ; c-0 is now 0
@@ -10,6 +13,7 @@ do_profile = 1
       IMPORT "const.i"
       IMPORT "memmap.i"
       IMPORT "plyconf.i"
+      IMPORT "macro.i"
 
       ORG code_start
       ENT tests
@@ -22,63 +26,11 @@ do_profile = 1
       IMPORT "fx-api.o" ; for instr_set_vol_table and co
       IMPORT "testlib.o"
       IMPORT "ppi.o"
-; No more room before < &4000
 
 track1 = tracks+4       ; track 0 empty (reserved)
 
 
 ; ------------------------------------------------
-      MACRO VOL n
-; Encode as expected -> xxxx0
-      BYTE n*2
-      ENDM
-
-      MACRO VOL_HARD
-      BYTE &21          ; Bit 0 and 5 Set (so after rrca, bit set)
-      ENDM
-
-      MACRO EX_AF'
-      IF sfx
-          ex af,af
-      END
-      ENDM
-
-      MACRO SUB_TM n
-; Copy-paste from timer.o                  
-      IF sfx
-; Update counter TM (+2 for 'sub n' itself)
-      IF n AND 1
-; Resolution: 2-nops. Must compensate
-          ld a,a:sub [n+3]/2
-      ELSE
-          sub [n+2]/2
-      END
-      END
-      ENDM
-
-      MACRO SUB_TM'' tm
-      IF sfx
-          ex af,af
-          SUB_TM(tm+2)  ; +2 for "ex af,af"
-          ex af,af
-      END
-      ENDM
-
-      MACRO RET_ROUT tm
-      IF sfx
-          SUB_TM(tm+4)
-          ret p
-          exx:jp hl
-      ELSE
-          ret
-      END
-      ENDM
-
-      MACRO RET_ROUT' tm
-          EX_AF'()
-          RET_ROUT(tm+1)
-      ENDM
-
       MACRO SUB_TM_CALL n
 ; Update and call HL' when CPT < 0 
           SUB_TM(n+9)
@@ -111,7 +63,6 @@ nrt_init
           call Init_track_module
           call New_module ; create 3 empty tracks
           call phrase_reset
-; ST convert use exx
 ; ply uses ex exx and af,af'
           ld hl,&C9FB:ld (&38),hl
           ret
@@ -222,7 +173,6 @@ test_note_instr
       ELSE
           call nrt_play
       END
-
           ld hl,.ref
           ld de,psg_regs
           ld b,8
@@ -251,7 +201,7 @@ test_sync_buzzer
           call nrt_play
       END
           pop bc
-          jr nz,.lp
+          djnz .lp
           ret
 
 
@@ -385,22 +335,15 @@ cr_nono
           ret
 
 
-
 nrt_play
 ;-------
 ; Play first tick
 ; It doesn't check anything
-
-          ld hl,track1
-          ld a,3
-          call Amorce_song
-
+          call nrt_setup_play
           di
 ; Reset for profiling
 ; Cannot be set before since prof.profile do EI + WAIT_VBL
           exx
-; Instr routine might > 256 nops.
-          ld d,0        ; MSB cpt
           ld hl,timer_nop
           exx
           ex af,af
@@ -412,17 +355,19 @@ MAX_TM = &80
 tm_play
 ;------     
 ; reset psg regs for accurate check
+          call nrt_setup_play
+tm_play_
+          ld ix,play
+          call check_tm
+          ret
+
+nrt_setup_play
           ld hl,psg_regs
           ld b,14
 untouched = &DD
 .raz      ld (hl),untouched:inc l:djnz .raz
 
-          ld hl,track1
-          ld a,3
           call Amorce_song
-tm_play_
-          ld ix,play
-          call check_tm
           ret
 
 check_tm

@@ -27,6 +27,13 @@
       ENDM
 
 ; --------------------
+; z80
+; --------------------
+      MACRO EX_SP_DE
+          ex de,hl:ex (sp),hl:ex de,hl
+      ENDM
+
+; --------------------
 ; Encoding
 ; --------------------
       MACRO VOL n

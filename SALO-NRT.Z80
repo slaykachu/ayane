@@ -21,7 +21,7 @@
       IMPORT "memmap.i"
       IMPORT "import.i"
 
-          IMPORT_SALO_DEPS()
+          IMPORT_SALO_DEPS(1)
       IMPORT "init.o"
       IMPORT "instr.o"
 
@@ -224,13 +224,15 @@ phrase4 = 4
           call Song_get_first_track:call nz,fail
           call check_save_load_save
 ; -- With one track
-          ld a,1
+          ld hl,.trackinfo
+          ld c,2
           call Subsong_add_track
           ld hl,_check_1_track_in_subsong:ld (hook_check_jp),hl
           call check_save_load_save
 ; -- With two tracks
-          ld a,2
           ld hl,_nocheck:ld (hook_check_jp),hl
+          ld hl,.trackinfo'
+          ld c,2
           call Subsong_add_track
           call check_save_load_save
 ; -- Big instruments to have buffer > &100
@@ -239,6 +241,9 @@ phrase4 = 4
           call instr_ayane_append_rows
           call check_save_load_save
           ret
+
+.trackinfo BYTE 1,1     ; id, channel
+.trackinfo' BYTE 2,2
 
 instr_param1 BYTE "yeh"
 
@@ -383,7 +388,6 @@ dummy_ = $ - dummy_meta
 ;Even empty module has one subsong
       BYTE 0            ; id
       BYTE 1            ; alternative#
-      WORD replay_50_08Hz
           NO_TEXT()
       BYTE SENTINELLE   ; no tracks
       BYTE 0            ; selected alternative
@@ -392,10 +396,8 @@ dummy_ = $ - dummy_meta
       BYTE "Smpl":BYTE SENTINELLE
       BYTE "Book":BYTE SENTINELLE
       BYTE "Xtra":BYTE SENTINELLE
-      BYTE "Hist":BYTE 0
+      BYTE "Hist":BYTE SENTINELLE
       BYTE "End!"
-;Note: history actions are not identified. 
-     ; So we put # rather than sentinel.
 almost_empty_ = $ - almost_empty
 
 empty_phrase
@@ -433,7 +435,6 @@ empty_phrase
 ;Even empty module has one subsong
       BYTE 0            ; id
       BYTE 1            ; alternative#
-      WORD replay_50_08Hz
           NO_TEXT()
       BYTE SENTINELLE   ; no tracks
       BYTE 0            ; selected alternative
@@ -442,10 +443,8 @@ empty_phrase
       BYTE "Smpl":BYTE SENTINELLE
       BYTE "Book":BYTE SENTINELLE
       BYTE "Xtra":BYTE SENTINELLE
-      BYTE "Hist":BYTE 0
+      BYTE "Hist":BYTE SENTINELLE
       BYTE "End!"
-;Note: history actions are not identified. 
-     ; So we put # rather than sentinel.
 empty_phrase_ = $ - empty_phrase
 
 
@@ -512,6 +511,12 @@ vampire
       LOAD "testdata/vampire1.aya"
 vampire_size = &0ABD
 ; vampire_size = $ - vampire   Doesn't work: unidos copy rounded to b00
+
+; Sync with ayalib
+          ASSERT(phrase_code == phrase)
+; Sync with ayane
+          ASSERT(track_code == track_module)
+          ASSERT(init_code == init_module)
 
       SAVE "ayaio.bin",io_code,io_end - io_code
       SAVE "ayasalo.bin",salo_code,salo_end - salo_code

@@ -1,0 +1,23 @@
+; <<<<< Core routines for track handling >>>>>
+; -> Needed by ply for Song_amorce, without pulling full track.o ui
+   ; (otherwise, memory full via uilooptt)
+
+      IMPORT "const.i"
+      IMPORT "memmap.i"
+      IMPORT "macro.i"
+
+get_track_header
+;---------------
+;in : a : track #, BK_TRACK connected
+;out: hl: track pnt* 
+    ; a : preserved
+          push af
+          cp MAX_TRACKS:call nc,mess
+          ASSERT(tf_struct_size == 2)
+          ASSERT(tracks AND &FF == 0)
+          add a:call c,mess
+          ld l,a
+          ld h,tracks/&0100
+          pop af
+          ret
+

@@ -3,6 +3,11 @@ todo  = 1
 do_brittle = 0
 
 ; ----- 2025 ----------
+; -- v0as --
+ ; Oct
+     ; 15 test_subsong_add_track: new api 
+        ; nrt_init: call phrase_reset
+
 ; -- v0ai --
  ; Aug
      ;  8 Use test_lib for init 
@@ -46,6 +51,8 @@ chunk0 = track_events_/&0100 - 1
 
       IMPORT "const.i"
       IMPORT "track.o"
+      IMPORT "tracknub.o" ; get_track_header
+      IMPORT "song.o"   ; Subsong_add, Song_get_first_track ...
       IMPORT "widget.o" ; for init_widget
       IMPORT "chung.o"  ; For creating clips via public API
       IMPORT "memcpc.o" ; for connect_a, bk_connected
@@ -58,7 +65,6 @@ tests
 
 ; ---- Recent
           call test_subsong_add_track
-      BRK
 
       IF enable
           call test_ui
@@ -124,7 +130,7 @@ nrt_init
           ld hl,&4000:ld de,&4001:ld bc,&3FFF:ld (hl),l:ldir
 
           call init_for_test
-          call song_reset
+          call phrase_reset ; for dev checks. Not done by init?
 ; as convienence for tests, create module and select first track
           call New_module
           ld a,1:call Song_select_track
@@ -184,10 +190,6 @@ nrtfail = &BE00
  !! review that
       END
       WORD hook_list
-      IF tf_output - 2
- !! review that
-      END
-      BYTE channel      ; 1=A, 2=B, 3=C
       IF todo
 ;Add. No name for track?
     ;      EMPTY_NAME()  ;  
@@ -564,19 +566,7 @@ test_init_track_module
           ld a,(hl):inc hl
           cp track_events/&0100:call c,fail
           cp track_events_/&0100:call nc,fail
-      IF tf_output - 2
-  !! review this
-      END
-          ld a,4:sub b  ; channel: 1, 2, ,3
-          cp (hl):call nz,fail
-          inc hl
-      IF tf_mix - 3
-  !! review this
-      END
-          ld a,(hl)     ; mix mode
-          or a:call nz,fail
-          inc hl
-      IF tf_struct_size - 4
+      IF tf_struct_size - 2
   !! oversight
       END
           djnz .lp
@@ -1390,15 +1380,25 @@ check_
 test_subsong_add_track
 ;---------------------
           call nrt_init
-          call song_reset
+      IF 0
+; !! no, subsong with tracks already created by nrt_init
           xor a:call Subsong_add
-      BRK
-          ld a,1:call Subsong_add_track
+          ld hl,.param:ld c,2:call Subsong_add_track
           call Song_get_first_track:call z,fail
           cp 1:call nz,fail
           call Song_get_next_track:call nz,fail
+      ELSE
+          call Song_get_first_track:call z,fail
+          cp 1:call nz,fail
+          call Song_get_next_track:call z,fail
+          cp 2:call nz,fail
+          call Song_get_next_track:call z,fail
+          cp 3:call nz,fail
+          call Song_get_next_track:call nz,fail
+      END
           ret
-
+.param BYTE 1           ; track id
+      BYTE 1            ; channel id
 
       IF enable
 test_ui

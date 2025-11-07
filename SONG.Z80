@@ -1,0 +1,123 @@
+; <<< Song/Subsong handling >>>
+
+; 2025
+; --- v0.at ---
+ ; Oct
+   ; 16 Extracted from track.o
+
+; TOC ---------------
+; -------------------
+    ; New_subsong (no!! lives in track.o to avoid song->track dep)
+    ; Subsong_add 
+    ; Song_select_subsong
+    ; Song_get_current_subsong
+    ;  ;; Song_add_track ?? Replaced by Subsong_add_track?
+    ; Subsong_add_track
+    ; Song_get_first_track
+    ; Song_get_next_track
+
+      IMPORT "const.i"  ; to_be_implemented
+      IMPORT "memmap.i"
+      IMPORT "memcpc.o"
+
+Subsong_add
+;----------
+;Add a new subsong           
+;In: a = ID  
+      IF todo
+; number from 1? (like instruments and track)
+      END
+          or a
+          ret z
+; add link in subsongs
+          call to_be_implemented
+          ret
+
+Subsong_add_track
+;-- Append track id in current subsong
+; in:   c = nb params (2 for nows)
+    ; hl= params: 
+        ; -track id
+         ;-output channel (0: master unused now, 1..3: psg channel A..C)
+        ; future: 
+         ;-replay freq
+         ;-psg mix mode 
+         ;-sample mix mode
+;out: af,de preserved
+          push af:push de
+          ld a,c:cp 2:call nz,programming_error
+          ex de,hl
+          call Song_goto_last_track
+          ld a,(subsong_pool_pnt)
+          or a:call z,memory_full
+          ld (hl),a:ld l,a
+;null link
+          xor a:call cp_a_hl_safe
+;track id
+          call cp_de_hl_safe
+          or a:call z,to_be_implemented ;track 0: unhandled
+;output channel
+          call cp_de_hl_safe
+  ;expect in 1..3
+          or a:call z,to_be_implemented
+          cp 4:call nc,to_be_implemented
+          ld a,l:ld (subsong_pool_pnt),a
+          pop de:pop af
+          ret
+
+cp_de_hl_safe
+          ld a,(de):inc de
+cp_a_hl_safe
+          ld (hl),a:inc l:call z,memory_full
+          ret
+
+
+Song_add_track
+      BRK
+
+Song_select_subsong
+          ld (current_subsong),a
+          ret
+
+Song_get_current_subsong
+          ld a,(current_subsong)
+          ret
+
+Song_get_first_track
+;In: subsong selected (for now only 1)
+;Out: If such track: NZ, A = track ID
+                   ; HL = pnt for /Song_get_next_track/
+    ; Otherwise, Z, HL = pnt null link (for append)
+          call connect_bk_track
+          ld hl,subsongs
+          ld a,(current_subsong)
+          or a
+          jr z,.okss
+;Todo: follow links until A = 0
+          call to_be_implemented
+.okss
+          inc hl        ; skip link next subsong
+;Enchaine
+Song_get_next_track
+;In: HL points link to next track
+;Out: If such next track, NZ, A = id
+                        ; HL points to new link
+    ; Otherwise, Z
+          ld a,(hl)
+          or a
+          ret z
+          ld l,(hl)
+          inc hl        ; skip link nxt track. NO 'INC L', to keep NZ
+          ld a,(hl)
+          dec hl
+          ret
+
+Song_goto_last_track
+;In: subsong selected (for now only 1)
+;Out: HL points to last (null) link
+          call Song_get_first_track
+.lp
+          ret z
+          call Song_get_next_track
+          jr .lp
+
