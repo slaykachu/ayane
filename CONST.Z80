@@ -1,5 +1,7 @@
 ; ---- Shared constants and struct def -----
 
+dev_checks = 0
+
 mess  = &BE00
 memory_full = &BE00
 to_be_implemented = &BE00
@@ -16,6 +18,7 @@ replay_default = replay_50_08Hz
 delai_ui_default = 6
 diapason_default = 440*128
 
+MAX_INSTRS = 99         ; instrsel
 MAX_TRACKS = 16         ; used by track, ply, salo
 MAX_FX_BY_INSTR = 2     ; 7 max (see timer.fxcutend)
 ;MAX_TIMER_FXS = 15      ; in timer.o
@@ -171,7 +174,11 @@ fx1_pitch WORD
       WORD              ; marker end of fx
 instr_row_size_max
 
-;-------------------------
+;-------------------------------
+; Field positions in status band
+;-------------------------------
+y_pos_name = 0
+x_pos_name = 34
 y_pos_octave = 1
 x_pos_octave = 50
 y_pos_instr# = 2

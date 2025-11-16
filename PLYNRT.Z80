@@ -1,6 +1,9 @@
 ; Tests ply.o            
 do_profile = 1
 ; 2025 
+; --- v0.0au ---
+  ; Nov  9 Add test_endoftrack
+         ; s/nrt_play/nrt_play_from_start
 ; --- v0.0at ---
   ; Oct 16 Use "macro.i"
          ; Fix nrt_play (when do_profile = 0)
@@ -14,14 +17,15 @@ do_profile = 1
       IMPORT "memmap.i"
       IMPORT "plyconf.i"
       IMPORT "macro.i"
+      IMPORT "import.i"
 
       ORG code_start
       ENT tests
 
+          IMPORT_SHARED_DEPS() ; ensure same location than ayalib
+
       IMPORT "track.o"  ; for Init_track_module and tracks
       IMPORT "phrase.o"
-      IMPORT "chung.o"
-      IMPORT "ply.o"
       IMPORT "timer.o"  ; for fx_end
       IMPORT "fx-api.o" ; for instr_set_vol_table and co
       IMPORT "testlib.o"
@@ -43,6 +47,7 @@ fail  = &BE00
 
 tests
           call test_empty_phrase
+      BRK
 
       IF do_profile
           call test_profiling
@@ -56,6 +61,7 @@ tests
           call test_empty_phrase
           call test_note_instr
           call test_sync_buzzer
+          call test_endoftrack
           ret
 
 nrt_init
@@ -112,7 +118,7 @@ test_empty_song
           push bc
 
           di
-          call nrt_play
+          call nrt_play_from_start
 
           ld a,(psg_regs+7)
           cp &3F:call nz,fail
@@ -126,8 +132,8 @@ test_empty_song_no_hook_tm
 ; -> shorter codepath to verify in case of TM discrepancy
 
           call nrt_init
-          call nrt_play ; 1st to install phrase
-          call tm_play_
+          call nrt_play_from_start ; 1st to install phrase
+          call tm_play
           ret
 
 test_empty_song_tm
@@ -136,7 +142,7 @@ test_empty_song_tm
           ld b,0
 .lp
           push bc
-          call tm_play
+          call tm_play_from_start
           ld a,(psg_regs+7)
           cp &3F:call nz,fail
           pop bc
@@ -150,16 +156,18 @@ test_empty_phrase
           call nrt_init
 
           xor a:call song_select_new_phrase
+; Needed to avoid infinite autoloop
           call phrase_select_new_row:call nc,fail
+
 ; --- track with this phrase
           call nrt_phrase0_in_track1
 
       IF do_profile
-          call tm_play
+          call tm_play_from_start
           call tm_play  ; 2nd iter
       ELSE
-          call nrt_play
-          call nrt_play
+          call nrt_play_from_start
+          call play
       END
           ret
 
@@ -169,9 +177,9 @@ test_note_instr
           call nrt_init
           call nrt_dummy_song
       IF do_profile
-          call tm_play
+          call tm_play_from_start
       ELSE
-          call nrt_play
+          call nrt_play_from_start
       END
           ld hl,.ref
           ld de,psg_regs
@@ -196,13 +204,38 @@ test_sync_buzzer
 .lp
           push bc
       IF do_profile
-          call tm_play
+          call tm_play_from_start
       ELSE
-          call nrt_play
+          call nrt_play_from_start
       END
           pop bc
           djnz .lp
           ret
+
+test_endoftrack
+;--------------
+; track handling should be no-op after end
+          call nrt_init
+          call nrt_dummy_song
+;do setup
+      IF do_profile
+          call tm_play_from_start
+      ELSE
+          call nrt_play_from_start
+      END
+          ld b,nrt_duration * 2
+.lp
+          push bc
+      IF do_profile
+          call tm_play
+      ELSE
+          call play
+      END
+          pop bc
+          djnz .lp
+          ret
+
+
 
 
 nrt_dummy_song
@@ -216,6 +249,8 @@ nrt_dummy_song
 nrt_dummy_phrase
 ; --- dummy phrase
           xor a:call song_select_new_phrase
+nrt_duration = 12
+          ld a,nrt_duration
           call phrase_select_new_row:call nc,fail
           ld a,0:call row_set_note
           ld a,1:call row_set_instr
@@ -335,8 +370,8 @@ cr_nono
           ret
 
 
-nrt_play
-;-------
+nrt_play_from_start
+;------------------
 ; Play first tick
 ; It doesn't check anything
           call nrt_setup_play
@@ -352,11 +387,11 @@ MAX_TM = &80
           call play
           ret
 
-tm_play
-;------     
+tm_play_from_start
+;-----------------     
 ; reset psg regs for accurate check
           call nrt_setup_play
-tm_play_
+tm_play
           ld ix,play
           call check_tm
           ret

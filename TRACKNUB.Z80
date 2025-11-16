@@ -2,15 +2,20 @@
 ; -> Needed by ply for Song_amorce, without pulling full track.o ui
    ; (otherwise, memory full via uilooptt)
 
+; -- v0.0au --
+; 2025 Nov 7: + connect_bk_track (now that tracks are in bank)
+
       IMPORT "const.i"
       IMPORT "memmap.i"
       IMPORT "macro.i"
+      IMPORT "memcpc.o"
 
 get_track_header
 ;---------------
-;in : a : track #, BK_TRACK connected
+;in : a : track #
 ;out: hl: track pnt* 
     ; a : preserved
+          call connect_bk_track
           push af
           cp MAX_TRACKS:call nc,mess
           ASSERT(tf_struct_size == 2)

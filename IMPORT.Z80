@@ -15,13 +15,12 @@ todo  = 1
       MACRO IMPORT_CORE
 ; Also imported by ayane.o
       IMPORT "memcpc.o"
-          PAD()
      ; IMPORT "assert.o"
-          PAD()
       IMPORT "scan-key.o"
-          PAD()
       IMPORT "conv.o"   ; out of bank for disp
-          PAD()
+      IMPORT "tracknub.o" ; get_track_header 
+      IMPORT "song.o"   ; Song_get_first_track, Subsong_add ...
+
 ; Handier than disp itself: do the connection
 ; NO!!! ayane.o's clients of disp already in disp bank
       ; 
@@ -30,6 +29,10 @@ todo  = 1
 ; See why "double defined" from ayane.o when uncommented
 ;post_core    
       END
+;!!! needed at the end, otherwise out of sync 
+;!!! when IMPORT_CORE is used twice (ayalib: directly and transitively)
+;!!! vs once (salo-nrt)
+          PAD()
       ENDM
 
 ;-----------------------------
@@ -48,6 +51,7 @@ todo  = 1
 ; so instrui & co use this instance
 .save
       ORG ged
+      IMPORT "field.o"  ; to pull field_editor
       IMPORT "ged.o"
           LIMIT(bandaya)
       ORG .save
@@ -75,12 +79,13 @@ todo  = 1
       SKIP phrase-$     ; needed to skip instrui, piano...
       END
       IMPORT "phrase.o"
+      IMPORT "periods.o" ; set_diapason
       IF with_track     ; doesn't fit in ayalib
+      IF $ < rgb256     ; untrue 2nd time imported from salo
+      SKIP rgb256 - $   ; room for instrsel
+      END
       IMPORT "track.o"
       END
-      IMPORT "tracknub.o" ; get_track_header
-      IMPORT "periods.o" ; set_diapason
-      IMPORT "song.o"   ; Subsong_add ...
       ENDM
 
 ;-----------------------------
@@ -123,6 +128,7 @@ status_off = bandaya +8
 .save
       ORG strings
       IMPORT "doc-in/strings.o"
+          LIMIT(name_module)
       ORG .save
       ENDM
 

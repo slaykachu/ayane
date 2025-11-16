@@ -5,10 +5,9 @@
 ;Aug
  ; 23 Move common macro in macro.i
 
+      IMPORT "const.i"  ; dev_checks
       IMPORT "plyconf.i" ; sfx flag used via SUB_TM
       IMPORT "macro.i"
-
-dev_checks = ayane
 
       IF dev_checks
       IMPORT "instr.o"

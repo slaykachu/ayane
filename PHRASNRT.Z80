@@ -21,8 +21,6 @@
 fail  = &BE00
 
 tests
-          call test_unpack_row_at
-      BRK
           call test_phrase_get_rows#
           call test_phrase_get_row_at
           call test_phrase_get_row_at'

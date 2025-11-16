@@ -52,12 +52,12 @@ Subsong_add_track
           or a:call z,memory_full
           ld (hl),a:ld l,a
 ;null link
-          xor a:call cp_a_hl_safe
+          xor a:call copy_a_hl_safe
 ;track id
-          call cp_de_hl_safe
+          call copy_de_hl_safe
           or a:call z,to_be_implemented ;track 0: unhandled
 ;output channel
-          call cp_de_hl_safe
+          call copy_de_hl_safe
   ;expect in 1..3
           or a:call z,to_be_implemented
           cp 4:call nc,to_be_implemented
@@ -65,9 +65,9 @@ Subsong_add_track
           pop de:pop af
           ret
 
-cp_de_hl_safe
+copy_de_hl_safe
           ld a,(de):inc de
-cp_a_hl_safe
+copy_a_hl_safe
           ld (hl),a:inc l:call z,memory_full
           ret
 

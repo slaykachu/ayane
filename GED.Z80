@@ -1,4 +1,10 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
+; -- v0au --
+; Nov
+  ;15 multiline_top: fix top = 0   
+  ;14 key_hexa: fix buggy validation (e.g. was accepting Q)
+    ; _multiline_update_cur_y: must also update model
+  ;10 s/dev_checks/dev_checks' to avoid ambiguity
 ; -- v0aq --
 ; Sep    
   ;30 multiline_ctrl_up:  Musn't refresh when line in view
@@ -6,7 +12,7 @@
     ; Deactivate multiline scrolling: too slughish
 do_scroll_multiline = 0
 
-dev_checks = 1
+dev_checks' = 1         ; forced for now
 dev_checks_display = 0  ; 0: let display fails, easier to see problem
 need_room = 1
 todo  = 1
@@ -288,12 +294,12 @@ _check_address
       MACRO CHECK_KEY_TABLE
 ; Assert keytables <= hl < keytables_
 ; Triggered when e.g. hl = &be00
-      IF dev_checks
+      IF dev_checks'
           call _check_key_table
       END
       ENDM
 
-      IF dev_checks
+      IF dev_checks'
 _check_key_table
           push hl:push de
           ex de,hl
@@ -534,12 +540,12 @@ _get_state_byte
           ret
 
       MACRO CHECK_IN_FOCUS
-      IF dev_checks
+      IF dev_checks'
           call _check_in_focus
       END
       ENDM
 
-      IF dev_checks
+      IF dev_checks'
 _check_in_focus
           push hl:push de:push af
           ld hl,(state_sp)
@@ -748,7 +754,7 @@ setup_widget
   ; If disp calls setup itself, we cannot handle the second use-case.
 
 ; In: HL = widget description
-      IF dev_checks
+      IF dev_checks'
           ld de,&4000:or a:sbc hl,de:add hl,de:call nc,fail
       END
 
@@ -764,7 +770,7 @@ _setup_widget
 ;          xor a:SET_STATE_BYTE(focus)
 
           ld a,(hl)
-      IF dev_checks
+      IF dev_checks'
           cp w_brk:call c,fail ; w_null / w_frame not used
           cp widgets_nb:call nc,fail
       END
@@ -814,7 +820,7 @@ gedeihen_enter
       IF todo
 ;remove that
       END
-      IF dev_checks
+      IF dev_checks'
 ; caller must reset cursor
 ; for now, it's always 1,1  (for test)
 ; we check that 
@@ -833,7 +839,7 @@ gedeihen_process
  ;TODO: event/key discrimination with new API.
           cp ev_child_exit:scf:ret z ; discard
 
-      IF dev_checks
+      IF dev_checks'
 ; 0 is used as sentinelle, mustn't be sent as code
           or a:call z,fail
       END
@@ -916,7 +922,7 @@ process_key_custom
 ;reuse scan_key (different api though)
       END
           CHECK_KEY_TABLE()
-      IF dev_checks
+      IF dev_checks'
           inc e:dec e:call z,fail
       END
           ld a,(hl):inc hl
@@ -1036,14 +1042,14 @@ clone_and_set_state_disp
           jp set_state_sp_disp
 
 set_state_sp
-      IF dev_checks
+      IF dev_checks'
           call _check_state_sp
       END
 _set_state_sp
           ld (state_sp),hl
           ret
 
-      IF dev_checks
+      IF dev_checks'
 set_state_sp_disp
 ;In: hl= sp state in disp stack
           call _check_state_sp_disp
@@ -1065,7 +1071,7 @@ set_state_sp_gen = set_state_sp
       END
 
 
-      IF dev_checks
+      IF dev_checks'
 _check_state_sp
           push de
           ld de,state_stack:or a:sbc hl,de:add hl,de:call c,fail
@@ -1094,7 +1100,7 @@ rewind_state
 ; Set state to widget currently handling event
           push hl
           ld hl,(state_sp_handler)
-      IF dev_checks
+      IF dev_checks'
           ld a,l:or h:call z,fail
       END
           call set_state_sp
@@ -1109,7 +1115,7 @@ push_state
 ; Note: no worth it to factorize with /clone_state/
           push af
           push hl
-      IF dev_checks
+      IF dev_checks'
 ;check was setup
           ld hl,(state_sp)
           push hl
@@ -1117,7 +1123,7 @@ push_state
       END
           ld bc,state_
           add hl,bc
-      IF dev_checks
+      IF dev_checks'
 ;check stack overflow
           push bc
           ld bc,state_stack_end:or a:sbc hl,bc:add hl,bc:call z,fail
@@ -1126,7 +1132,7 @@ push_state
           pop bc
       END
           ld (state_sp),hl
-      IF dev_checks
+      IF dev_checks'
 ; check child was setup
           inc hl:ld a,(hl):or a:call z,fail ; 'set_cursor' field
 ;another check proper setup
@@ -1168,7 +1174,7 @@ clone_state
           ld e,l:ld d,h
           ld bc,state_
           add hl,bc
-      IF dev_checks
+      IF dev_checks'
           push bc
           ld bc,state_stack_end:or a:sbc hl,bc:add hl,bc:call z,fail
           ld bc,state_stack_disp_end:or a:sbc hl,bc:add hl,bc
@@ -1188,7 +1194,7 @@ call_display
 ; Call 'on_display' widget's method, passing focus
 ;TODO? Harmonize with /refresh/?
           GET_STATE_BYTE(focus)
-      IF dev_checks
+      IF dev_checks'
           or a:jr z,.ok
           cp &FF:call nz,fail
 .ok
@@ -1457,7 +1463,7 @@ setup_child
 
 wc_optional
           call wc_init_double_word
-      IF dev_checks
+      IF dev_checks'
 ; Check child "branch" is only one level deep.
 ; See comment in /w_optional_readwrite/ for rationale.
           ld hl,(state_sp)
@@ -1523,7 +1529,7 @@ enter_child
           call push_state
 _recurse
 ; For some reason, setup_widget wasn't done recursively
-      IF dev_checks
+      IF dev_checks'
           ld a,h:cp &40:call nc,fail
       END
           call enter
@@ -1532,10 +1538,9 @@ _recurse
 
 multiline_on_enter
 ; Enter wrapped widget   
-          GET_STATE_BYTE(cur_y)
-          call select_line_in_view
+          call select_line_in_view'
           call nc,fail  ; what to do if no line here?
-      IF dev_checks
+      IF dev_checks'
           GET_STATE(embedded_ui)
 ;see /w_key_handler/
           ld a,(hl):cp w_key_handler:call z,fail
@@ -1548,14 +1553,14 @@ refresh_on_enter
 ; !!! Hackish
 ; Todo at setup time instead?
           GET_STATE(parent)
-      IF dev_checks
+      IF dev_checks'
           ld a,l:or h:call z,fail ; only make senses 
       END
           ld (refresh_sp+1),hl
           ld hl,force_refresh
           ld (validate_hook+1),hl
           GET_STATE(embedded_ui)
-      IF dev_checks
+      IF dev_checks'
           ld a,h:cp &40:call nc,fail
       END
           jp enter_child
@@ -1564,7 +1569,7 @@ force_refresh
           ld hl,(state_sp)
           push hl
 refresh_sp ld hl,0
-      IF dev_checks
+      IF dev_checks'
           ld a,l:or h:call z,fail
       END
       IF hack
@@ -1606,7 +1611,7 @@ force_refresh_custom
       IF hack OR todo
 ;; factorize with force_refresh
       END
-      IF dev_checks
+      IF dev_checks'
           ld a,l:or h:call z,fail
       END
       IF hack
@@ -1704,7 +1709,7 @@ struct_lft
 
           dec hl
           call setup_field
-      IF dev_checks
+      IF dev_checks'
           call nc,fail
       END
           push af
@@ -1723,7 +1728,7 @@ struct_stay
           pop hl
 struct_stay_
           call setup_field
-      IF dev_checks
+      IF dev_checks'
           call nc,fail
       END
 struct_reenter
@@ -1884,7 +1889,7 @@ _struct_go_rgt
                                     ; HL = previous col 
 
 ;Here: focus is still on child (field).
-      IF dev_checks
+      IF dev_checks'
 ;!!! actually not necessarily immediate child, in case of wrapper
 ;!!! so we just check focus is not on struct itself
           ld hl,(state_sp)
@@ -1931,7 +1936,7 @@ _struct_setup_field_cursor
    ; DE: cursor
           SET_STATE(struct_col)
           call setup_field
-      IF dev_checks
+      IF dev_checks'
           call nc,fail
           call z,fail
       END
@@ -1971,6 +1976,7 @@ multiline_up
           jp _multiline_refresh_com
       ELSE
           call get_current_line_number ; before page_up!
+          dec a
           push af
           call page_up
           jp _ml_upd_y_and_refresh
@@ -2049,26 +2055,29 @@ multiline_dwn
           inc a
       ELSE
           call get_current_line_number ; before page_up!
+          inc a
           push af
           call page_dwn
 _ml_upd_y_and_refresh
           ld b,a
           pop af
-          push bc
-          call update_cur_y_from_selected
-          pop af
+          sub b
+          call update_cur_y
+          ld a,b
 ;enchaine
       END
 _multiline_refresh_com
 ;In: A = new line at top
    ; !!! (sp) = saved state_sp
           SET_STATE_BYTE(line_at_top)
+_multiline_refresh_com'
           ld hl,(state_sp)
           call refresh_nofocus_safe_save_cursor
           jr _multiline_reenter
 
 _multiline_update_cur_y
           call update_cur_y
+          call select_line_in_view'
 _multiline_reenter
 ; Re-enter nested widget
 ; We don't call widget_setup like struct does, 
@@ -2119,7 +2128,7 @@ _ml_dwn
           cp c
           jp nz,_ml_update_y
 
-      IF dev_checks
+      IF dev_checks' AND do_scroll_multiline
           call nc,fail  ; past scroll threshold
       END
           scf:sbc a     ; NZ, C
@@ -2180,13 +2189,28 @@ multiline_ctrl_dwn
           jp nc,_multiline_update_cur_y
 ;must scroll
           call page_dwn
-          jp _multiline_refresh_com
+ ; do it now for get_current_line_number
+          SET_STATE_BYTE(line_at_top)
+;out of range?
+          ld b,a
+          push bc
+          call call_state_get_line#
+          pop bc
+          ld c,a
+          call get_current_line_number
+          cp c
+          jr c,.ok
+;we want cur y = last (c-1) - top (b)
+          ld a,c:dec a:sub b
+          call update_cur_y
+.ok
+          jp _multiline_refresh_com'
 
 page_dwn
 ;Out: A = new line on top
     ; NZ if must refresh
           call call_state_get_line#
-      IF dev_checks
+      IF dev_checks'
           or a:call z,fail ; We don't handle empty structure
       END
           dec a
@@ -2210,6 +2234,7 @@ multiline_top
 ;scroll
           xor a
           call update_cur_y
+          xor a
           jp _multiline_refresh_com
 
 multiline_bottom
@@ -2332,7 +2357,7 @@ update_cur_y
           pop af
           SET_STATE_BYTE(widget_pos_y)
           call pop_state
-      IF dev_checks
+      IF dev_checks'
           call z,fail
       END
           pop bc
@@ -2518,7 +2543,7 @@ toggle_char = "x"
 disp_struct
 ; Struct display.
     ; Hardcoded seperators: space.
-      IF dev_checks
+      IF dev_checks'
           or a:jr z,.ok
           cp &FF:call nz,fail
 .ok
@@ -2716,7 +2741,7 @@ append_to_buffer
           ex de,hl
           call skip_nt
           dec hl        ; rewind to 0
-      IF dev_checks
+      IF dev_checks'
 ;Mustn't be pre-buffer
           ld a,l:cp wv_tmp_buffer-1 AND &FF:call z,fail
       END
@@ -2846,7 +2871,7 @@ _buffer_to_deci_byte
           ld hl,wv_edit_buffer
           ld a,(hl):or a
           ret z         ; nc: no digit at all
-      IF dev_checks
+      IF dev_checks'
 ;Padding mustn't be done in buffer (prevents to insert digits)
 ;but at display time.
           cp " ":call z,fail
@@ -2859,7 +2884,7 @@ _buffer_to_deci_word
           ld hl,wv_edit_buffer
           ld a,(hl):or a
           ret z         ; nc: no digit at all
-      IF dev_checks
+      IF dev_checks'
 ;Padding mustn't be done in buffer (prevents to insert digits)
 ;but at display time.
           cp " ":call z,fail
@@ -2932,10 +2957,9 @@ key_hexa
 ; Validate only when 2 digits entered  (?! not done anymore?)
           cp "0":ccf:ret nc ; NC NZ: not handled
           cp "9"+1:jr c,.ok
+          res 5,a
           cp "A":ccf:ret nc
-          cp "f"+1:jr nc,ncnz
-          set 5,a
-          cp "a":ccf:ret nc
+          cp "F"+1:jr nc,ncnz
 .ok
           jp field_editing
 ncnz
@@ -2973,7 +2997,7 @@ key_handler_custom
 ;Try key on custom table, against embedded ui 
 ;(already pointed via state_sp)
 
-      IF dev_checks
+      IF dev_checks'
 ; Check child is actually pointed by state_sp
 ; It won't be so if key handler if not above leave of ui tree.
 ; In which case the wrong methods might be called?
@@ -3016,7 +3040,7 @@ key_optional_readwrite
 ; Otherwise, we would use w_optional_readwrite.on_exit, doing nothing.
           ld (state_sp),hl
           ld e,a
-      IF dev_checks
+      IF dev_checks'
 ; Check it is setup
           inc hl:ld a,(hl):dec hl:or a:call z,fail
       END
@@ -3161,7 +3185,7 @@ fe_pos = $+1
 ; -- Not handled, lift event
           ld a,b
           or a          ; NC, NZ      
-      IF dev_checks
+      IF dev_checks'
           call z,fail   ; 0 unexpected 
       END
           ret
@@ -3173,7 +3197,7 @@ fe_pos = $+1
    ; - it would read back model's value (since current not validated)
           call reset_cursor_from_widget_location
           xor a         ; no focus
-      IF dev_checks
+      IF dev_checks'
 ; HL must still point to edit buffer
           ld bc,wv_edit_buffer
           or a:sbc hl,bc:add hl,bc:call nz,fail
@@ -3181,7 +3205,7 @@ fe_pos = $+1
 
           call disp_text_hl
 
-      IF dev_checks
+      IF dev_checks'
 ; HL must still point to edit buffer
           ld bc,wv_edit_buffer
           or a:sbc hl,bc:add hl,bc:call nz,fail
@@ -3201,7 +3225,7 @@ fe_pos = $+1
 
           GET_STATE(widget_pos)
           ld a,c:add h:ld h,a
-      IF dev_checks
+      IF dev_checks'
           call z,fail
       END
           call display_cursor_at
@@ -3267,6 +3291,8 @@ get_width_common
           pop hl:pop de:pop bc
           ret
 
+select_line_in_view'
+          GET_STATE_BYTE(cur_y)
 select_line_in_view
 ; Current concrete ligne number and select it
 ; See /update_cur_y_from_selected/ for opposite
@@ -3474,6 +3500,7 @@ state_sp WORD state_stack
 state_sp_handler WORD 0
 
 wv_tmp_buffer SKIP 80
+wv_tmp_buffer_
 
 ; stack ------
 

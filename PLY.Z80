@@ -1,6 +1,7 @@
 todo  = 1
 may_optim = 1
 need_room = 1
+
 ; <<<<<< bouts de player, player debout. Not your ayerage player! >>>>>>
 
 ; Execution outline:
@@ -17,8 +18,11 @@ need_room = 1
  ; See /track_stack/
 
 ; \/\/\/ 2025 \/\/\/\/\
-; ----- v0at -----
+; ----- v0au -----
   ; Nov
+   ;10 fx_set_phrase: fix routine
+
+; ----- v0at -----
    ; 5 Move get/set_diapasion in periods.o
   ; Oct
    ;28 Move Init_periods in periods.o
@@ -28,14 +32,12 @@ need_room = 1
    ;14 diapason on 16 bits
 
       IMPORT "plyconf.i"
-
       IF 1-ayane
       ORG compiled_player
       END
-dev_checks = 1 AND ayane
 
-      IMPORT "memmap.i"
       IMPORT "const.i"
+      IMPORT "memmap.i"
       IMPORT "macro.i"
       IMPORT "instr.o"
 check_pc
@@ -71,17 +73,25 @@ fx_set_phrase
      ; - go to next chunk
      ; - auto-loop phrase 
      ; - /empty_phrase/
-      BRK
-      IF todo
-;!!! bug:must reset SP
-;!!! bug:must reset BC
-; Must set TM
-      END
+
+          pop de        ; param = phrase pnt
+; -- clear fx to avoid infinite loop
+          push de
+          ld hl,fx_noFx:push hl
+; -- restore BC = tick (to set up real nxt rdv)
+; Rely on fact that pseudo row with this fake fx has duration=0
+; so current tick was stored at /read_row/
+          ld hl,track_rdv_row - track_fx:add hl,sp:ld sp,hl
+          pop bc
+
+          ex de,hl
+          pop de        ; skip old pnt
+
 ; For now we know it's the same bank.
       IF phrases_across_banks
  !! review connection
       END
-          pop hl
+          SUB_TM(29+3)
           jp read_row
 
       IF fx_code/&0100 - fx_set_phrase/&0100
@@ -573,7 +583,7 @@ tm_read_row = 1 + 43    ; until read_fx
           INC_HL()
       ELSE
 ; Can use BC directly here
-          ld a,(hl):INC_HL():add c ; same code snippet than event RDV
+          ld a,(hl):INC_HL():add c
       END
           ld c,a
           jr nc,$+3:inc b
@@ -746,12 +756,11 @@ tick_pitch_tm = 0
           EX_AF'()
           ld a,l:cp fx_noFx AND &FF:jr z,.okfx
           cp fx_set_phrase AND &FF:call nz,mess
-          SUB_TM''(5)
+          SUB_TM''(5-1)
 .okfx
           ld a,h:cp fx_noFx/&0100:call nz,mess
           EX_AF'()
           SUB_TM(21)
-;!!! If BRK: There is a bug in fx_set_phrase, which doesn't reset SP
       END
 ; Jump to fx_0, fx_1, instr, and then track_loop   
           RET_ROUT(play_tick_tm + tick_vol_tm + tick_pitch_tm)
@@ -1072,6 +1081,7 @@ track_stack
 
  ; Word 0            ; RDV event
  ; Word     ; Track pnt 
+track_rdv_row = 4
  ; Word 0            ; RDV row
 track_phrase_pnt = 6
  ; Word     ; Phrase pnt

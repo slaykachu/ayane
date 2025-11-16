@@ -2,6 +2,10 @@
    ; Difference: status_*: same API than disp_* (e.g. BC for text)
 
 ; 2025     
+; -- v0au --
+ ; Nov          
+   ; 16 Adapt /status_inv_cursor_at/ for ayane's status
+   ; 10 s/dev_checks/dev_checks' to avoid ambiguity
 ; -- v0aq -- 
  ; Oct
      ;15 Add status_paragraph_at:
@@ -9,7 +13,7 @@
             ; - C1 connected to read final 0
 
 todo  = 1
-dev_checks = 1
+dev_checks' = 1
 
 screen' = &4000         ; for status
 r1'   = 48
@@ -746,7 +750,7 @@ _status_cursor
 ;In: d=x (0 based) e=y (0 based) <= 4
 ;Out: HL= Scr pos.
           push af
-      IF dev_checks
+      IF dev_checks'
           ld a,d:cp r1'*2:call nc,mess
           ld a,e:cp 7:call nc,mess
       ELSE
@@ -765,7 +769,7 @@ _status_cursor
 
 status_get_pos
           ld de,(vo_status_pos)
-      IF dev_checks
+      IF dev_checks'
           push af
           ld a,d
           cp &40:call c,mess
@@ -930,16 +934,12 @@ status_inv_cursor_at
 ; NB: doesn't change internal cursor position
           push bc:push hl
           call _status_cursor
+          ld a,h:and &F0:cp &40:call nz,&BE00
           ld b,8
-sicalp
-          ld a,h:and &F0:cp &80:call nz,&BE00
+.sicalp
           ld a,(hl):cpl:ld (hl),a
-          ld a,h:add 8:bit 4,a:jr z,sicaok
-          ld a,l:add r1'*2:ld l,a
-          ld a,h:adc -8
-sicaok
-          ld h,a
-          djnz sicalp
+          ld a,h:add 8:ld h,a
+          djnz .sicalp
           pop hl:pop bc
           ret
 
@@ -981,7 +981,7 @@ status_ret
 ;Check IX dest is in C000
 ;Not needed anymore
 jp_ix_c1
-      IF dev_checks
+      IF dev_checks'
           push af
           ld a,ixh:and &C0:cp &C0:call nz,mess
           pop af

@@ -1,14 +1,24 @@
 ; ====== Handling of phrases and rows ======
 ; 2025    
+ ; -- v0.0au --
+; Nov
+   ; 10 s/dev_checks/dev_checks' to avoid ambiguity
+      ; unpack_next_row: s/jr nz/jr nc (typo). Again?
+      ; [ON HOLD] song_select_new_phrase: create empty row  
+                ; (to avoid ply infinite autoloop on empty phrase)
+do_add_empty_row = 0
+      IF do_add_empty_row
+ !! A bit inconvenient. must fix phrasnrt, chipn, salo ... 
+      END
  ; -- v0.0at --
 ; Oct
-   ; 17 Add copy_row_at/copy_next_row
+   ; 17 Add unpack_row_at/unpack_next_row
       ; Reorder: note before vol to match ply
  ; -- v0.0ai --
 ; Aug 8 set row_set_vol_encoded     ; for salo
       ; s/song_reset/phrase_reset
 ; v0.0ac 5 Mar 2025
-dev_checks = 1
+dev_checks' = 1
 todo  = 1
 makeroom = 1
 
@@ -162,6 +172,8 @@ fillb     ld (hl),a:inc hl:djnz fillb
 song_select_new_phrase
 ;---------------------
 ; Create and select a fresh phrase, from 0 to 254
+; !! UI must add empty row to avoid infinite auto loop in ply
+; (as do_add_empty_row=0, convenient for chipn and salo)
 ; Init header: type, index, name (null for now), color (idx+1 for now)
 ; IN: A = phrase ID: - needed by chip.o since non contiguous patterns
                             ; by salo.o 
@@ -177,11 +189,8 @@ song_select_new_phrase
           inc a:call z,err_toomuchphrases
           ld (phrase_color),a
 
-      IF todo
- ; must call postlude in case of error? 
-      END
-          call new_phrase_chunk:ret nc ; Exit if memory full
-      IF dev_checks
+          call new_phrase_chunk:jr nc,_postlude ; Exit if memory full
+      IF dev_checks'
           ld a,l:cp BK_PHRASE:call nz,mess
       END
           ex de,hl      ; DE= phrase chunk ID.
@@ -192,31 +201,48 @@ song_select_new_phrase
           ld h,phrases_rows/&0100:ld (hl),0 ; rows # 
           ld h,phrases_idx/&0200:sla l:rl h
           ld (hl),e:inc l
-      IF dev_checks
+      IF dev_checks'
 ; !! Right now we assume it's a brand new phrase.
 ; When it's not the case anymore (e.g. user input), either
 ; return current as is (no new_phrase_chunk) or free it (TBD).
           ld a,(hl):or a:call nz,unexpected
       END
           ld (hl),d
-_ssp
 ; Here and below: mustn't change flag Z!
 
-      IF 0
-;Non. see below
-          ld hl,0
-          ld (va_row_pnt),hl
-      ELSE
+      IF do_add_empty_row
+; Create empty row:
+   ; - Avoid infinite loop with ply (since phrase autoloop)
+   ; - Setup va_row_pnt (more generic)
+          ld a,&80      ; arbitrary duration > 0
+; Only for existing phrase!
+          call phrase_select_new_row
+      END
+
+          ; NZ (for _set_row_pnt)
+          jr _set_row_pnt
+
+
+song_select_phrase
+;-----------------
+; In: A: phrase number (from 0)
+; Out: Like /Get_phrase/
+  ; !! Current phrase changed even when non-initialised. Nevermind?
+
+          call _prelude
+          ld (va_current_phrase),a
+          call Get_phrase
+_set_row_pnt
 ; Selecting first row seems to be a better solution than
-; setting va_row_pnt (then calling e.g. row_add_duration would silently
-; add a row via connect_current_row)   
+; resetting va_row_pnt (then calling e.g. row_add_duration would
+; silently add a row via connect_current_row)   
           push af
           ld hl,0
-; Non-existing phrase (via song_select_phrase) don't have a start
+; Non-existing phrase don't have a start
           call nz,connect_phrase_begin
           ld (va_row_pnt),hl
           pop af
-      END
+;enchaine
 _postlude
       IF todo
 ; Is carry really needed if we use exception mecanism?
@@ -228,16 +254,6 @@ _postlude_
           pop ix:pop de:pop bc
           ret
 
-song_select_phrase
-;-----------------
-; In: A: phrase number (from 0)
-; Out: Like /Get_phrase/
-  ; !! Current phrase changed even when non-initialised. Nevermind?
-
-          call _prelude
-          ld (va_current_phrase),a
-          call Get_phrase
-          jr _ssp       ; unselect row
 
 song_get_phrases#
 ;----------------
@@ -278,7 +294,7 @@ phrase_set_params
           ld l,chunk_start + fc_color
           ex de,hl
           ld b,0
-      IF dev_checks
+      IF dev_checks'
 ; Check C was preserved
           ld a,c:or a:call z,mess
           cp 2:call nc,mess
@@ -381,7 +397,7 @@ unpack_row_at
           jr z,_unpack_row_com
 
 ; When t0 < t, it means no row until t1    
-      IF dev_checks
+      IF dev_checks'
           call c,mess   ; cannot have t < t0
       END
           call skip_all
@@ -429,7 +445,7 @@ unpack_next_row
           ld a,(hl)     ; duration
           ld bc,(time_next_row)
           or a:jr nz,$+3:inc b ; 0 = &100
-          add c:ld c,a:jr nz,$+3:inc b
+          add c:ld c,a:jr nc,$+3:inc b
           ld (time_next_row),bc
           jr _unpack_row_com
 
@@ -941,7 +957,7 @@ skip_fx_ins
 ;Out: HL: post skip. BC, DE preserved.
           call skip_fx
           rra           ; discard bit 4
-      IF dev_checks
+      IF dev_checks'
           call c,&BE00
       END
 ;ins
@@ -1027,7 +1043,7 @@ get_fx_sign
           ld d,(hl):inc hl
           dec e
 
-      IF dev_checks
+      IF dev_checks'
 ;Player (and then fxs) out of bank.
           ld a,d:cp &40:call nc,mess
       END
@@ -1063,7 +1079,7 @@ connect_current_row
           or h:call z,phrase_select_new_row
 ; Second chance when calling phrase_select_new_row
           ld hl,(va_row_pnt)
-      IF dev_checks
+      IF dev_checks'
           inc h:dec h:call z,mess
       END
           pop af
@@ -1098,7 +1114,7 @@ connect_phrase_begin
     ;  A=bk
     ; BC, DE preserved
           call song_get_current_phrase
-      IF dev_checks
+      IF dev_checks'
           call z,mess
       END
           ld l,BK_PHRASE
@@ -1148,7 +1164,7 @@ Get_phrase
           ld h,phrases_idx/&0200
           add hl,hl
           inc l
-      IF dev_checks
+      IF dev_checks'
           ld a,(hl):or a:jr z,.ok0
           and &C0:cp &40:call nz,fatal
           dec l
@@ -1236,7 +1252,7 @@ shift_in_phrase_chunk
 
 ; TODO? factorize with orgams? No merge and some other differences tho
 
-      IF dev_checks
+      IF dev_checks'
           ld a,c:or a:call z,fatal
       END
           call try_shift_in_chunk
@@ -1307,7 +1323,7 @@ copy_from_chunk_to_next
     ; a=bk dest (classical too for ayane)
          ; (actually any would work, except c2 as we are not in rom)
           ld c,a
-      IF dev_checks
+      IF dev_checks'
 ; 'next' field must be valid and non 0
           and &C4:cp &C4:call nz,fail
           ld a,d:and &C0:cp &40:call nz,fail
@@ -1718,7 +1734,7 @@ try_shift_in_chunk
           ld a,l
           ld l,chead_last
           neg:add (hl):ld b,a:inc b ; size to copy
-      IF dev_checks:call z,fatal:END
+      IF dev_checks':call z,fatal:END
 
           ld a,(hl)
           add c:jr c,_tsic_ret ; -> doesn't fit
@@ -1771,7 +1787,7 @@ move_tail_in_new_chunk'
           ld e,chead_last
           ld d,h
           ld a,(de)
-          sub l:IF dev_checks:call c,&BE00:END
+          sub l:IF dev_checks':call c,&BE00:END
           inc a
           ld e,c        ; chunk_start
           ld c,a        ; size
@@ -1785,7 +1801,7 @@ move_tail_in_new_chunk'
           push hl
           ex de,hl      ; de=dest in current chunk
           push iy:pop hl
-      IF dev_checks
+      IF dev_checks'
 ;For now only one kind: strict sanity check.
           ld bc,sentinel_phrase_eoc
           or a:sbc hl,bc:add hl,bc:call nz,programming_error
@@ -1846,7 +1862,7 @@ type_phrase = 1
 phrase_color BYTE 
           CHECK_FIELD(_header,clip_header_size)
 
-tag_end                 ; used by chungnrt.o
+tag_end                 ; address used by chungnrt.o
 ;duration 0 = tag eof of phrase 
       BYTE 0
       BYTE mask_fx0

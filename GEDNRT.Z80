@@ -6,11 +6,17 @@ todo_wrong_chr = 0
 ; TODO???? refresh_focus in gedeihen_enter?
 
 ; -- 2025 --       
- ; --- v0aq ----
+ ; --- v0au ---
+; Nov  
+  ;15: Add test_multiline_scrollB
+     ; Add test_multiline_fuzz
+  ;14: Add test_set_hexa_digit_wrong_chr'
+     ; Add checks multiline select good line with ctrl up/dwn/f.
+ ; --- v0aq ---
 ; Sep
   ;29: Adapt tests when do_scroll_multiline = 0
      ; Add test_focus_multiline_ctrl_up
- ; --- v0ai ----
+ ; --- v0ai ---
 ; Aug
   ;22: Add test_multiline_focus
      ; Add test_delete_first_line and multiple others
@@ -46,8 +52,8 @@ keys_buffer = &8C00
 iotest_cursor_seq = &9000
 
       IMPORT "const.i"
+      IMPORT "macro.i"
       IMPORT "ged.o"
-
 
       MACRO ASSERT_NOT p
       IF p
@@ -150,6 +156,7 @@ tests
           call test_set_hexa_digit
           call test_set_hexa_digit'
           call test_set_hexa_digit_wrong_chr
+          call test_set_hexa_digit_wrong_chr'
           call test_struct_setup
           call test_struct_deci
           call test_cursor_deci
@@ -203,13 +210,21 @@ tests
           call test_multiline_scroll4
           call test_multiline_scroll5
           call test_multiline_scroll6
+          call test_multiline_scroll7
+          call test_multiline_scroll8
+          call test_multiline_scroll9
+          call test_multiline_scrollA
+          call test_multiline_scrollB
+          call test_multiline_scrollB'
       END
           call test_multiline_margin
           call test_multiline_goto_top
           call test_multiline_goto_bottom
           call test_multiline_goto_bottom'
           call multiline_ctrl_down
+          call multiline_seq1
           call test_multiline_focus
+          call test_multiline_fuzz
           call test_insert_line
           call test_delete_first_line
           call test_delete_last_line
@@ -1038,7 +1053,8 @@ ui_multiline_refresh'   ; Same but 4 lines view
       WORD nrt_select_line
       WORD 0
       WORD 0
-      BYTE 4
+ml_view_hei = 4
+      BYTE ml_view_hei
       BYTE 0
 
 ui_multiline_refresh_deci
@@ -1360,7 +1376,8 @@ test_disp_struct_deci
 ; Like /TEST_RUN/ but check widget's line_at_top and cur_y
           ld de,test_data
 ; Pretend models has 10 lines
-          ld a,10
+ml_lines# = 10
+          ld a,ml_lines#
           call _check_multiline_scroll
       ENDM
 
@@ -1378,6 +1395,15 @@ test_disp_struct_deci
 sentinelle = 0
       BYTE sentinelle
       ENDM
+
+
+      MACRO CHECK_CURSOR expected
+          ld hl,(iotest_cursor) ; h:col l:line 1-based
+          ld de,expected
+          or a:sbc hl,de:add hl,de:call nz,fail
+      ENDM
+
+; -----------------------------
 
 test_null_sequence
 ;-----------------
@@ -1613,6 +1639,17 @@ test_set_hexa_digit_wrong_chr
           END_OF_NRT_SEQUENCE()
           FOCUS("4")
       BYTE nrtend
+
+test_set_hexa_digit_wrong_chr'
+          ld a,5:ld (nrt_hexa_digit),a
+          TEST_RUN_FOCUS(ui_hexa_digit,.seq)
+          ret
+.seq
+      BYTE "Q"
+          END_OF_NRT_SEQUENCE()
+          FOCUS("5")
+      BYTE nrtend
+
 
       IF do_test_table
 test_set_first_cell
@@ -2189,6 +2226,7 @@ test_set_multiline_refresh0
           ld a,6:ld (nrt_lines#),a
           ld hl,&0908:ld (nrt_hexa_digit_lines),hl
           TEST_RUN_FOCUS(ui_multiline_refresh,.seq)
+          ld a,(selected_line):cp 1:call nz,fail
           ret
 
 .seq  BYTE k_dwn
@@ -2301,15 +2339,17 @@ test_multiline_scroll1
 ;---------------------
 ; Page down: line at top is 4 (= ui_multiline_refresh' height) 
           TEST_MULTILINE_SCROLL(.seq)
+          ld a,(selected_line):cp ml_view_hei:call nz,fail
           ret
 .seq  BYTE kc_dwn
           END_OF_NRT_SEQUENCE()
-      BYTE 4,0
+      BYTE ml_view_hei,0
 
 test_multiline_scroll2
 ;---------------------
 ; Page down + page up: back to 0
           TEST_MULTILINE_SCROLL(.seq)
+          ld a,(selected_line):or a:call nz,fail
           ret
 .seq  BYTE kc_dwn,kc_up
           END_OF_NRT_SEQUENCE()
@@ -2319,6 +2359,9 @@ test_multiline_scroll3
 ;---------------------
 ; Respect cur_y
           TEST_MULTILINE_SCROLL(.seq)
+          ld a,(selected_line):cp ml_view_hei+1:call nz,fail
+          ld hl,(iotest_cursor)
+          ld de,&0202:or a:sbc hl,de:add hl,de:call nz,fail
           ret
 .seq  BYTE k_dwn,kc_dwn
           END_OF_NRT_SEQUENCE()
@@ -2337,6 +2380,7 @@ test_multiline_scroll5
 ;---------------------
 ; Last page + last line in view
           TEST_MULTILINE_SCROLL(.seq)
+          ld a,(selected_line):cp ml_lines#-1:call nz,fail
           ret
 .seq      3 ** BYTE kc_dwn
           END_OF_NRT_SEQUENCE()
@@ -2346,6 +2390,7 @@ test_multiline_scroll6
 ;---------------------
 ; Going back to start
           TEST_MULTILINE_SCROLL(.seq)
+          ld a,(selected_line):or a:call nz,fail
           ret
 .seq  BYTE k_dwn,kc_up
           END_OF_NRT_SEQUENCE()
@@ -2356,9 +2401,75 @@ test_multiline_scroll7
 ; Idem from last line
           TEST_MULTILINE_SCROLL(.seq)
           ret
-.seq      3 ** BYTE k_dwn:BYTE kc_up
+.seq      ml_view_hei-1 ** BYTE k_dwn:BYTE kc_up
           END_OF_NRT_SEQUENCE()
       BYTE 0,0
+
+test_multiline_scroll8
+;---------------------
+; Past view: must change page
+          TEST_MULTILINE_SCROLL(.seq)
+          ld a,(selected_line):cp ml_view_hei:call nz,fail
+          ret
+.seq      ml_view_hei ** BYTE k_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE ml_view_hei,0
+
+test_multiline_scroll9
+;---------------------
+; After 2 pages
+          TEST_MULTILINE_SCROLL(.seq)
+          ld a,(selected_line):cp 2*ml_view_hei:call nz,fail
+          ret
+.seq      2*ml_view_hei ** BYTE k_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE 2*ml_view_hei,0
+
+test_multiline_scrollA
+;---------------------
+; Going back to first page
+          TEST_MULTILINE_SCROLL(.seq)
+          ld a,(selected_line):cp ml_view_hei-1:call nz,fail
+          ret
+.seq      ml_view_hei ** BYTE k_dwn:BYTE k_up
+          END_OF_NRT_SEQUENCE()
+      BYTE 0,ml_view_hei-1
+
+test_multiline_scrollB
+;---------------------
+; Past last row when page dwn
+          ASSERT(ml_view_hei == 4)
+
+          ld de,.seq
+          ld a,5
+          call _check_multiline_scroll
+
+          ld a,(selected_line):cp 5-1:call nz,fail
+          ld hl,(iotest_cursor)
+          ld de,&0201:or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+.seq      3 ** BYTE k_dwn:BYTE kc_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE ml_view_hei,0
+
+
+test_multiline_scrollB'
+;---------------------
+; Idem with lines# = 10
+          ASSERT(ml_view_hei == 4)
+          ASSERT(ml_lines# == 10)
+
+          TEST_MULTILINE_SCROLL(.seq)
+          ld a,(selected_line):cp ml_lines#-1:call nz,fail
+          ld hl,(iotest_cursor)
+          ld de,&0202:or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+.seq      3 ** BYTE k_dwn:2 ** BYTE kc_dwn
+          END_OF_NRT_SEQUENCE()
+      BYTE 8,1
+
+
+
 
 test_multiline_goto_top
 ;----------------------
@@ -2371,6 +2482,7 @@ test_multiline_goto_top
 test_multiline_goto_bottom
 ;--------------------------
           TEST_MULTILINE_SCROLL(.seq)
+          ld a,(selected_line):cp ml_lines#-1:call nz,fail
           ret
 .seq  BYTE k_dwn,kcfdot
           END_OF_NRT_SEQUENCE()
@@ -2396,10 +2508,20 @@ multiline_ctrl_down
           ld a,3
           call _check_multiline_scroll
           ret
-.seq  BYTE kc_dwn
+.seq  BYTE kcdwn
           END_OF_NRT_SEQUENCE()
       BYTE 0,2
 
+multiline_seq1
+;-------------
+          TEST_MULTILINE_SCROLL(.seq)
+          CHECK_CURSOR(&0201)
+          ret
+
+.seq
+      BYTE kcdwn,kcf+0
+          END_OF_NRT_SEQUENCE()
+      BYTE 0,0
 
 test_multiline_focus
 ;-------------------
@@ -3768,7 +3890,35 @@ tpcx      push bc:push hl
 test_random_keys
 ;---------------
 
-; First prepare keys
+          ld ix,.keys
+          ld iyl,7
+          call fuzz_keys
+; Just check it doesn't assert
+          TEST_RUN(ui_toggle_hexa_deci,keys_buffer)
+          ret
+
+.keys
+; We'll test a random sequence of those 8 keys
+      BYTE " 01x-"      ; No number > 2 to avoid overflow 333
+      BYTE k_lft,k_rgt,13
+
+
+test_multiline_fuzz
+          ld ix,.keys
+          ld iyl,15
+          call fuzz_keys
+; Just check it doesn't assert
+          TEST_RUN(ui_multiline_refresh',keys_buffer)
+          ret
+.keys
+      BYTE klft,krgt,13,kcdel
+      BYTE "0",kcup,kcdwn,kup
+      BYTE kcf+0,kcfdot,kdwn,kclr
+      BYTE kclft,kcrgt," X"
+
+fuzz_keys
+;In: ix: keys to test 
+   ; iyl: nb keys - 1
           ld b,0
           ld hl,0
           ld de,keys_buffer
@@ -3780,8 +3930,9 @@ test_random_keys
           rlca:add l:xor (hl)
           push af
 
-          and 7:add .keys AND &FF:ld l,a
-          ld h,keys/&0100:jr nc,$+3:inc h
+          and iyl:add ixl:ld l,a
+          ld a,ixh:ld h,a
+          jr nc,$+3:inc h
           ldi
 
           pop af
@@ -3795,15 +3946,7 @@ test_random_keys
           ld a,sentinelle:ld (de),a:inc de
 ; don't check screen output
           ld a,nrtend:ld (de),a
-
-; Just check it doesn't assert
-          TEST_RUN(ui_toggle_hexa_deci,keys_buffer)
           ret
-
-.keys
-; We'll test a random sequence of those 8 keys
-      BYTE " 01x-"      ; No number > 2 to avoid overflow 333
-      BYTE k_lft,k_rgt,13
 
 ; --------------------------
 gedeihen_set_hooks_nrt

@@ -2,17 +2,21 @@
 ; Display and input agnostic: 
 ; just modify field in memory according to "key" passed.
 
-; Tests in fieldnrt.o
+ ; !!! It differs from :lib/ version -> cursor not allowed past /00
 
- ; It differs from :lib/ version -> cursor not allowed past /00
- ; 2025 Aug 4: Deactivate CTRL-Lft/Rgt in field
+todo  = 1
+dev_checks' = 1
+fail  = &BE00
+
+; 2025
+ ; Nov 10 s/dev_checks/dev_checks' to avoid ambiguity
+ ; Aug 4: Deactivate CTRL-Lft/Rgt in field
                ; -> not useful for short numerical fields
                ; -> prevent consistent shortcut in instrui row
 handle_ctrl_cursor = 0
-
-todo  = 1
-dev_checks = 1
-fail  = &BE00
+      IF todo
+ ; !! we need both version (for open/save and bigger text fields)
+      END
 
 ; TODO [space optim] Reuse shortcut.o for /scan_key/
      ; Or the other way around: shortcut would reuse this instance.
@@ -107,7 +111,7 @@ field_editor
           call LEN_STR
           cp b:jr nc,.full
 
-      IF dev_checks
+      IF dev_checks'
           cp c
           call c,fail   ; pos must be <= pos 
       END

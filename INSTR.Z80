@@ -15,8 +15,6 @@ may_crunch = 1
       IMPORT "plyconf.i"
       IMPORT "macro.i"
 
-dev_checks = 0 AND ayane
-
       IF ayane
       IMPORT "const.i"  ; instr_head_size
       IMPORT "memmap.i" ; BK_INSTR, instr_idx, psg_regs

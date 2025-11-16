@@ -1,4 +1,3 @@
-dev_checks = 0
 tmp_dbg = 0
 nrt_marker = 0          ; for timernrt
 todo  = 1

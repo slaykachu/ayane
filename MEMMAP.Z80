@@ -1,5 +1,6 @@
 ; ========= Shared buffers and variables ==========
-; 2025 Oct 16  tracks in bank
+; 2025 Nov 10 instrui @ 1900 (shift subsequent modules as well)
+     ; Oct 16  tracks in bank
      ; Aug  8  Cleanup unused buffers
      ; Jun 23  Move disc_buffer at &4000
 todo  = 1
@@ -24,19 +25,22 @@ bk_connected = &3C
 code_start = &40
 ; Expected addresses, for sanity checks
 memcpc = &40
-scankey = &0200
-conv  = &0220
+scankey = &01F7
+conv  = &0208
+chunk_module = &0410
 ;dispjp = &1900   ; not a dep anymore
-ply   = &0F8C
+;periods_module = &057F
+ply   = &1004
 instrui = &1900
 piano = &1D48
-phrase = &1E90
-instrsel = &2560
-;via salo-nrt
-track_module = &2991
-init_module = &3660
+phrase = &1EB0
+instrsel = &2580
+;via salo-nrt   
+rgb256 = &2620
+track_module = &2A91
+init_module = &3760
 ;via uilooptt
-uiloop = &3A90
+uiloop = &3A90          ; Could be lower !
 
 code_main = &3B20       ; ayane.o
 
@@ -122,7 +126,7 @@ replay_period_ui BYTE   ; id in drop down list (no free setting for now)
 ; ----
 phrase_vars
 
-;79xx-7f00 : free
+;79xx-7e00 : free
 
       SKIP &7F00 - $
 va_chung
@@ -145,11 +149,13 @@ disp  = &4800           ; start of code after fonts
 pianoui = &4F00
 disp_ayane = &5620      ; other modules imported by ayane.o
 strings = &7C00
+name_module = &7F00
 
       ORG &8000
 psg_regs                ;  Room for pseudo registers and ??? 
 ;!! Shared with other buf, as we never play while loading or saving!
 workzone SKIP &0200     ; salo, &8100:pianoui (tmp for display)
+tmp_buf = workzone      ; ayane
 salo_buf1 = workzone
 phradisp_buf = workzone
 track_tmp = workzone + &80
@@ -160,9 +166,11 @@ fx_by_track = workzone + &0100 ; MAX_TRACKS*track_fx_size
 ; n**(type, event pnt)
 
 salo
-ged   = &8B10
+ged   = &8BA0
+field_module = ged
 free_ram_for_nrt = ged  ; used by salo-nrt!
-bandaya = &9E00
+;free room &9e70-&9eff
+bandaya = &9F00
 
 ramlimit' = &A400
       IF todo

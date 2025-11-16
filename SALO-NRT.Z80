@@ -1,6 +1,10 @@
 ; Tests salo
 ; 2025
+; -- v0.0au --
+   ; Nov: test_assets: test New_subsong
+
 ; -- v0.0aq -- 
+   ; Oct 
         ;28 Test saving syncbuzzer
             ; -> NOPE, already here (dummy /raw_row3/)
                      ; (hum, it sets fx_null apparently) 
@@ -18,12 +22,16 @@
       ORG code_start
       ENT tests
 
-      IMPORT "memmap.i"
       IMPORT "import.i"
+      IMPORT "macro.i"
 
           IMPORT_SALO_DEPS(1)
+hu
+      SKIP init_module-$
       IMPORT "init.o"
+          LIMIT(uiloop)
       IMPORT "instr.o"
+      IMPORT ":lib/rgb256.o" ; for rgb256_code
 
 ho    SKIP ramlimit - $ ; poor man's limit
 
@@ -138,7 +146,6 @@ test_assets
           call instr_ayane_append_rows
           call check_save_load_save
 ; -- with 1 sync buzzer
-          ld a,0:ld (hack_ret),a
       IF 0
           ld b,1
           ld hl,raw_row_buzz
@@ -240,10 +247,30 @@ phrase4 = 4
           ld hl,raw_row3
           call instr_ayane_append_rows
           call check_save_load_save
+; -- New_susbong
+          call Reset_tracks_and_subsongs ; remove previous tracks
+          xor a:call New_subsong
+          call .check_tracks
+          call check_save_load_save
+          call .check_tracks
+; -- With loop
+          ld a,0:ld (hack_ret),a
+          call Song_get_first_track
+          call Song_select_track
+          ld hl,time_zero:call Set_track_loop
           ret
 
 .trackinfo BYTE 1,1     ; id, channel
 .trackinfo' BYTE 2,2
+
+.check_tracks
+          call Song_get_first_track:call z,fail
+          cp 1:call nz,fail
+          call Song_get_next_track:call z,fail
+          cp 2:call nz,fail
+          call Song_get_next_track:call z,fail
+          cp 3:call nz,fail
+          ret
 
 instr_param1 BYTE "yeh"
 
@@ -496,27 +523,36 @@ nrt_load
 
 dest_meta SKIP dummy_
 
-destsize = &0F00        ; for test_big.vampire1.aya?  room &1000
+destsize = &1100        ; test_big.vampire1.aya
 
 ;Since IO buf is in c0, that's safe to put them here
-destnrt = &6000
-destnrt2 = &7000
+destnrt = &5E00
+destnrt2 = destnrt + destsize
+          ASSERT(destnrt2 + destsize <= &8000)
 
 hi
       SKIP &A400 - $    ; poor man's limit
 
-      ORG &5000
+      ORG &4C00
 vampire
 ;Created with chipconv.o
       LOAD "testdata/vampire1.aya"
-vampire_size = &0ABD
 ; vampire_size = $ - vampire   Doesn't work: unidos copy rounded to b00
+vampire_size = &0ABD
 
+; Sanity checks
+          ASSERT(memcpc_code == memcpc)
+          ASSERT(scankey_code == scankey)
+          ASSERT(conv_code == conv)
+          ASSERT(chunk_code == chunk_module)
 ; Sync with ayalib
           ASSERT(phrase_code == phrase)
-; Sync with ayane
+; Sync with ayane             
           ASSERT(track_code == track_module)
           ASSERT(init_code == init_module)
+; Not used directly, but check that ayalib2 picks right code
+          ASSERT(rgb256_code == rgb256)
 
+      SAVE "ayalib2.bin",rgb256_code,init_end - rgb256_code
       SAVE "ayaio.bin",io_code,io_end - io_code
       SAVE "ayasalo.bin",salo_code,salo_end - salo_code

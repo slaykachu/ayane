@@ -3,6 +3,9 @@ todo  = 1
 do_brittle = 0
 
 ; ----- 2025 ----------
+ ; Nov
+     ; 10 Add test_get_timestamp_from_hook
+        ; Add test_default_loop
 ; -- v0as --
  ; Oct
      ; 15 test_subsong_add_track: new api 
@@ -64,7 +67,6 @@ tests
           call nrt_init
 
 ; ---- Recent
-          call test_subsong_add_track
 
       IF enable
           call test_ui
@@ -121,6 +123,8 @@ tests
 
 ; ---- Test subsong -----
           call test_subsong_add_track
+          call test_default_loop
+          call test_get_timestamp_from_hook
           ret
 
 nrt_init
@@ -1399,6 +1403,75 @@ test_subsong_add_track
           ret
 .param BYTE 1           ; track id
       BYTE 1            ; channel id
+
+test_default_loop
+;----------------
+; New module should have set loop to time 0
+          call nrt_init
+
+          call Song_get_first_track:call z,fail
+          call Song_select_track
+          ld hl,time_zero:call Set_track_loop
+
+          call Song_get_first_track:call z,fail
+          call get_track_header
+
+          ld e,(hl):inc hl
+          ld d,(hl):dec hl ; first event
+.lp
+          ld a,(hl):inc hl:or (hl):dec hl:call z,fail ; no null link
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          bit 7,h       ; stops when mets loop
+          jr z,.lp
+; loop must be to first event
+          res 7,h
+          or a:sbc hl,de:call nz,fail
+          ret
+
+test_get_timestamp_from_hook
+;---------------------------
+;Prerequisite: test_set_phrase_far
+          call nrt_init
+
+;Setup
+          xor a:call song_select_new_phrase
+          xor a
+          ld hl,time6
+          call Set_phrase_at_t
+          xor a
+          ld hl,time_far
+          call Set_phrase_at_t
+          ld hl,time_far
+          call track_get_event_hook_at
+          push hl
+
+;Check
+          call get_current_track_header
+;There is an empty hook at 0 to put first duration (6)
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          ld de,time0:call .check_next_hook
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          ld de,time6:call .check_next_hook
+          pop hl
+          ld de,time_far:call .check_next_hook
+          ret
+
+.check_next_hook
+;In: de: expected timestamp
+   ; HL: hook
+;Out: HL preserved
+          push hl
+          push de
+          call get_timestamp_from_hook:call nc,fail
+          pop de
+          ld l,c:ld h,b
+          ld b,3
+          call compare_sized
+          pop hl
+          ret
 
       IF enable
 test_ui

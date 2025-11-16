@@ -1,4 +1,3 @@
-dev_checks = 1
 crossbanks = 0          ; 0: Each bank now has its own allocation housekeeping
 todo  = 1
 need_room = 1
@@ -13,14 +12,17 @@ need_room = 1
 
       IMPORT "memmap.i" ; for checks and Init_chunk_module
       IMPORT "memcpc.o"
+dev_checks' = 1         ; forced for now
 
 ; Disable 'free' code (must be re-viewed)
 enable_free = 0
 
 ; \/\/\/ 2025 \/\/\/\/\/\/\/\/\/\
-; ------ v0l2 -----------
-; Mar
-    ; 21 Next_node: must return Z if loop node
+; -- v0au --
+; Nov 11 Next_node: actually return Z if loop node (instead of assert)
+
+; -- v0l2 --
+; Mar 21 Next_node: must return Z if loop node
 
 design_doc
 ; See :lib/chunk.o
@@ -32,36 +34,25 @@ chead_last = 2
 chead_last' = 0         ;for node pool (not linked)
 ;chead_checksum = 3
 chead_lines# = 4        ;0 if empty, -1 if unknown
-;chead_flags = 5
-;bit 0 = 0 if code never emitted in the chunk
-;chead_pc = chead_flags+1 ;pc at start of chunk
 chunk_header_size = 5
 chunk_start = chunk_header_size
 
 chunk_aap_header_size = 4
 
-;ass   = &FE20-4
-
-;ass_init_and_amorce = ass+4
-;ass_amorce = ass+7
-;is_pseudo_instr = ass+&0A
-
 ec_esc = &7F
 ;ec2_eoc = 0             ;end of chunk  !! must remain 0
-;ec2_store_pc_line = 2
-;ec2_store_pc_instr = 3
 
 ; ===========================================
 
       MACRO CHECK_ID
-      IF dev_checks
+      IF dev_checks'
           call check_id
       END
       ENDM
 
 
       MACRO CHECK_HL_IN_BANK
-      IF dev_checks
+      IF dev_checks'
           call check_hl_in_bank
       END
       ENDM
@@ -70,7 +61,7 @@ ec_esc = &7F
       IF need_room
 ; move into routine
       END
-      IF dev_checks
+      IF dev_checks'
           push af
           ld a,e:or d:jr z,.ok
           ex de,hl
@@ -81,7 +72,7 @@ ec_esc = &7F
       END
       ENDM
 
-
+chunk_code
 ; ===========================================
 Init_chunk_module
 ;----------------
@@ -108,7 +99,7 @@ Init_chunk_module
 .init_bank
 ;In c= bank, A=nb chunks
           call connect_c
-      IF dev_checks
+      IF dev_checks'
 ; C rather than 0 to help with orgams bank detection
           ld hl,&4000:ld (hl),c:ld de,&4001:ld bc,&3FFF:ldir
       END
@@ -167,7 +158,7 @@ new_node_x_no_init
 ;NB: Those chunks won't ever be freed. "False leak".
    ; Instead, the nodes within them are.
           call New_chunk:jr nc,.popret
-      IF 1-crossbanks AND dev_checks
+      IF 1-crossbanks AND dev_checks'
 ; No crossbank: must stay in same bank.
           call get_bk_connected
           cp l:call nz,mess
@@ -279,12 +270,12 @@ list3_next
           ld a,(hl):or a:ret z
           ld b,a
           inc l:ld a,(hl)
-      IF dev_checks
+      IF dev_checks'
           and &C0:cp &40:call nz,mess
       END
           ld a,(hl)
           inc l:ld l,(hl):ld h,a
-      IF dev_checks
+      IF dev_checks'
 ;Cannot point to first byte of chunk, since used for 'last' field.
           ld a,l:or a:call z,mess
       END
@@ -334,7 +325,7 @@ new_chunk_no_init
 
 ;Use MSB in decreasing order (simpler code)
           add chunk_offset-1
-      IF dev_checks
+      IF dev_checks'
           cp &40:call c,mess
           cp &7F:call nc,mess
       END
@@ -422,17 +413,11 @@ _swapfree
       END
 
 Next_node
+; Follow next node (unless loop)
 ; In: HL = point on current node.link
 ;Out: If such a link: NZ, HL= new link
     ; Otherwise Z, HL unchanged! (needed to plug new nodes)
     ; A preserved.
-      IF dev_checks
-; Check MSB is < &80
-          push af
-          inc hl:ld a,(hl):dec hl
-          cp &80:call nc,mess
-          pop af
-      END
           push de
           ld e,(hl):inc hl
           ld d,(hl):dec hl
@@ -464,7 +449,7 @@ Insert_new_node
  ; oh the irony
 ;        CHECK_HL_IN_BANK()
       ELSE
-      IF dev_checks
+      IF dev_checks'
           inc h:dec h:call z,mess
       END
       END
@@ -496,7 +481,7 @@ insert_new_chunk_from_here
 ;Still used by ayane?
           ld a,(vo_thisbk)
           ld l,a
-      IF dev_checks
+      IF dev_checks'
 ;Full id is checked below, but it's clearer to fail fast.
           and &C4:xor &C4:call nz,&BE00
       END
@@ -557,7 +542,7 @@ New_node_x
           ld (hl),0
           dec l
           ex de,hl
-      IF dev_checks
+      IF dev_checks'
          ; Carry still set here
           call nc,mess
       END

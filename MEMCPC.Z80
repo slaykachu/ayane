@@ -3,10 +3,14 @@
 ; 2025 Aug 25: Remove jump table. Short module: neater to import
      ; Jun 20: jump table
 
-dev_checks = 1
 todo  = 1
 
       IMPORT "memmap.i"
+     ; IMPORT "const.i"  ; dev_checks
+
+dev_checks' = 1         ; for now, don't use const.dev_checks
+; -> allow to detect programming errors even when we deactivate 
+   ; dev_checks for ply, timer etc...
 
 ; /// 2025 ///
    ; -- v0.0an --
@@ -99,7 +103,7 @@ connect_l
           push bc:ld c,l:call connect_c:pop bc:ret
 connect_c
           push bc
-      IF dev_checks
+      IF dev_checks'
           push af
           ld a,c:call check_bk_a
 _connect_com
@@ -111,7 +115,7 @@ _connect_com
           pop bc
           ret
 
-      IF dev_checks
+      IF dev_checks'
 connect_c_c0
 ;Like connect C, but also allows bank C0 (not only 
           push bc
@@ -157,7 +161,7 @@ set_sp_backup
 reset_sp
 ;------- 
           pop hl
-      IF dev_checks
+      IF dev_checks'
           push af
           ld a,(save_sp+2)
           cp &BF:call nz,mess ; set_sp_backup must have been called
@@ -191,7 +195,7 @@ call_disp
           ld l,a
           ld a,BK_DISP
           call connect_a
-      IF dev_checks
+      IF dev_checks'
 ; verify code has been loaded
 init_disp_adr = disp    ; used for checks in call_disp
           ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
@@ -230,7 +234,7 @@ call_status
       END
           ld a,&C1
           call connect_a
-      IF dev_checks
+      IF dev_checks'
 ; verify code has been loaded
           ld a,(init_disp_adr+&8000):cp &C3:call nz,fail ; jp
           ld a,(init_disp_adr+&8003):cp &C3:call nz,fail
@@ -263,7 +267,7 @@ jp_disp
           ld l,a
           ld a,BK_DISP
           call connect_a
-      IF dev_checks
+      IF dev_checks'
 ; verify code has been loaded
           ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
           ld a,(init_disp_adr+3):cp &C3:call nz,fail
@@ -298,7 +302,7 @@ jp_status
       END
           ld a,&C1
           call connect_a
-      IF dev_checks
+      IF dev_checks'
 ; verify code has been loaded
           ld a,(init_disp_adr+&8000):cp &C3:call nz,fail ; jp
           ld a,(init_disp_adr+&8003):cp &C3:call nz,fail
@@ -317,7 +321,7 @@ jp_status
 ; ---- Checks related to CPC Paging ----
 ;----------------------------------------
 
-      IF dev_checks
+      IF dev_checks'
 check_b_bank
           push af
           ld a,b:call check_bk_a

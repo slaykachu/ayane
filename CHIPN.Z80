@@ -91,7 +91,7 @@ v0l2  = 1               ; Activate changes for kim9.chp
 
  ; Needed as chipconv.o also import "salo.o"
  ; And we use phrase and track (Song_add_map) as well.
-          IMPORT_SALO_DEPS()
+          IMPORT_SALO_DEPS(1)
       IMPORT "plyconf.i" ; tmp hack: some stuff deactivated
 
 connect_bk_chip = connect_bk_io

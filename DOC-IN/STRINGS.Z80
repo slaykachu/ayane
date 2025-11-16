@@ -1,8 +1,7 @@
 ; <<<< Diverses strings and messages >>>>
 
 bandfields
-      BYTE "   '\   / \   |/'>  \__   /''\    Demo "
-      BYTE "(pre-pre-alpha) --28 Sep 2025-- For Bun",0
+      BYTE "   '\   / \   |/'>  \__   /''\",0
       BYTE "  /'''  |__>  /  /  <  |  ,,,/    (f6/f9)  Octave",0
       BYTE "  \,,/     \  <,/|   \ /   \,     (CTRL-I) Instr   :",0
       BYTE 0

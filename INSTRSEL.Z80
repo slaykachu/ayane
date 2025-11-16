@@ -1,5 +1,9 @@
 ; <<<<<<<< Instrument selector >>>>>>>>>
 ; 2025 
+; -- v0au --
+  ; Nov 14 ui_get_instr#: set to 99
+         ; Clear 
+      ; 10 s/dev_checks/dev_checks' to avoid ambiguity
 ; -- v0ap --
   ; Sep 18: Don't change instr# in status here anymore
 ; -- v0ao --
@@ -19,7 +23,7 @@
 ; v0.0a 6 Mar 25
 
 to_be_implemented = &BE00
-dev_checks = 1
+dev_checks' = 1
 need_rom = 1
 
       IMPORT "const.i"
@@ -67,7 +71,7 @@ selector_ui'
 
 ui_get_instr#
 ;Hack for now. Do i have song_get_instr# ?
-          ld a,9
+          ld a,MAX_INSTRS
 ;todo: instr# + 1 (so entry with empty_instr)
           ret
 
@@ -94,17 +98,32 @@ instr_title
           push hl
           call instr_does_exist
           jr z,.empty
-;toto: print name     
+;toto: print name 
           pop hl
-          ret
+          push hl
+          call skip_nt
+          ex de,hl
+          ld b,18
+          jr .clear_right
 
 .empty
           ld hl,.empty_txt
           call append_to_buffer
+          ld b,18 - .empty_txt_
+.clear_right
+      IF todo
+; Check for buffer overrun, or have the disp routine doing the padding
+      END
+          ld a," "
+          dec de
+.lp       ld (de),a:inc de:djnz .lp
+          xor a
+          ld (de),a
           pop hl
           ret
 
 .empty_txt BYTE " <New instr>",0
+.empty_txt_ = $ - .empty_txt - 1
 
 cancel
           UNHANDLED(kesc) ; Caller can process exit

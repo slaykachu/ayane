@@ -1,6 +1,10 @@
 ; <<<<<<<< Instrument editor >>>>>>>>>
 
 ; 2025                           
+ ; -- v0au --
+ ; Nov
+   ; 14 _set_loop: fix randomly set loop
+   ; 10 s/dev_checks/dev_checks' to avoid ambiguity
  ; -- v0at --
  ; Oct 
    ; 16 Use disp.o directly
@@ -9,7 +13,7 @@
    ; 15 Move instr_fields to doc-in/strings.o
 
 to_be_implemented = &BE00
-dev_checks = 1
+dev_checks' = 1
 hack_refresh = 1
 
       IMPORT "const.i"
@@ -396,8 +400,8 @@ _set_loop
           ld a,(selected_line)
           jr nc,.set
           cp b:jr z,.unset
-          ld b,a
 .set
+          ld b,a
           call instr_set_loop
 ; Hack: refresh all (since must erase previous loop marker)
           jr _refresh
@@ -480,7 +484,7 @@ _set_arp  add a         ; expect pre-encoded
 
 _get_arp  ld a,(row_buffer+instr_arp)
           sra a         ; signed
-      IF dev_checks
+      IF dev_checks'
           call c,fail
       END
           ret
@@ -602,7 +606,7 @@ _set_env_arp
 _get_env_arp
           ld a,(row_buffer+instr_hard_arp)
           sra a
-      IF dev_checks
+      IF dev_checks'
           call c,fail
       END
           ret
@@ -667,7 +671,7 @@ _fx0_type_pnt
 _fx0_pnt
 ; Set hl=sub field fx0, and check proper setup
 ; In: C: fx0 field offset 
-      IF dev_checks
+      IF dev_checks'
           ld hl,row_buffer
           call _check_sfx
       END
@@ -679,7 +683,7 @@ _fx0_pnt
 _set_fx0_arp add a:ld (row_buffer+fx0_arp),a:jp _update_row
 _get_fx0_arp ld a,(row_buffer+fx0_arp)
           sra a
-      IF dev_checks
+      IF dev_checks'
           call c,fail
       END
           ret
@@ -719,7 +723,7 @@ _fx1_type_pnt
 _fx1_pnt
 ; Set hl=sub field fx0, and check proper setup
 ; In: C: fx0 field offset 
-      IF dev_checks
+      IF dev_checks'
           ld hl,row_buffer
           call _check_sfx
       END
@@ -731,7 +735,7 @@ _fx1_pnt
 _set_fx1_arp add a:ld (row_buffer+fx1_arp),a:jp _update_row
 _get_fx1_arp ld a,(row_buffer+fx1_arp)
           sra a
-      IF dev_checks
+      IF dev_checks'
           call c,fail
       END
           ret
