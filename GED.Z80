@@ -1,6 +1,12 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
-; -- v0au --
+; -- alpha1 --
 ; Nov
+  ;25 enter_child: propagate Y
+  ;24 delegate_width: don't use clone!! a getter shouldn't change state
+  ;19 Add sep1_ui & c0 (used by instrui and phrasui)
+    ; -> Remove check about widget address (hinders more than it helps)
+    ; -> gedeihen_enter: remove check about cursor being at (1,1) """
+; -- v0au --
   ;15 multiline_top: fix top = 0   
   ;14 key_hexa: fix buggy validation (e.g. was accepting Q)
     ; _multiline_update_cur_y: must also update model
@@ -40,6 +46,7 @@ enable = 0
 ; ---------------------------------------
 
       IMPORT "const.i"
+      IMPORT "macro.i"  ; GED_HANDLED
       IMPORT "field.o"
       IMPORT "conv.o"
 
@@ -216,18 +223,12 @@ handler_table WORD
       ; - NC, Z: don't keep focus, don't lift event
                ; e.g. for piano: it processes key, yet don't take focus
                             ; -> must give back focus to original
-; !!!!! DISTINCTION Z/NZ not done for now
+          ; !!!!! DISTINCTION Z/NZ not done for now
+                ; but Z checked anyway at /ti_lift_lp/
       ; DE saved.
 ; Possibly exit was done by handler.
 ; Rationale: for table, exit must be done before changing row/col.
 ; Handler may return an event. Cf use case 1 for rationale.
-
-      MACRO HANDLED
-; Distinction not done (cf note above), 
-; but Z checked anyway at /ti_lift_lp/
-          xor a
-          scf
-      ENDM
 
       MACRO ENTER_COMMON
           xor a:ld (is_modified),a
@@ -611,10 +612,6 @@ _check_in_focus
           call read_table_param_com
       ENDM
 
-; Hack: needed to reset X position (at start of field)
-      ; Note: updated in update_cur_y
-          call reset_cursor_from_widget_location
-
 call_param_com
           push hl
           GET_STATE(param)
@@ -754,21 +751,8 @@ setup_widget
   ; If disp calls setup itself, we cannot handle the second use-case.
 
 ; In: HL = widget description
-      IF dev_checks'
-          ld de,&4000:or a:sbc hl,de:add hl,de:call nc,fail
-      END
-
           call reset_widget_location_from_cursor
-_setup_widget
-; After clone_state, we don't need or want to reset widget location.
-; Prevent following bug (covered by test_flow_optional_readwrite):
-   ; - cursor is at 2 after display "-" (deactivated)
-   ; - inverse_video use delegate_width
-   ; - delegate_width setup widget -> musn't be at pos 2
-
-; needed?            
-;          xor a:SET_STATE_BYTE(focus)
-
+_setup_widget           ; <- when location copied for parent
           ld a,(hl)
       IF dev_checks'
           cp w_brk:call c,fail ; w_null / w_frame not used
@@ -817,16 +801,6 @@ gedeihen_enter
           call set_root_state
           ld hl,noop:ld (validate_hook+1),hl
           pop hl
-      IF todo
-;remove that
-      END
-      IF dev_checks'
-; caller must reset cursor
-; for now, it's always 1,1  (for test)
-; we check that 
-          CALL_STATE_EXT(get_cursor)
-          ld bc,&0101:or a:sbc hl,bc:add hl,bc:call nz,fail
-      END
           jp enter
 
 
@@ -985,15 +959,19 @@ validate_hook jp noop
 display_child
 ;------------
 ; In: hl = child description pnt
+    ; de = pos 
           push hl
           ld hl,(state_sp)
           ex (sp),hl
           call clone_state
+          ex de,hl
+          SET_STATE(widget_pos)
+          ex de,hl
 ; setup child widget
 ; -> actually setup all branch, hence we need to remember current sp 
           ld de,(state_sp)
           push de
-          call setup_widget
+          call _setup_widget
           pop hl
           call set_state_sp_disp
           call refresh  ; Display with/without cursor.
@@ -1167,8 +1145,7 @@ clone_state
 
 ; Note: Not worth it to reuse push_state_
 
-          push af
-          push hl
+          push af:push de:push hl
           ld hl,(state_sp)
           push hl
           ld e,l:ld d,h
@@ -1186,8 +1163,7 @@ clone_state
           ld (state_sp),hl
           pop hl
           SET_STATE(parent)
-          pop hl
-          pop af
+          pop hl:pop de:pop af
           ret
 
 call_display
@@ -1364,6 +1340,7 @@ w_optional_readwrite = 11
 
 w_refresh = 12
 ; We'll refresh parent when child got validated.
+; !!!BUG:embedded widget may have to 'call validate' and 'refresh_focus'
 ; Typical nesting: 
    ; w_struct   <- also contains "dependent" widget
    ; w_refresh  <- flag child as trigger
@@ -1459,7 +1436,7 @@ setup_child
       END
           GET_STATE(embedded_ui)
           call clone_state
-          jp setup_widget
+          jp _setup_widget
 
 wc_optional
           call wc_init_double_word
@@ -1526,12 +1503,11 @@ struct_on_enter
 ; (re)enter current field (concrete widget that must catch events)
 enter_child
 ; Go to child (already setup)
+; HACK!! must re-propagate Y (needed when coming from update_pos_y)
+; X: already done via setup_field
+          GET_STATE_BYTE(widget_pos_y)
           call push_state
-_recurse
-; For some reason, setup_widget wasn't done recursively
-      IF dev_checks'
-          ld a,h:cp &40:call nc,fail
-      END
+          SET_STATE_BYTE(widget_pos_y)
           call enter
           scf           ;no event
           ret
@@ -1583,6 +1559,8 @@ refresh_sp ld hl,0
           call set_state_sp
           ret
 
+refresh_nofocus_safe_save_cursor_root
+          ld hl,state_stack
 refresh_nofocus_safe_save_cursor
 ;in: hl=state to display
           push hl
@@ -1691,11 +1669,10 @@ optional_readwrite_on_enter
 
 struct_lft
 ;Here: focus is still on child (field).
-
-; Must set cursor in case /struct_stay/ is called.
-          call reset_cursor_from_widget_location
           GET_STATE(widget_pos)
           ex de,hl
+; Must save cursor (in case struct_stay is called)
+          push de
 ; Must save current col (in case all fields on the lft are readonly)
           call rewind_state
           GET_STATE(struct_col)
@@ -1720,12 +1697,14 @@ struct_lft
 
           call _struct_setup_field_cursor
           pop hl        ; discard old field#
+          pop de        ; discard cursor
           jp struct_enter_field
 
 struct_stay
 ;here (sp) = initial col
 ; /invariant/ 1. Must reselect field
           pop hl
+          pop de
 struct_stay_
           call setup_field
       IF dev_checks'
@@ -1752,7 +1731,9 @@ struct_last
 ; Hack!!! Actually advance 8 fields
 
 ; If already last: stay (copy/paste from struct_rgt)
-; Not sure why it is necessary!
+      IF todo
+;remove that
+      END
           call _struct_go_rgt
           jr nc,struct_stay_
 
@@ -1790,9 +1771,14 @@ setup_rw_field
 ; b = flag R/W met
 ; c = target field
 ; de = cursor pos
+; hl = saved state_sp
           SET_STATE_BYTE(struct_col)
-          call setup_field_a
+          push hl
+          ld l,a:ld h,0
+          call setup_field
           call nc,fail
+          ld a,l
+          pop hl
           jr z,.ro
           ld b,1        ; Mark flag R/W found
           ld (.field_pos+1),de
@@ -1819,20 +1805,10 @@ setup_rw_field
           ret
 
 
-setup_field_a
-; Like select_field, but:
-; In:  a= col #  
-; Out: a, hl preserved
-          push hl
-          ld l,a:ld h,0
-          call setup_field
-          ld a,l
-          pop hl
-          ret
-
 setup_field
 ; Setup field
 ; In: hl= col #
+    ; de= pos
 ;Out: If such field: Carry, NZ if read/write 
                           ;  Z if read only
     ; If past last field :NC  
@@ -1843,14 +1819,17 @@ setup_field
 
           push bc:push de
           call clone_state
-;setup goes all the way through leaf.
+          ex de,hl
+          SET_STATE(widget_pos)
+          ex de,hl
+;setup will go all the way through leaf.
 ;we want to retain just next level instead
       IF todo
 ; factorize with display / setup_child
       END
           ld de,(state_sp)
           push de
-          call setup_widget
+          call _setup_widget
           pop hl
           call set_state_sp_gen
           call is_readwrite
@@ -1880,8 +1859,8 @@ struct_rgt
           jp nc,struct_stay_
 struct_enter_field
           call enter
-          xor a:scf
-          ret           ; C Z: handled, nothing to do. 
+          GED_HANDLED()
+          ret
 
 _struct_go_rgt
 ; Out: If ok: next R/W field selected, Carry
@@ -1897,12 +1876,11 @@ _struct_go_rgt
           or a:sbc hl,de:call z,fail
       END
 
-; Must set cursor in case /struct_stay/ is called (by client)
-          call reset_cursor_from_widget_location
 ; init d = pos.x+width
      ; e = pos.y  
           GET_STATE(widget_pos)
           ex de,hl
+          push de       ; save cursor in case of NC (must stay)
           call struct_add_width
 ; Must save current col (in case all fields on the right are readonly)
           call rewind_state
@@ -1925,10 +1903,12 @@ _struct_go_rgt
           call rewind_state
           call _struct_setup_field_cursor
           pop hl        ; discard prev col
+          pop de        ; discard cursor
           scf
           ret
 .exit
           pop hl
+          pop de
           ret
 
 _struct_setup_field_cursor
@@ -1940,9 +1920,6 @@ _struct_setup_field_cursor
           call nc,fail
           call z,fail
       END
-          ex de,hl
-          CALL_STATE_EXT(set_cursor)
-          call reset_widget_location_from_cursor
           ret
 
 struct_add_width
@@ -2319,26 +2296,36 @@ _ml_is_reachable
           or a
           ret
 
-update_cur_y_from_selected
-;Related: /select_line_in_view/ /get_current_line_number/
-;In: A= selected line
-          ld c,a
-          call get_line_at_top
-;Note: doesn't check if out of range.
-     ; buggy display as easy to debug than assert. Plus, less code.
-          ld b,a
-          ld a,c
-          sub b
-;enchaine
-update_cur_y
-; Update cur_y and cursor Y (hack)
-;In: a= new y
-          push bc
-          SET_STATE_BYTE(cur_y)
+update_pos_y
+;Used by phrasui to update 
+;In: a= offset y 
+          push af
+; Hack: needed to reset X position (at start of field)
+      IF todo
+; see why it isn't done by struct when entering field
+      END
+          call reset_cursor_from_widget_location
+          call set_root_state
+          pop af
+          SET_STATE_BYTE(widget_pos_y)
+;          call update_nested_pos_y_
+ ;         call _setup_widget ; propagate pos y
+;enter from start to refresh state 
+; (e.g. instr set on previous line but not new line, we must go through
+  ; w_optional again)
+          call enter
+; Hack: workaround to pass new location to nested widget (even
+      ; through several layers)
+    ;      call reset_widget_location_from_cursor
+          ret
+
+
+update_nested_pos_y_
 ; !!Hack!! Update cursor so new position can be passed (by caller)
 ; to nested widget (via reset_widget_location_from_cursor)
 ; The alternative would be to propagate cursor position at /enter/
 ; phase.
+;In: a= offset y relative to current widget
           ld b,a
           GET_STATE_BYTE(widget_pos_y)
           add b
@@ -2360,6 +2347,25 @@ update_cur_y
       IF dev_checks'
           call z,fail
       END
+          ret
+
+update_cur_y_from_selected
+;Related: /select_line_in_view/ /get_current_line_number/
+;In: A= selected line
+          ld c,a
+          call get_line_at_top
+;Note: doesn't check if out of range.
+     ; buggy display as easy to debug than assert. Plus, less code.
+          ld b,a
+          ld a,c
+          sub b
+;enchaine
+update_cur_y
+; Update cur_y, cursor Y (hack) and nested.pos_y
+;In: a= new y
+          push bc
+          SET_STATE_BYTE(cur_y)
+          call update_nested_pos_y_
           pop bc
           ret
 
@@ -2370,17 +2376,10 @@ enter
           jp refresh_focus
 
 delegate_width
-;out: hl = child's width
-          ld hl,(state_sp)
-          push hl
-          GET_STATE(embedded_ui)
-          call clone_state
-          call _setup_widget
+;out: hl = child's width       
+          call push_state
           call call_state_get_width
-          ex (sp),hl
-          call set_state_sp
-          pop hl
-          ret
+          jp pop_state
 
 delegate_set
 ;Needed for e.g. optional since focus on wrapper
@@ -2557,6 +2556,10 @@ st_xloop
           pop bc
           ld a,l:or h:jr z,st_end
           push bc
+          push hl
+          CALL_STATE_EXT(get_cursor)
+          ex de,hl
+          pop hl
           call display_child
 
 ;--- separator --- 
@@ -2572,7 +2575,8 @@ st_xloop
 st_end
           ret
 
-space BYTE " ",0
+struct_separator = " "
+space BYTE struct_separator,0
 
 disp_multiline
 ; Display all lines in view
@@ -2605,10 +2609,14 @@ disp_one_line
           ld c,a
           GET_STATE(widget_pos)
           ld a,l:add c:ld l,a
+          push hl
           CALL_STATE_EXT(set_cursor)
+          pop hl
 ;-- select line in model    
           pop af
+          push hl
           call select_line_in_view
+          pop de        ; de=cursor for display_child
           jr nc,.noline
 ;-- display embedded widget
           GET_STATE(embedded_ui)
@@ -2657,7 +2665,7 @@ disp_optional
           GET_STATE(embedded_ui)
           call clone_state
 ; setup child widget
-          call setup_widget
+          call _setup_widget
           pop af
           jr z,.disabled
 ;enabled: display child as is
@@ -2950,7 +2958,7 @@ auto_validate
 ;reset field editor. 
 ;Otherwise cursor would be +1 -> no more char accepted.
           call setup_field_editor
-          HANDLED()
+          GED_HANDLED()
           ret
 
 key_hexa
@@ -2989,7 +2997,7 @@ key_toggle
           call validate ; needed to trigger refresh if flagged 
           call refresh_focus ; needed to put back cursor
 ;---      
-          HANDLED()
+          GED_HANDLED()
           ret
 
 
@@ -3229,23 +3237,23 @@ fe_pos = $+1
           call z,fail
       END
           call display_cursor_at
-          HANDLED()
+          GED_HANDLED()
           ret
 
 ; -----------------------
 ; Routines utilitaires
 ; -----------------------
 reset_cursor_from_widget_location
-          push hl
+          push bc:push hl
           GET_STATE(widget_pos)
           CALL_STATE_EXT(set_cursor)
-          pop hl
+          pop hl:pop bc
           ret
 
 reset_widget_location_from_cursor
+;!! used by phrasui
           push hl
           CALL_STATE_EXT(get_cursor)
- ;          ld a,h:cp 5:call z,&BE00
           SET_STATE(widget_pos)
           pop hl
           ret
@@ -3484,6 +3492,13 @@ txt_wr_char = &BB5D
 txt_place_cursor = &BB8A
 
 ; ---------------------------             
+sep1_ui
+;!! already 1 space by w_struct
+      BYTE w_text,0
+sep2_ui
+      BYTE w_text," ",0
+sep3_ui
+      BYTE w_text,"  ",0
 
 ;-------------
 ; Variables
@@ -3522,6 +3537,7 @@ wv_byte_pnt WORD
 wv_edit_buffer SKIP 8
 
 ged_end
+
 
 
 

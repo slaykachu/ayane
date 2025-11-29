@@ -1,0 +1,409 @@
+; <<<< Phrase Editor >>>>
+todo  = 1
+; 2025
+; -- Alpha1 --
+  ; Nov
+    ; 27 
+    ; 19 1st version
+
+dev_checks' = 1
+
+      IMPORT "const.i"  ; kclr
+;      IMPORT "memmap.i"
+      IMPORT "macro.i"
+      IMPORT "import.i"
+          IMPORT_CORE() ; conv.put_note
+      IF todo
+;use shared imports
+      END
+      IMPORT "song.o"   ; Song_get_instr
+      IMPORT "phrase.o"
+      IMPORT "piano.o"
+      IMPORT "ged.o"
+;      IMPORT "track.o"
+      SKIP -$ AND &0F
+      IMPORT "phradisp.o"
+
+
+;------------------
+      MACRO CALL_DISP_BK adr
+; When caller out of bank
+          ASSERT($ AND &C000 != &4000)
+   ;       ASSERT(adr AND &C000 == &4000) (cannot check: forward ref)
+          call call_disp:WORD adr
+      ENDM
+
+      MACRO JP_DISP_BK adr
+; When caller out of bank
+          ASSERT($ AND &C000 != &4000)
+   ;       ASSERT(adr AND &C000 == &4000) (cannot check: forward ref)
+          call jp_disp:WORD adr
+      ENDM
+
+;------------------
+
+phrase_cold_refresh
+;------------------
+ ; -- ad-hod display
+          call refresh_page
+ ; -- gedeihen 
+          call gedeihen_init
+
+          ld hl,_set_cursor
+          ld ix,_get_cursor
+          ld iy,_place_cursor
+          ld de,_write_char
+          ld bc,_paint_sprite
+          call gedeihen_set_hooks
+
+          ld hl,&0101:call _set_cursor
+          ld hl,phrase_ui
+          call setup_widget
+
+ ; -- sync model
+          call select_row_ui
+
+;refresh_all
+          call gedeihen_disp ; Focus on current row
+;reenter
+          ld hl,&0101:call _set_cursor
+          ld hl,phrase_ui
+          jp gedeihen_enter
+
+phrase_ui_process
+          call gedeihen_process
+          ret nc
+          ld a,(is_modified)
+          or a
+          scf
+          ret z
+ ; After row edited: skip exactly delai
+          call refresh_nofocus ; needed for env
+          ld hl,(time_row)
+          call get_delai_ui
+          ld e,a:ld d,0:add hl,de
+          jp refresh_row
+
+; ---------------------
+phrase_ui
+; Ad-hoc version of w_multiline:
+   ; - Y pos in not proportional to logical ml row
+       ; -> We could address that in row selection, but ged might
+          ; reset the cursor after that (too brittle/clunky)
+   ; - CTRL-up/down 
+   ; - The whole phrase disp is custom
+      BYTE w_key_handler
+      WORD phrase_row_ui
+      WORD k_ml
+
+phrase_row_ui
+      BYTE w_struct
+      WORD note_ui
+      WORD instr_ui
+      WORD vol_ui
+      WORD 0
+
+note_ui
+; Just display note, edit is done via /extra_handler/,
+; so it works from any field.
+      BYTE w_refresh
+      WORD note_ui'
+note_ui'
+      BYTE w_text_dyn
+      WORD note_as_text
+
+instr_ui
+      BYTE w_refresh
+      WORD instr_ui'
+instr_ui'
+      BYTE w_optional_readwrite
+      WORD instr_ui''
+      WORD has_instr
+instr_ui''
+      BYTE w_deci_99_custom
+      WORD _set_instr
+      WORD _get_instr
+
+vol_ui
+      BYTE w_refresh
+      WORD vol_ui'
+vol_ui'
+      BYTE w_key_handler
+      WORD vol_ui''
+      WORD vol_handler
+vol_ui''
+      BYTE w_optional_readwrite
+      WORD vol_ui'''
+      WORD has_vol
+vol_ui'''
+      BYTE w_hexa_digit_custom
+      WORD _set_vol
+      WORD _get_vol
+vol_handler
+      BYTE kclr:WORD _del_vol
+      BYTE 0:WORD 0
+
+k_ml
+      BYTE kdwn:WORD row_dwn
+      BYTE kup:WORD row_up
+      BYTE "R"-&40:WORD refresh_page ; debug
+;!! put at this level, so that /refresh_row/ update widget's Y at 
+  ; the right level (struct)
+      BYTE 0:WORD piano_keys
+; -------------------------------------
+
+note_as_text
+          call has_note
+          jr z,.nonote
+          call row_get_note
+          ld de,buf_note_text
+          push de
+          call put_note
+          pop hl
+          ret
+.nonote
+          ld hl,note_empty
+          ret
+
+has_note
+          call is_empty
+          ret z
+          call row_get_note
+          jr z_to_val
+
+has_instr
+          call is_empty
+          ret z
+          call row_get_instr
+          jr z_to_val
+_get_instr
+          call row_get_instr
+          scf
+          ret
+_set_instr
+          call create_if_empty
+          call row_set_instr
+          jr edit_row_com
+
+has_vol
+          call is_empty
+          ret z
+          call row_get_vol
+z_to_val
+          ld a,0
+          ret z
+          inc a
+          ret
+_get_vol
+          call row_get_vol
+          scf
+          ret
+_set_vol
+          call create_if_empty
+          call row_set_vol
+          jr edit_row_com
+_del_vol
+      IF todo
+; todo
+      END
+          ret
+
+is_empty
+;Needed to avoid inserting empty rows when just navigating
+          ld a,(row_exists)
+          or a
+          ret
+
+;-------------------------
+edit_row_com
+;-----------
+          call play_piano
+          ld a,1:ld (is_modified),a
+          scf
+          ret
+
+row_dwn
+;------
+; Go to next delai-aligned row or non-empty row
+; whichever comes first
+; -- next row
+          ld de,(time_row)
+          call phrase_get_row_at
+          ld hl,(row_t1)
+          push hl
+; -- next delai aligned
+          call get_delai_aligned
+          jr nz,$+3:add hl,bc ; already aligned -> add delai
+; -- take min
+          pop bc
+          or a:sbc hl,bc:add hl,bc:jr c,.ok
+          ld l,c:ld h,b
+.ok
+;enchaine
+refresh_row
+;----------
+; Update cursor and select (refresh itself done by ged)
+; !!! Only called from ged event (update_nested_pos_y uses that)
+; In: hl = time
+          xor a:ld (is_modified),a
+
+          ld (time_row),hl
+; -- check if out of view port or out of phrase
+; hl = time - time at top
+          ld de,(time_row_at_top)
+          or a:sbc hl,de:jr c,_pre_view
+
+      IF dev_checks'
+          inc h:dec h:call nz,mess ; Not expecting > &100
+      END
+          ld ix,(pos_y) ; for ixl
+          ld a,l
+          CALL_DISP_BK(correct_y)
+          jr nc,_past_view
+
+          push af
+          call select_row_ui
+          pop af
+          inc a         ; ged cursor is 1-based
+          call update_pos_y
+          GED_HANDLED() ; when coming for e.g. edit_row_com
+          ret
+
+select_row_ui
+;------------
+; Don't create row if empty slot
+          ld de,(time_row)
+          call phrase_get_row_at
+          jr nc,.past_phrase
+          jr nz,.no_row
+          call phrase_select_row_at
+      BYTE &3E          ; Hack: ld a,&af (non zero)
+.no_row
+          xor a
+          ld (row_exists),a
+          ret
+.past_phrase
+      BRK
+;Todo: new phrase?
+
+_pre_view
+;todo
+      BRK
+
+_past_view
+;todo
+      BRK
+
+row_up
+;-----
+; Go to prev delai-aligned or non-empty row
+; whichever is closest
+
+; -- prev row
+          ld de,(time_row)
+          ld a,e:or d:jr z,.prev_phrase
+          dec de
+          call phrase_get_row_at
+          ld hl,(row_t0)
+          push hl
+; -- prev delai aligned   
+          inc de
+          call get_delai_aligned
+          or a:sbc hl,bc
+; -- take max
+          pop bc
+          or a:sbc hl,bc:add hl,bc:jr nc,.ok
+          ld l,c:ld h,b
+.ok       jr refresh_row
+
+.prev_phrase
+      BRK
+
+get_delai_aligned
+; Get lowest k*step >= DE i.e (k-1)*step < DE
+; In: DE = target time
+;Out: HL >= DE, HL multiple of step
+    ; BC = delai
+    ; Z if HL == DE
+    ; DE preserved
+          call get_delai_ui
+      IF dev_checks'
+          or a:call z,mess
+      END
+          ld c,a
+          xor a         ; for NC as well
+          ld b,a
+          ld l,a
+          ld h,a
+          sbc hl,de
+          ret z         ; case DE = 0
+.multiple
+          add hl,bc
+          jr nc,.multiple
+          ld a,l:or h
+          add hl,de
+          ret
+
+;-------------------------
+piano_keys
+          call is_piano_key_pressed
+          ret nc
+          call create_if_empty
+          call row_set_note
+          call Song_get_instr
+          call row_set_instr
+          call validate ; needed to activate w_refresh
+;          call refresh_nofocus
+;          ld bc,&0404:call &BC38
+;          call &BB06
+;          ld bc,&0606:call &BC38
+          jp edit_row_com
+; ----------------------
+_set_cursor JP_DISP_BK(ph_set_cursor)
+_get_cursor JP_DISP_BK(ph_get_cursor)
+_place_cursor JP_DISP_BK(ph_place_cursor)
+_write_char JP_DISP_BK(ph_write_char)
+_paint_sprite = &BE00
+; ----------------------
+
+refresh_page
+;-----------   
+      IF todo
+; - for all tracks
+; - compute time_phrase_at_bottom
+; - compute delai
+      END
+          ld hl,(time_row_at_top)
+          ld de,(time_row_at_bottom)
+          ld ix,0       ; cursor
+          call get_delai_ui
+          CALL_DISP_BK(disp_rows)
+          ret
+
+create_if_empty
+; A preserved
+          ld b,a
+          call is_empty
+          ld a,b
+          ret nz
+          ld a,1:ld (row_exists),a
+          ld de,(time_row)
+          call phrase_select_row_at
+          ld a,b
+          ret
+; ----------------------
+
+note_empty BYTE "---",0
+buf_note_text SKIP 3:BYTE 0
+
+;------
+; vars
+;------
+time_row_at_top WORD 0  ; top of view, or top of phrase
+time_row WORD 0
+time_row_at_bottom WORD &FFFF
+row_exists BYTE 0       ; 0 = empty
+is_modified BYTE 0
+pos_phrase              ; Pos top-left:
+pos_y BYTE 0            ;   >0 when phrase start in the middle)
+pos_x BYTE 0            ;   Offset track column

@@ -1,7 +1,7 @@
 todo  = 1
 may_optim = 1
 may_crunch = 1
-
+dev_checks' = 1         ; new checks
 ; Routine for each type of intruments:
       ; - instr_default
       ; - instr_chip_down_vib
@@ -811,6 +811,12 @@ instr_setup
           3 ** add hl,hl
 
           ld bc,&7F00+BK_INSTR:out (c),c
+
+      IF dev_checks'
+          ld a,(hl)
+          cp instr_default AND &FF
+          call nz,mess
+      END
 
           ld de,instr_code_pnt
           ldi

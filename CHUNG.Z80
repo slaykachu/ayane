@@ -1,5 +1,9 @@
 ; <<<<< chung: gestion chunk? + instr >>>>>
-; 2025
+; 2025     
+ ; -- alpha 1 --
+  ; Nov 26. Move Song_get_instr to song
+      ; 16. Move new_chunk_ext to phrase (remove dep)
+          ; Remove dependency on ply
  ; -- v0aq --
   ; Sep 28. Split set_hard_envs set_hard_type / _arp / ...
               ; Rationale: Will allow type by column (const, tab...)
@@ -20,11 +24,11 @@ row_link = 2
       IMPORT "macro.i"
       IMPORT "plyconf.i" ; for nb_fx and use_instr_chip_down_vib (tmp)
 
-      IMPORT "ply.o"    ; For fx_set_phrase
       IMPORT "instr.o"  ; Use LSB as type.
       IMPORT "timer.o"  ; fx_null/fx_end/sync_buzzer_register
       IMPORT "heap.o"   ; new_heap_chunk
       IMPORT "chunk.o"  ; new_chunk 
+      IMPORT "song.o"   ; Song_get_instr
       IMPORT "memcpc.o"
 
       IF 0
@@ -263,12 +267,6 @@ fill      ld (hl),a:inc l:jr nz,fill
           ret
 fillb     ld (hl),a:inc hl:djnz fillb
           ret
-
-Song_get_instr
-;-------------
-          call _prelude
-          ld a,(va_current_instr)
-          jp _postlude
 
 instr_does_exist
 ;---------------
@@ -1141,64 +1139,6 @@ Setup_row_r7
 err_no_instr
       BRK
 
-new_chunk_ext
-;------------
-; !!! Used by phrase.o
-; Like new_phrase_chunk, but no phrase header needed or desirable:
-; it wouldn't make sense, as it is just an extension of the phrase.
-; Also: Out:  A= chunk start (needed by insert_in_chunk)
-
-      IF dev_checks'
-; Assume bk phrase already connected
-          call get_bk_connected
-          cp BK_PHRASE:call nz,mess
-      END
-
-          call New_chunk
-          ret nc
-          call _install_ext
-          ld a,chunk_start ; in const.i (shared with ply)
-          ret
-
-_install_ext
-      IF makeroom
-; Can be factorized by
-; 1/ encoding size with chunk_def itself
-; 2/ just passing LSB of chunk_def
-      END
-          push hl
-          push de
-          push bc
-          ld a,l        ; bk for loop
-          ld d,h
-          ld hl,chunk_def
-          ld bc,chunk_def_
-;enchaine
-_install_com            ; !!! Used by phrase.o
-;header
-          ld e,chead_last
-          ldir
-          ex de,hl
-; We put link to start of chunk
-; It will be copy if phrase takes more chunks,
-; making looping easier
-; NOTE1: lsb already set
-; NOTE2: overwritten when linking to new chunk 
-       ; (insert_new_chunk_from_id)
-      IF phrases_across_banks
- !!! review that. Use word for id, fx_set_phrase would have to force
-   ; L = phrase_start
-      END
-          ld (hl),h
-      IF todo
-; Why?
-      END
-          ld a,l:inc a
-          pop bc
-          pop de
-          pop hl
-          scf
-          ret
 
 _prelude
 ; !! Must be call top_level
@@ -1218,40 +1158,6 @@ _prelude
           push hl
           call connect_bk_base
           jp jp_ret
-
-
-;-------------------------------------------
-
-chunk
-; NB: insertion itself rewritten with this behavior:
-    ; when no room, put tail in *new* chunk (doesn't try to merge)
-    ; when no room even for bytes to insert,
-    ;  put them in this same new chunk.  
-    ; ??TODO: factorize?
-
-; !! Customized for phrases (cf end tag EOP)
-
-chunk_def
-;--------
-;Standard chunk without phrase header.
-;Used for tables? and phrases continuation (hence tag_end, which will
-;be overwritten for tables)
-      BYTE chunk_def_+3 ;+2: next field. +2-1: word for phrase_end
-      BYTE 0            ;checksum (unused now)
-      BYTE 0            ; row# (mimic line# in orgams's chunk)
-      IF $ - chunk_def + 2 - chunk_start ;2: next field
-  !! inconsistency. check const.i
-      END
-; ROW sentinel: makes sense for phrases cont, not table
-; duration 0 = tag eof of phrase
-      IF todo
- ; check with ply.empty_phrase which also use 0
-      END
-      BYTE 0
-      BYTE mask_fx0
-      BYTE fx_set_phrase AND &FF
-chunk_def_ = $ - chunk_def
-
 
 ; ----------------------------
 vars
@@ -1297,7 +1203,8 @@ zero_start              ; Not loaded, must follow def (see check below)
       IF zero_start - [var+def_size]
  !! must be contiguous to simplify init code
       END
-va_current_instr BYTE 
+          ASSERT(va_current_instr == $)
+      BYTE 
 va_table# BYTE 
 selected_row WORD 
 

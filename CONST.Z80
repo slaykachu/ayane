@@ -239,7 +239,12 @@ kclft = &FA
 kcrgt = &FB
 
 kesc  = &FC
+kextra = &BE00          ; lifting val broken (w_hexa_digit_custom)
 
+;---           
+; Used by disp and bandaya
+r1    = 40
+r1'   = 48              ; bandeau and sequencer
 
 ;---                    
 programming_error = &BE00 ; TODO: use except

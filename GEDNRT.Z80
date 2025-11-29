@@ -271,6 +271,7 @@ tests
           call test_focus_multiline_keyhandler_struct_refresh0
           call test_focus_multiline_keyhandler_struct_refresh
       END
+          call test_focus_update_y
 ;          call test_remove_line
           ret
 
@@ -2127,7 +2128,7 @@ test_set_struct_refresh'
       BYTE " -2",nrtend
 
 test_set_struct_vol_env00
-;-------------------------------------------
+;------------------------
 ; 'env type' deactivated but writable
 ; Check refresh mecanism itself: we exit "refreshing" field
           ld a,12:ld (tmp_vol),a
@@ -2142,7 +2143,7 @@ test_set_struct_vol_env00
       BYTE nrtend
 
 test_set_struct_vol_env0
-;------------------------------------------
+;-----------------------
 ; 'env type' deactivated but writable
 ; To write into it we enter it. 
 ; But then we musn't overwrite '-' by the model's value
@@ -3087,11 +3088,11 @@ test_focus_multiline_struct_refresh
 .check_cursor
           ld hl,(iotest_cursor)
           ld de,&0601   ; <- end of widget
-          call .check_cursor_
+          call check_hl_eq_de
 ; current widget under focus must match
           GET_STATE(widget_pos)
           ld de,&0301   ; <- start of widget
-.check_cursor_
+check_hl_eq_de
           or a:sbc hl,de:add hl,de:call nz,fail
           ret
 
@@ -3175,6 +3176,43 @@ test_focus_multiline_keyhandler_struct_refresh
       BYTE "C"          ; Same byte, but wasn't refreshed
       BYTE nrtend
       END
+
+test_focus_update_y
+;-----------------
+; Check pos Y of struct updated externally (reproduce phrasui.o)
+          ld a,1:ld (dummy_byte),a ; toggle on
+          ld a,29:ld (nrt_deci_byte),a
+          ld a,&0C:ld (nrt_hexa_digit),a
+          TEST_RUN_FOCUS(ui_update_y,.seq)
+          ld hl,(iotest_cursor)
+          ld de,&0802   ; past "C"
+          call check_hl_eq_de
+          ld a,(iotest_screen + &10 + 6):cp "C"+&80:call nz,fail
+          ret
+.seq
+      BYTE krgt,krgt,kdwn
+          END_OF_NRT_SEQUENCE()
+
+sep   = struct_separator
+      BYTE toggle_char,sep,"+29",sep,"C",nrt_nl
+; Ok for now only field is refreshed (as phrasui uses ad-hoc disp)
+;      BYTE toggle_char,sep,"+29",sep:FOCUS("C")
+      BYTE nrtend
+
+ui_update_y
+      BYTE w_key_handler
+      WORD ui_struct_3fields
+      WORD k_ml
+
+k_ml
+      BYTE kdwn:WORD row_dwn
+      BYTE 0:WORD 0
+
+row_dwn
+          ld a,2        ; line 2
+          call update_pos_y
+          GED_HANDLED()
+          ret
 
       IF 0
 test_refresh_all

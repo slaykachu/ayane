@@ -5,6 +5,10 @@ fail  = &BE00
 ; !!TODO!!: remove put_* from disp.o
 
 ; //// 2025 ////
+; -- alpha 1--
+;Nov
+  ; 27: Add put_deci_a_pad_space
+  ; 17: put_note: save hl
 ; -- v0am --
 ;Aug      
   ; 24: Add convert_note, put_note, put_double_space
@@ -214,8 +218,16 @@ pwfn0wf
 
 put_deci_a_pad0
 ; for 00-99 deci: add 0 if < 10
+          ex de,hl:ld (hl),"0"
+          jr put_deci_a_pad_
+
+put_deci_a_pad_space
+; for 00-99 deci: add space if < 10
+          ex de,hl:ld (hl)," "
+put_deci_a_pad_
+          ex de,hl
           cp 10:jr nc,put_deci_a
-          ex de,hl:ld (hl),"0":inc hl:ex de,hl
+          inc de
           jr put_deci_a
 
 put_deci_a_signed
@@ -303,8 +315,8 @@ put_note
   ;de: Buffer
 ;out: de past written note
     ;  a preserved
-    ; hl, bc thrashed
-          push af
+    ; bc thrashed
+          push af:push hl
           call convert_note
           ld l,a
           add a:add l
@@ -314,7 +326,7 @@ put_note
           ldi:inc bc
           ld a,c
           call put_a_deci_digit
-          pop af
+          pop hl:pop af
           ret
 
 convert_note

@@ -1,0 +1,64 @@
+; ----- Manual test of phrase editor -----
+
+dev_checks' = 1
+use_testlib = 1         ; 1: with instr, but mem full with track
+
+      IMPORT "memmap.i"
+      IMPORT "const.i"  ; kesc
+      IMPORT "macro.i"
+      IMPORT "import.i"
+
+      ORG code_start
+      ENT start
+
+;to do first    
+          IMPORT_CORE()
+          IMPORT_GED()
+      IMPORT "shortcut.o" ; for setup_keys
+      IMPORT "phrase.o"
+      IMPORT "phrasui.o"
+      IF use_testlib
+      IMPORT "testlib.o" ; for dev test
+      END
+      BANK BK_DISP
+    ;      LOAD_FONTS()  ; no need all fonts RN
+.save
+      ORG fonte_small:LOAD "fntsmall.bin"
+      ORG .save
+          IMPORT_DISP() ; phradisp expect deps to be imported
+;      ORG bandaya_end
+
+start
+          ld a,2:call &BC0E
+      IF use_testlib
+          call init_for_test
+          call dummy_instr_ui
+      ELSE
+          call setup_keys
+          call Init_chunk_module
+      END
+          call phrase_reset
+          xor a:call song_select_new_phrase
+note1 = &14             ; G#1
+note2 = &26             ; D-2
+          ld a,0:call phrase_select_new_row:call nc,fail
+          ld a,note1:call row_set_note
+          ld a,1:call row_set_instr
+          ld de,delai_ui_default:call phrase_select_row_at
+          ld a,note1+1:call row_set_note
+          ld a,&0F:call row_set_vol
+          ld de,delai_ui_default*16+2:call phrase_select_row_at
+          ld a,note2:call row_set_note
+
+          call phrase_cold_refresh
+.lp
+          call km_wait_key
+          call phrase_ui_process
+          jr c,.lp
+          cp kesc
+          jr nz,.lp
+          ret
+
+ho
+          LIMIT(ramlimit)
+

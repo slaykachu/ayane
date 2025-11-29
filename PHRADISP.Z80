@@ -1,0 +1,277 @@
+; <<<<< Fast phrase display >>>>>
+
+dev_checks' = 1
+
+;      IMPORT "const.i"
+      IMPORT "memmap.i" ; BK_DISP
+      IMPORT "macro.i"
+      IMPORT "import.i"
+          ASSERT($ AND &0F == 0) ; must pad
+;Otherwise IMPORT_CORE() add padding, which defeats ref_pc test
+ref_pc
+          IMPORT_CORE()
+      IMPORT "phrase.o"
+      BANK BK_DISP
+          IMPORT_DISP()
+ho
+          ASSERT($ == ref_pc) ; deps must have been imported by host
+
+view_rows = 200-4       ; in scanlines
+
+disp_rows
+; Display phrase    
+; ==============
+; In: hl = time start (must be multiple of step)
+      IF todo
+; relax this constraint: shifted phrases on different track might
+                       ; not respect that
+      END
+    ; de = time end
+    ;  a = (minimum) step for zoom correction
+    ; ixh = pos x
+    ; ixl = pos y
+    ; phrase selected
+
+          ld (.time_end),de
+
+          call get_zoom
+          ld (zoom_hook),de
+          ld a,l:ld iyl,a
+
+          ld de,row_buf
+          call unpack_row_at
+          jr nc,.pastphrase
+          jr nz,.entry
+.rowlp
+; Vars:
+; iyl = msb time at top
+; hl = current time, delai-aligned
+; bc = time next row     
+
+          or a:sbc hl,bc:add hl,bc:jr c,.empty
+; HL reached next row (z) or past it (nz)
+          jr z,.entry
+; Unaligned to delay (row at BC < HL) -> adapt pos_y
+          ld a,c:sub iyl:ld iyh,a
+          ld de,row_buf
+          call unpack_next_row
+          jr nc,.pastphrase
+      IF dev_checks'
+;Only existing row or pastphrase possible
+          call z,mess
+      END
+          ld a,iyh
+          call disp_row
+;Mustn't advance HL to next delai, as there might be another row before
+          jr .rowlp
+
+.entry
+          ld a,l:sub iyl ; pos_y = time - time at top
+          call disp_row
+          jr .next
+
+.empty
+          ld a,l:sub iyl
+          call disp_empty
+.next
+; time
+          call get_delai_ui
+          add l:ld l,a:jr nz,$+3:inc h
+; reached end of view? Test first so we can return Carry=finished
+          sub iyl
+          call correct_y
+          ccf:ret c     ; Exit, done
+; reached end of phrase?
+.time_end = $+1
+          ld de,0
+          or a:sbc hl,de:add hl,de
+          jr c,rowlp
+; separator    
+          dec a
+          call set_cursor'
+          ld a,&55
+.sepcom
+          ld b,9
+          ld de,(dh_scrpos)
+          call separator
+          or a
+          ret
+
+.pastphrase
+;Shouldn't happen: client must provide valid range
+;We put marker for visual debug
+          ld a,&F0
+          call .sepcom
+          or a
+          ret
+
+;---------------------------------
+disp_row
+; In: ixl : pos x
+    ; a : pos y        
+          push bc:push hl
+          call set_cursor_dh
+          ld de,row_buf
+          ld hl,phradisp_buf
+          ld c,"-"
+          ld a,(de):inc de:or a:jp p,.note
+;-1 : empty 
+      3 ** [ld (hl),c:inc l]
+          jr .oknote
+.note
+          ex de,hl
+          call put_note
+          ex de,hl
+          ld c,"-"      ; was trashed by put_note
+.oknote
+          inc l         ; space    
+          ld a,(de):inc de:or a:jp p,.instr
+      2 ** [ld (hl),c:inc l]
+          jr .okinstr
+.instr
+          ex de,hl
+          call put_deci_a_pad_space
+          ex de,hl
+          ld (hl)," "   ; put_* puts a 0. argl
+.okinstr
+          inc l
+          ld a,(de):inc de:or a:jp p,.vol
+          ld (hl),c:inc l
+          jr .okvol
+.vol
+          ex de,hl
+          call put_hexa_ql
+.okvol
+          ld bc,phradisp_buf
+          call dh_text
+          pop hl:pop bc
+          ret
+
+disp_empty
+; Ad-hoc display of "--- -- -" (only one scanline)
+   ; - faster
+   ; - doesn't overwrite for unaligned delai
+; In: ixl : pos x
+    ;   a : pos y
+          push bc:push hl
+          call set_cursor_dh
+          ld de,(dh_scrpos)
+          call bc26_de
+          call bc26_de
+          ld hl,empty_row
+          ld b,empty_row_
+.xlp
+          ld a,(hl):inc l
+          ld (de),a:inc e
+          call z,inc_d_wrap
+          djnz .xlp
+          pop hl:pop bc
+          ret
+
+set_cursor_dh'
+; For phrasui: 
+   ; - check if in view port
+   ; - also update logical dh_cursor
+; In: A = shift Y
+    ; L = pos Y (at phrase start or top)
+    ; H = pos X
+;Out: Carry if in view
+          push hl:pop ix ; adapt api
+          call correct_y
+          ret nc
+          ld l,a
+          call dh_locate
+          scf
+          ret
+
+set_cursor_dh
+; In: A = shift Y
+    ; IXL = pos Y (at phrase start or top)
+    ; IXH = pos X
+; Out: Carry if ok
+     ; NC if out of view port
+          call correct_y
+set_cursor'
+          call dh_locate_y ; first, as reset x
+          ld a,ixh
+          jp dh_locate_x
+
+correct_y
+; in:   A = time offset  
+    ; IXL = pos Y (at phrase start or top)
+;Out: A: cursor y
+       ; Carry if in view
+       ; NC otherwise
+zoom_hook = $+1
+          call &BE00
+          add ixl
+          cp view_rows
+          ret
+
+
+separator
+.xlp
+          ld (de),a:inc e
+          call z,inc_d_wrap
+          djnz .xlp
+          ret
+
+
+get_zoom
+; Select zoom so step step*zoom >= 6 (to avoid overlapping rows)
+; in: A = step
+;out: DE = zoom routine
+          ld de,zoom6:dec a:ret z
+          ld de,zoom3:dec a:ret z
+          ld de,zoom2:dec a:ret z
+;for 4: *1.5, also works for 5
+          ld de,zoom1_5:cp 2:ret c
+          ld de,zoom1
+          ret
+
+zoom6     add a
+;enchaine
+zoom3     ld l,a:add a:add l:ret
+zoom2     add a:ret
+zoom1_5   ld l,a:srl a:add l
+;enchaine
+zoom1     ret
+
+;---------------------------------
+ph_get_cursor
+;bb78   (doesn't return a  = roll count)
+          ld hl,(dh_cursor)
+          inc h:inc l
+          ret
+
+ph_set_cursor
+;bb75       
+          dec h:dec l
+          jp dh_locate
+
+ph_place_cursor
+;bb8a cursor blob
+          jp dh_place_cursor
+
+ph_write_char
+;bb5a          
+          push af:push de:push hl ; like bb5a
+          call dh_chr
+          ld hl,dh_cursor_x
+          inc (hl)
+          pop hl:pop de:pop af
+          ret
+
+;---------------------------------
+      SKIP -$ AND &0F   ; for align and debug
+
+row_buf SKIP 3
+phradisp_buf FILL 8," ":BYTE 0 ; C-4 11 F
+          CHECK_CONFINE(phradisp_buf)
+empty_row
+           ; "--- -- -"
+._    = %01010100
+      BYTE ._,._,._,0,._,._,0,._
+empty_row_ = $ - empty_row
+          CHECK_CONFINE(empty_row)
+

@@ -1,6 +1,10 @@
 ; << Memory bank handling for ayane >>
 ; CPC specific PAGING (out &7fxx,&cX)
-; 2025 Aug 25: Remove jump table. Short module: neater to import
+; 2025
+ ; --alpha 1--
+     ; Nov 16: call_disp: update checks (no more jp table)
+ ; --v0.a?--
+     ; Aug 25: Remove jump table. Short module: neater to import
      ; Jun 20: jump table
 
 todo  = 1
@@ -197,9 +201,8 @@ call_disp
           call connect_a
       IF dev_checks'
 ; verify code has been loaded
-init_disp_adr = disp    ; used for checks in call_disp
-          ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
-          ld a,(init_disp_adr+3):cp &C3:call nz,fail
+          ld a,(disp):cp "D":call nz,fail
+          ld a,(disp+1):cp "I":call nz,fail
       END
           pop af
           ex (sp),hl
@@ -236,8 +239,8 @@ call_status
           call connect_a
       IF dev_checks'
 ; verify code has been loaded
-          ld a,(init_disp_adr+&8000):cp &C3:call nz,fail ; jp
-          ld a,(init_disp_adr+&8003):cp &C3:call nz,fail
+          ld a,(disp+&8000):cp "D":call nz,fail ; jp
+          ld a,(disp+&8001):cp "I":call nz,fail
       END
           pop af
           ex (sp),hl
@@ -269,8 +272,8 @@ jp_disp
           call connect_a
       IF dev_checks'
 ; verify code has been loaded
-          ld a,(init_disp_adr):cp &C3:call nz,fail ; jp
-          ld a,(init_disp_adr+3):cp &C3:call nz,fail
+          ld a,(disp):cp "D":call nz,fail ; jp
+          ld a,(disp+1):cp "I":call nz,fail
       END
           pop af
           ex (sp),hl
@@ -304,8 +307,8 @@ jp_status
           call connect_a
       IF dev_checks'
 ; verify code has been loaded
-          ld a,(init_disp_adr+&8000):cp &C3:call nz,fail ; jp
-          ld a,(init_disp_adr+&8003):cp &C3:call nz,fail
+          ld a,(disp+&8000):cp "D":call nz,fail
+          ld a,(disp+&8001):cp "I":call nz,fail
       END
           pop af
           ex (sp),hl

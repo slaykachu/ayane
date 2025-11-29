@@ -58,6 +58,17 @@
           ld de,x*&0100 + y
       ENDM
 
+      MACRO GED_HANDLED
+; See ged.handler_table 
+          xor a:scf
+      ENDM
+
+      MACRO GED_LIFT val
+!! lifting value broken ; (w_hexa_digit_custom) coz' of autovalidate?
+          ld a,val
+          or a
+      ENDM
+
 ; --------------------
 ; Timer emulation
 ; --------------------

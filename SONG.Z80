@@ -1,6 +1,10 @@
 ; <<< Song/Subsong handling >>>
 
 ; 2025
+; --- alpha1 ---
+ ; Nov
+   ; 26 Welcome Song_get_instr for chung.o
+
 ; --- v0.at ---
  ; Oct
    ; 16 Extracted from track.o
@@ -120,4 +124,10 @@ Song_goto_last_track
           ret z
           call Song_get_next_track
           jr .lp
+
+Song_get_instr
+;-------------
+          call scope_bk_base
+          ld a,(va_current_instr)
+          ret
 

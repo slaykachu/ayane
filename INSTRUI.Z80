@@ -1,8 +1,10 @@
 ; <<<<<<<< Instrument editor >>>>>>>>>
 
 ; 2025                           
- ; -- v0au --
+ ; -- alpha1 --
  ; Nov
+   ; 19 Move sep1_ui & co in ged.o
+ ; -- v0au --
    ; 14 _set_loop: fix randomly set loop
    ; 10 s/dev_checks/dev_checks' to avoid ambiguity
  ; -- v0at --
@@ -14,7 +16,6 @@
 
 to_be_implemented = &BE00
 dev_checks' = 1
-hack_refresh = 1
 
       IMPORT "const.i"
       IMPORT "memmap.i"
@@ -220,13 +221,6 @@ loop_ui
       WORD _set_loop
       WORD _get_loop
 
-sep1_ui
-;!! already 1 space by w_struct
-      BYTE w_text,0
-sep2_ui
-      BYTE w_text," ",0
-sep3_ui
-      BYTE w_text,"  ",0
 
 mixer_ui
       BYTE w_toggle_custom

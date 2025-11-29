@@ -159,6 +159,8 @@ status_off = bandaya +8
       LOAD ":lib/fntgris.bin"
       ORG fonte
       LOAD ":lib/fntorg.bin"
+      ORG fonte_small
+      LOAD "fntsmall.bin"
       ORG .save
       ENDM
 ;-------------------------------

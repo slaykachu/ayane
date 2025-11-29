@@ -31,6 +31,7 @@ chunk_module = &0410
 ;dispjp = &1900   ; not a dep anymore
 ;periods_module = &057F
 ply   = &1004
+fx_set_phrase_jp = ply+6
 instrui = &1900
 piano = &1D48
 phrase = &1EB0
@@ -70,7 +71,6 @@ phrases_across_banks = 0 ; 1 when allowing several banks
       ORG &4000
 
 phrases_ = &7600        ; end
-;phrases and phrase_index defined by chung
 
 ;  ---------------------------------------------
 ; -- c5: Base BK, instr, tables, persitent var --
@@ -130,6 +130,7 @@ phrase_vars
 
       SKIP &7F00 - $
 va_chung
+va_current_instr = &7F07 ; song, chung
 
       SKIP &7FE0 - $
 ; Note: chunk allocation for ayane: bank by bank basic,
@@ -145,7 +146,8 @@ chunk_var_ = &8000
 ; -> unused for now. out of bank routs can be put in conv.o
 fonte_gris = &4000
 fonte = &4400
-disp  = &4800           ; start of code after fonts
+fonte_small = &4800
+disp  = &48C8           ; start of code after fonts
 pianoui = &4F00
 disp_ayane = &5620      ; other modules imported by ayane.o
 strings = &7C00

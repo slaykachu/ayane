@@ -68,6 +68,7 @@ ply_code
           jr play
 
 fx_set_phrase
+       ;   ASSERT($ == fx_set_phrase_jp)
 ; Fake FX: update row pnt.
 ;  Needed for:
      ; - go to next chunk

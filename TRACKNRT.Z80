@@ -4,6 +4,7 @@ do_brittle = 0
 
 ; ----- 2025 ----------
  ; Nov
+     ; 27 Use IMPORT_SHARED_DEPS
      ; 10 Add test_get_timestamp_from_hook
         ; Add test_default_loop
 ; -- v0as --
@@ -53,21 +54,34 @@ chunk0 = track_events_/&0100 - 1
       ENT tests
 
       IMPORT "const.i"
+      IMPORT "import.i"
+
+; Ensure proper alignement (and consistent addresses for easier dbg)
+          IMPORT_SHARED_DEPS()
+     ;  IMPORT "memcpc.o" ; for connect_a, bk_connected
+     ;  IMPORT "song.o"   ; Subsong_add, Song_get_first_track ...
+     ;  IMPORT "tracknub.o" ; get_track_header
+     ;  IMPORT "chung.o"  ; For creating clips via public API
+     ;  IMPORT "ply.o"    ; for evt_* (evt_set_transpose & co)
+
       IMPORT "track.o"
-      IMPORT "tracknub.o" ; get_track_header
-      IMPORT "song.o"   ; Subsong_add, Song_get_first_track ...
       IMPORT "widget.o" ; for init_widget
-      IMPORT "chung.o"  ; For creating clips via public API
-      IMPORT "memcpc.o" ; for connect_a, bk_connected
       IMPORT "phrase.o" ; song_select_new_phrase
-      IMPORT "ply.o"    ; for evt_* (evt_set_transpose & co)
       IMPORT "testlib.o"
 
 tests
           call nrt_init
 
 ; ---- Recent
+;          call test_track_get_phrase_at
+          call test_set_phrase_after
+      BRK
+          call test_set_phrase_far
+      BRK
+          call test_get_phrase_implicit_repeat
+      BRK
 
+; ---- UI (manual)
       IF enable
           call test_ui
           call &BB06
@@ -120,6 +134,7 @@ tests
           call test_set_phrase_after
           call test_set_phrase_far
           call test_get_phrase_implicit_repeat
+;          call test_track_get_phrase_at
 
 ; ---- Test subsong -----
           call test_subsong_add_track
@@ -1269,7 +1284,14 @@ test_set_phrase_after
           call check_transpose
           xor a
           ld hl,time0
-          call check_phrase
+          ld de,0
+          call check_phrase:call nc,fail
+
+; -- ask a bit later
+          xor a
+          ld hl,time0+&0142
+          ld de,&0142
+          call check_phrase:call nc,fail
           ret
 
 test_set_phrase_far
@@ -1284,7 +1306,14 @@ test_set_phrase_far
 
           xor a
           ld hl,time_far
-          call check_phrase
+          ld de,0
+          call check_phrase:call nc,fail
+
+; -- ask a bit later
+          xor a
+          ld hl,time0+&0777
+          ld de,&0777
+          call check_phrase:call nc,fail
           ret
 
 test_get_phrase_implicit_repeat
@@ -1313,12 +1342,17 @@ dummy_dur = 7
           call Set_phrase_at_t
 
 ;Sanity checks
-          xor a:ld hl,time0:call check_phrase
-          xor a:ld hl,time6:call check_phrase
-          ld a,1:ld hl,time14:call check_phrase
+          xor a:ld hl,time0:ld de,0:call check_phrase
+          call nc,fail  ; 1st iter
+          xor a:ld hl,time6:ld de,6:call check_phrase
+          call nc,fail  ; 1st iter
+          ld a,1:ld hl,time14:ld de,0:call check_phrase
+          call nc,fail  ; 1st iter
 ;Real checks
-          xor a:ld hl,time7:call check_phrase
-          xor a:ld hl,time13:call check_phrase
+          xor a:ld hl,time7:ld de,1:call check_phrase
+          call c,fail   ; 2nd iter
+          xor a:ld hl,time13:ld de,6:call check_phrase
+          call c,fail   ; 2nd iter
           ret
 
 
@@ -1340,9 +1374,13 @@ check_transpose
           jr check_
 
 check_phrase
-; Check transpose value at t
+; Check phrase at t
 ; IN: hl= pnt timestampe
+    ; de= expected time offset
     ;  a= expected id
+;OUT:  F: flags returned by track_get_phrase_at
+
+          push af:push de:push hl
 
 ; The real address (post header) is stored with the event
 ; we must get it for comparaison. 
@@ -1352,7 +1390,21 @@ check_phrase
           ld e,phrase_start ;post header
 
           ld a,evt_change_phrase AND &FF
-;enchaine
+          call check_
+
+; --- Now via proper API
+          pop hl
+          call track_select_phrase_at
+          call z,fail
+          pop de
+          pop bc        ; B = expected id (was a) 
+          push af
+          or a:sbc hl,de:add hl,de:call nz,fail ; time offset
+          call song_get_current_phrase:call z,fail
+          cp b:call nz,fail
+          pop af
+          ret
+
 check_
 ;hl= pnt timestamp
 ;de= execpted value

@@ -2,9 +2,11 @@
    ; Difference: status_*: same API than disp_* (e.g. BC for text)
 
 ; 2025     
+; -- alpha 1 --
+ ; Nov      
+   ; 16 dh_* routines for phrases (h: halfsize / highres)    
 ; -- v0au --
- ; Nov          
-   ; 16 Adapt /status_inv_cursor_at/ for ayane's status
+   ; 15 Adapt /status_inv_cursor_at/ for ayane's status
    ; 10 s/dev_checks/dev_checks' to avoid ambiguity
 ; -- v0aq -- 
  ; Oct
@@ -16,7 +18,6 @@ todo  = 1
 dev_checks' = 1
 
 screen' = &4000         ; for status
-r1'   = 48
 
       IF todo
 ; !!!! remove is_ei
@@ -27,6 +28,7 @@ r1'   = 48
 enable = 1
 
       IMPORT "memmap.i"
+      IMPORT "const.i"
       IMPORT "macro.i"
 pccheck = $
       IMPORT "conv.o"
@@ -43,11 +45,12 @@ pccheck = $
       END
 
       ORG disp
-      IF $-&4800
- !! review "disp-jp.o"
-      END
+
+      BYTE "DI"         ; marker for dev_checks
 
 ; -------------
+      IF 0
+; Not using disp-jp anymore
 
 ; Same order than disp-jp  (roughly follows orgams ROM).
           jp init_disp
@@ -136,6 +139,7 @@ m         jp status_set_cursor
           jp status_clear_from
           jp status_str_shaded_at
           jp status_str_shaded
+      END
       END
 
       IF enable
@@ -265,23 +269,6 @@ disp_locate_scr
           ld (vo_scrpos),de
           ret
 
-      IF enable
-disp_locate_x
-          push hl
-          ld hl,(vo_scrpos0)
-          add l:ld l,a:jr nc,$+3:inc h
-_disp_locate_
-          res 3,h
-          ld (vo_scrpos),hl
-          pop hl
-          ret
-
-disp_locate_inc
-          push hl
-          ld hl,(vo_scrpos)
-          inc hl
-          jr _disp_locate_
-      END
 
 cls
 ;corrupt hl, de, af
@@ -346,6 +333,8 @@ disp_ret_
 _disp_ret_
           ld (vo_scrpos),de
           ret
+
+
 
       IF enable
 
@@ -479,7 +468,7 @@ dnt_start
           inc bc
           or a
           jp z,disp_ret_
-
+;enchaine
 disp_chr_internal
 ;in : !!caller must DI!!
     ;  a = chr
@@ -526,8 +515,8 @@ disp_chr_internal_
           ld (hl),e
           res 3,h
           ld (hl),d
-
 jp_iy     jp iy         ;ret
+
 
 dc_inv
           cp &40
@@ -578,7 +567,6 @@ dc_inv
           cpl
           res 3,h
           ld (hl),a
-
           jp iy
 
 disp_space_inv
@@ -603,8 +591,9 @@ disp_space_
           ld (hl),a
           res 3,h
           ld (hl),a
-
           jp iy         ;ret
+
+
 
       IF enable
 disp_hexa_bc
@@ -689,6 +678,157 @@ _disp_deci_a
           push ix:ld ix,put_deci_a
           jr _disp_num_com
 
+      IF enable
+disp_locate_x
+          push hl
+          ld hl,(vo_scrpos0)
+          add l:ld l,a:jr nc,$+3:inc h
+_disp_locate_
+          res 3,h
+          ld (vo_scrpos),hl
+          pop hl
+          ret
+
+disp_locate_inc
+          push hl
+          ld hl,(vo_scrpos)
+          inc hl
+          jr _disp_locate_
+      END
+
+;---------------
+;Display highres
+;---------------
+dh_text
+;------
+          ld de,(dh_scrpos)
+dh_text_at
+;in : bc= zero terminated string
+    ; de= dest screen
+;out : bc= past string (after zero)
+     ; de= new dest
+          jr entry
+.lp
+          call dh_chr_at
+.entry
+          ld a,(bc):inc bc
+          or a
+          jr nz,.lp
+          ld (dh_scrpos),hl
+          ret
+
+dh_chr
+;-----
+          ld de,(dh_scrpos)
+          call dh_chr_at
+          ld (dh_scrpos),de ; needed to simulate bb5a
+          ret
+
+dh_chr_at
+;--------
+;in: a=chr (bit 7 for video inverse)
+   ;de=screen dest
+;out:de=new pos
+    ;hl trashed
+          ld h,fonte_small/&0100
+          sub 32
+small_hei = 5
+          ld l,a:add a:add a:add l:ld l,a ; *5
+          push de
+      small_hei-1 ** [
+          ld a,(hl):inc l:ld (de),a
+          ld a,d:add 8:call c,bc26_de_cor
+          ld d,a
+          ]
+          ld a,(hl):ld (de),a
+          pop de
+          inc e
+          ret nz
+inc_d_wrap              ; called by phradisp
+          ld a,d
+          inc d
+          xor d
+          and &38
+          ret z
+          ld a,d:sub 8:ld d,a
+      IF dev_checks'
+          cp &C0:call c,mess
+      END
+          ret
+
+bc26_de
+; !! Only for page C000
+; Not the fastest, to reuse bc26_de_cor
+          ld a,d:add 8:call c,bc26_de_cor
+          ld d,a
+          ret
+
+bc26_de_cor
+          ld a,e:add r1*2:ld e,a
+          ld a,d:adc &C8
+          bit 3,a:ret z
+          add &38
+          ret
+
+dh_place_cursor
+          push bc:push de
+          ld de,(dh_scrpos)
+          ld b,5
+.lp       ld a,(de):cpl:ld (de),a
+          ld a,d:add 8:call c,bc26_de_cor
+          ld d,a
+          djnz .lp
+          pop de:pop bc
+          ret
+
+dh_locate
+;In: H = col  (0-based)
+   ; L = row  (0-based)
+          ld (dh_cursor),hl
+          ld a,l:call dh_locate_y
+          ld a,h
+;enchaine
+dh_locate_x
+;In: A= X
+          push hl
+          ld hl,(dh_scrpos0)
+          add l:ld l,a:jr nc,$+3:inc h
+          ld (dh_scrpos),hl
+          pop hl
+          ret
+
+
+dh_locate_y
+;!!! Reset x to 0
+;In: A= Y (scanline)
+          push hl:push de:push bc
+          ld hl,(dh_scrpos00)
+          ld c,a
+          and 7:3 ** add a:ld b,a
+          add h:ld h,a
+          ld a,c:and &F8
+          ASSERT(r1 == 40)
+;*10 (*8 already done)
+          ld d,0:add a:rl d:ld e,a
+          add hl,de     ; +2
+          ex de,hl
+          2 ** add hl,hl
+          add hl,de     ; +8
+;page wrap
+          ld a,h
+          xor b
+          and &38:jr z,.ok
+          ld a,h:sub 8:ld h,a
+      IF dev_checks'
+          cp &C0:call c,mess
+      END
+.ok
+          ld (dh_scrpos0),hl
+          ld (dh_scrpos),hl
+          pop bc:pop de:pop hl
+          ret
+
+
 ;-------
 
 
@@ -718,6 +858,12 @@ vo_scrpos WORD &C000
 vo_tmp SKIP 6
 vo_reg1 BYTE 40
 vo_savesp WORD 
+dh_scrpos00 WORD &C000  ; Start of page (change when scrolling)
+dh_scrpos0 WORD &C000   ; Start of line
+dh_scrpos WORD &C000
+dh_cursor               ; for phradisp
+dh_cursor_y BYTE 
+dh_cursor_x BYTE 
 
 ; -----------------------------
 ; !!! Status routines (and var)

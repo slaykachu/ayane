@@ -1,10 +1,20 @@
 ; ---- Tests for phrase.o ----
 
 ; 2025
+; -- alpha1 --
+; Nov
+  ; 27: Add test_get_duration_10000
+  ; 22: Add test_phrase_get_row_at'
+  ; 19: Add test_phrase_select_row_at_past
+  ; 18: Add test_phrase_get_row_at_inf
+      ; Add test_unpack_row_at_inf
+      ; Add test_phrase_select_row_far
+
+  ; 16: Remove testlib dep
+
+; -- v0.a? ---
 ; Oct
   ; 17: Add test_unpack_row_at
-; -- v0.a? ---
-
 
 ; -- v0.a? ---
 ; Aug  8: Use testlib for init
@@ -14,30 +24,41 @@
       ORG &0100
       ENT tests
 
-      IMPORT "testlib.o"
+ ;      IMPORT "testlib.o"  ; unnecessary deps
       IMPORT "phrase.o"
       IMPORT "memmap.i" ; for phrases_
+      IMPORT "chunk.o"  ; for Init_chunk_module
 
 fail  = &BE00
 
 tests
+          call test_get_duration_10000
+      BRK
           call test_phrase_get_rows#
           call test_phrase_get_row_at
           call test_phrase_get_row_at'
+          call test_phrase_get_row_at_inf
           call test_phrase_set_blank_row_at
+          call test_phrase_set_blank_row_at'
           call test_phrase_select_row_at
           call test_phrase_select_row_at_insert
+          call test_phrase_select_row_from_empty_phrase
+          call test_phrase_select_row_far
+          call test_phrase_select_row_at_past
           call test_get_duration_empty
           call test_get_duration_single
           call test_get_duration_16bits
+          call test_get_duration_10000
           call test_intermediate_row
           call test_row_set
           call test_unpack_row_at
+          call test_unpack_row_at'
+          call test_unpack_row_at_inf
           ret
 
 nrt_init
           ld a,".":call &BB5A
-          call init_for_test
+          call Init_chunk_module
           call phrase_reset
           ret
 
@@ -66,6 +87,7 @@ test_phrase_get_row_at
 ;Blank row
           ld de,0:call phrase_get_row_at
           call nc,fail
+          call nz,fail
           call check_blank_row
           ret
 
@@ -86,9 +108,23 @@ dur1  = 11
           cp 1:call nz,fail
 
           ld de,0:call phrase_get_row_at:call nc,fail
+          call nz,fail
           ld a,(hl):cp dur1:call nz,fail
           ret
 
+test_phrase_get_row_at_inf
+;-------------------------
+; When "infinite" phrase, row_t1 must be &ffff
+; Same thing when first row duration <> 0 
+; Also test phrase_get_rows#
+          call nrt_init
+          call dummy_phrase_inf
+          ld de,nrt_delai:call phrase_get_row_at:call nc,fail
+          call nz,fail
+          ld hl,(row_t1)
+          ld a,l:cp &FF:call nz,fail
+          ld a,h:cp &FF:call nz,fail
+          ret
 
 test_phrase_set_blank_row_at
 ;---------------------------         
@@ -104,6 +140,32 @@ test_phrase_set_blank_row_at
           pop de
           or a:sbc hl,de:add hl,de
           call check_blank_row
+          ret
+
+test_phrase_set_blank_row_at'
+;----------------------------
+; Same, but at time > 0
+          call nrt_init
+          xor a:call song_select_new_phrase
+          ld de,nrt_delai:call phrase_set_blank_row_at
+          push hl
+          call check_blank_row ; inserted row
+          call .check_row ; padding row
+          ld de,nrt_delai:call phrase_set_blank_row_at
+; Check same pointer is returned
+          pop de
+          or a:sbc hl,de:add hl,de
+          call check_blank_row
+          call .check_row
+          ret
+
+.check_row
+; Check empty row with delai 6
+          ld de,0:call phrase_get_row_at:call nc,fail
+          call nz,fail
+          ld a,(hl):cp nrt_delai:call nz,fail
+          inc l
+          ld a,(hl):or a:call nz,fail ; flags = 0
           ret
 
 test_phrase_select_row_at
@@ -163,6 +225,48 @@ test_phrase_select_row_at_insert
           cp note2:call nz,fail
           ret
 
+test_phrase_select_row_from_empty_phrase
+;---------------------------------------
+;This one doesn't append an empty phrase (phrase_select_new_row)
+;prerequisite: test_phrase_set_blank_row_at'
+          call nrt_init
+          xor a:call song_select_new_phrase
+
+          ld de,nrt_delai:call phrase_select_row_at
+          ld a,note1:call row_set_note
+          ld de,nrt_delai:call phrase_get_row_at:call nc,fail
+          call nz,fail
+          call row_get_note:cp note1:call nz,&BE00
+          ret
+
+test_phrase_select_row_far
+;-------------------------
+; Prerequisite : test_phrase_select_row_from_empty_phrase
+          call nrt_init
+          xor a:call song_select_new_phrase
+
+          ld de,&0100:call phrase_select_row_at
+          ld a,note1:call row_set_note
+          ld de,&0100:call phrase_get_row_at:call nc,fail
+          call nz,fail
+          call row_get_note:cp note1:call nz,&BE00
+          ret
+
+test_phrase_select_row_at_past
+;-----------------------------
+; Time > total duration
+
+          call nrt_init
+          xor a:call song_select_new_phrase
+;finite duration
+          ld a,nrt_delai:call phrase_select_new_row:call nc,fail
+
+          ld de,&0300:call phrase_select_row_at
+          ld a,note2:call row_set_note
+          ld de,&0300:call phrase_get_row_at:call nc,fail
+          call nz,fail
+          call row_get_note:cp note2:call nz,&BE00
+          ret
 
 check_blank_row
 ; Check row is valid and blank
@@ -212,6 +316,18 @@ test_get_duration_16bits
           ld a,c:or a:call nz,fail
           ld a,d:cp 1:call nz,fail
           ld a,e:cp 126:call nz,fail
+          ret
+
+test_get_duration_10000
+;--------------------
+; duration 0 interpreted as 10000
+          call nrt_init
+          call dummy_phrase_inf
+          call phrase_get_duration
+; &10000 + nrt_delai
+          ld a,c:cp 1:call nz,fail
+          ld a,d:cp 0:call nz,fail
+          ld a,e:cp nrt_delai:call nz,fail
           ret
 
 test_intermediate_row
@@ -337,8 +453,79 @@ test_unpack_row_at
           call unpack_next_row:call c,fail
           ret
 
-.check_unpacked
-; IN: A = expected note
+test_unpack_row_at'
+; phrase with instr and vol
+; mainly check it doesn't assert
+          call nrt_init
+          xor a:call song_select_new_phrase
+
+          ld a,0:call phrase_select_new_row:call nc,fail
+          ld a,note1:call row_set_note
+          ld a,1:call row_set_instr
+          ld de,nrt_delai:call phrase_select_row_at
+          ld a,note1+1:call row_set_note
+          ld a,&0F:call row_set_vol
+          ld de,nrt_delai*16+2:call phrase_select_row_at
+          ld a,note2:call row_set_note
+
+          ld b,3        ; 3 rows to test
+          push bc
+
+          ld hl,0       ; time
+          ld de,nrt_buf
+          call unpack_row_at
+          call nc,fail
+          call z,fail
+          jr .entry
+.lp
+          push bc
+          ld de,nrt_buf
+          call unpack_next_row
+          call nc,fail
+          call z,fail
+.entry
+;check de was preserved
+          ld a,e:cp nrt_buf AND &FF:call nz,fail
+          ld a,d:cp nrt_buf / &0100:call nz,fail
+          pop bc
+          djnz .lp
+
+;no more row
+          ld de,nrt_buf ; sanity
+          call unpack_next_row:call c,fail
+          ret
+
+
+test_unpack_row_at_inf
+;---------------------
+; These when "infinite duration" (last row with duration 0)
+; Prerequisite: test_phrase_get_row_at_inf
+          call nrt_init
+          call dummy_phrase_inf
+
+;existing row
+          ld hl,nrt_delai ; time
+          ld de,nrt_buf
+          call unpack_row_at
+          call nc,fail
+          call z,fail   ; non empty
+;bc=&ffff
+          ld a,b:cp &FF:call nz,fail
+          ld a,c:cp &FF:call nz,fail
+
+;past last row (but not past phrase)
+          ld hl,nrt_delai+1
+          ld de,nrt_buf
+          call unpack_row_at
+          call nc,fail
+          call nz,fail  ; empty
+;bc=&ffff
+          ld a,b:cp &FF:call nz,fail
+          ld a,c:cp &FF:call nz,fail
+          ret
+
+
+
 dummy_phrase
 ; Create phrase spanning on several chunks
           xor a:call song_select_new_phrase
@@ -356,6 +543,19 @@ nrt_rows# = 100
           pop bc
           djnz .lp
           ret
+
+dummy_phrase_inf
+; Create phrase with "infinite" duration (last row duration = 0)
+          xor a:call song_select_new_phrase
+          xor a:call phrase_select_new_row
+          ld de,nrt_delai:call phrase_select_row_at
+; Sanity check         
+          ld de,nrt_delai:call phrase_get_row_at:call nc,fail
+          call nz,fail
+; expected duration = 0
+          ld a,(hl):or a:call nz,fail
+          ret
+
 
       SKIP -$ AND &FF
 nrt_buf SKIP &0100
