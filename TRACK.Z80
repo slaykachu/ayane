@@ -6,12 +6,17 @@ makeroom = 1
 ; -----------------------------------------------
 
 ; 2025 
+; -- alpha 1.03 --
+ ; Dec
+    ;  1: Deactivate widget related code
+use_widget = 0
 ; -- alpha 1.02 --
- ; Add get_event_at
- ; Remove some dead code
+ ; Nov
+    ; 30: Fix track_select_phrase_at
+        ; Add get_event_at
+        ; Remove some dead code
 
 ; -- v0au -- 
- ; Nov
     ; 10: Reactivate do_set_loop
         ; Add get_timestamp_from_hook
 
@@ -103,7 +108,9 @@ todo1                   ; !!! remove used_tracks
       IMPORT "ply.o"    ; For event ids (LSB of routines)
                         ; and set_period_replay
       IMPORT "chunk.o"  ; for chunk_start
+      IF use_widget
       IMPORT "widget.o"
+      END
       IMPORT "shortcut.o"
       IMPORT "memcpc.o" ; for check get_bk_connected
       IMPORT "song.o"   ; New_subsong still lives here for now
@@ -874,7 +881,6 @@ call_ext_com
           jp eval_loop
 
 
-
 call_ext_com_input
 ;----------------
 ;Call from aum to asm 
@@ -917,6 +923,7 @@ call_ext_com_input
           ret
 
 
+      IF use_widget
 call_ext_to_words
 ;----------------
 ;Call from aum to asm 
@@ -957,6 +964,8 @@ call_ext_to_words
 
 jp_de     push de
           ret
+
+      END
 
 deref
 ;Dereference: DE = (DE)
@@ -1140,9 +1149,11 @@ _ld
 ; HL = PC = past BRK() bytecode.
           jp eval_loop
 
+      IF use_widget
           OPCODE_ALIGN(call_ext50')
           ld b,5
           jp call_ext_to_words
+      END
 
       FILL -$ AND &FF,&F7
 
@@ -1188,9 +1199,11 @@ skipcodes
           OPCODE_ALIGN(break)
           jp eval_loop
 
+      IF use_widget
           OPCODE_ALIGN(call_ext50')
           ld b,5
           jp skip_fun_com
+      END
 
       FILL -$ AND &FF,&F7
 
@@ -1554,7 +1567,7 @@ shortcuts
 ;    Routines in AUM bytecode
 ; -----------------------------
 bytecode_start
-      IF 0
+      IF use_widget
 track_draw'
 ;----------
 ;Like track_draw, but in2 = width
@@ -1712,9 +1725,7 @@ aum_cursor_on
 ;Reuse opcode, but actually no return value
           CALL_EXT11(ext_cursor_locate,out0)
           RET0()
-      END
 
-      IF 0
           SIGN(1,2,FLAG_Z)
 collect_pred_succ_at
 ;-------------------
