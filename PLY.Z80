@@ -68,7 +68,7 @@ ply_code
           jr play
 
 fx_set_phrase
-       ;   ASSERT($ == fx_set_phrase_jp)
+          ASSERT($ == fx_set_phrase_jp)
 ; Fake FX: update row pnt.
 ;  Needed for:
      ; - go to next chunk
@@ -838,6 +838,7 @@ type_evt_loop = -3
 events
           SIGN_EVT(type_evt_transpose)
 evt_set_transpose
+          ASSERT(evt_set_transpose_lsb == [$ AND &FF])
           SET_TRANSPOSE()
       IF ayane
 nxt_event_pnt ld hl,0
@@ -857,9 +858,8 @@ nxt_event_pnt ld hl,0
           SIGN_EVT(type_evt_change_phrase)
 evt_change_phrase
 ; Necessarily end of list
-      IF evt_change_phrase/&0100 - events/&0100
- !!! error confine
-      END
+          ASSERT(evt_change_phrase/&0100 == events/&0100) ;confine
+          ASSERT(evt_change_phrase_lsb == [$ AND &FF])
           CHANGE_PHRASE()
 ;We don't do the whole loop, since we jump to read_row directly
           EX_AF'()
@@ -1127,3 +1127,5 @@ track_stack_
       END
 
 
+10
+      EN

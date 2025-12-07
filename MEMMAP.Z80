@@ -1,5 +1,6 @@
 ; ========= Shared buffers and variables ==========
-; 2025 Nov 10 instrui @ 1900 (shift subsequent modules as well)
+; 2025 Dec  3 ply: 1004 -> 1604
+     ; Nov 10 instrui @ 1900 (shift subsequent modules as well)
      ; Oct 16  tracks in bank
      ; Aug  8  Cleanup unused buffers
      ; Jun 23  Move disc_buffer at &4000
@@ -30,8 +31,10 @@ conv  = &0208
 chunk_module = &0410
 ;dispjp = &1900   ; not a dep anymore
 ;periods_module = &057F
-ply   = &1004
-fx_set_phrase_jp = ply+6
+ply   = &1604
+fx_set_phrase_jp = ply+5
+evt_set_transpose_lsb = &6C ; track (todo:salo)
+evt_change_phrase_lsb = &7D ; track (todo:salo)
 instrui = &1900
 piano = &1D48
 phrase = &1EB0
@@ -184,3 +187,5 @@ ramlimit' = &A400
 
       ORG savepc,saveobj
 
+ulated when switching subsong.
+; ! For n

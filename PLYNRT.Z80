@@ -46,8 +46,6 @@ track1 = tracks+4       ; track 0 empty (reserved)
 fail  = &BE00
 
 tests
-          call test_empty_phrase
-      BRK
 
       IF do_profile
           call test_profiling
@@ -452,3 +450,7 @@ timer_nop
       IMPORT ":orgrel/prof.o"
 
 
+r_nono
+
+      5 ** [inc hl:inc de] ;6 to 11      
+       

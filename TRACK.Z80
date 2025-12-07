@@ -7,7 +7,11 @@ makeroom = 1
 
 ; 2025 
 ; -- alpha 1.03 --
- ; Dec
+ ; Dec        
+    ;  2: Remove ply dependency
+        ; Deactiveate replay period for now (defined in ply.o)
+do_set_replay_period = 0
+; -- alpha 1.03 --
     ;  1: Deactivate widget related code
 use_widget = 0
 ; -- alpha 1.02 --
@@ -105,8 +109,6 @@ todo1                   ; !!! remove used_tracks
 
       IMPORT "phrase.o" ; song_get_phrase_id, phrase_start
                         ; + all needed by Song_add_map
-      IMPORT "ply.o"    ; For event ids (LSB of routines)
-                        ; and set_period_replay
       IMPORT "chunk.o"  ; for chunk_start
       IF use_widget
       IMPORT "widget.o"
@@ -1957,7 +1959,7 @@ Set_phrase_at_t
       END
           ld e,phrase_start
           pop hl
-          ld a,evt_change_phrase AND &FF
+          ld a,evt_change_phrase_lsb
 ;enchaine
 set_event
 ;--------
@@ -1979,7 +1981,7 @@ set_event
 ; - Append (at hl) if set_phrase  
 ; - Insert before last (at de) other
           pop af:push af
-          cp evt_change_phrase AND &FF
+          cp evt_change_phrase_lsb
           jr z,.okpos
           ex de,hl
 .okpos
@@ -2022,7 +2024,7 @@ Set_transpose_at_t
 ; For checks and neater serialisation, we put unused byte at 0.
 ; Future-proof as we can add flags later.
           ld d,0
-          ld a,evt_set_transpose AND &FF
+          ld a,evt_set_transpose_lsb
           jr set_event
 
 
@@ -2037,7 +2039,7 @@ track_select_phrase_at
     ; Otherwise, Z
           push de
           push hl
-          ld a,evt_change_phrase AND &FF
+          ld a,evt_change_phrase_lsb
           call track_get_event_at
           jr z,.exit
 ; -- Select phrase
@@ -2288,9 +2290,10 @@ Reset_tracks_and_subsongs
 ; No tracks, no subsong.
 
           call connect_bk_track
+      IF do_set_replay_period
           ld hl,replay_50_08Hz
           call set_replay_period
-
+      END
 ;track index + variables reset
           ld hl,tracks
           ld b,track_zero_
@@ -2464,6 +2467,7 @@ Song_add_map
           ret
 
 
+      IF use_widget
           SIGN(1,0,NO_FLAGS)
 ext_cursor_locate
 ;----------------
@@ -2530,7 +2534,6 @@ bc26
           ld a,h:adc &C0:ld h,a
           ret
 
-      IF 0
           SIGN(1,0,NO_FLAGS)
 ext_refresh
 ;----------
@@ -2801,3 +2804,5 @@ tmp_ext_args SKIP MAX_EXT_PARAMETERS * 2
 track_end
 
 
+ de,hl
+          or d 
