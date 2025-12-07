@@ -3,7 +3,10 @@ todo  = 1
 do_brittle = 0
 
 ; ----- 2025 ----------
+; -- alpha 1.02 --
  ; Nov
+     ; 30 s/test_track_get_event_hook_at/test_track_get_hook_at/
+        ; Add test_track_get_event_at
      ; 27 Use IMPORT_SHARED_DEPS
      ; 10 Add test_get_timestamp_from_hook
         ; Add test_default_loop
@@ -73,13 +76,6 @@ tests
           call nrt_init
 
 ; ---- Recent
-;          call test_track_get_phrase_at
-          call test_set_phrase_after
-      BRK
-          call test_set_phrase_far
-      BRK
-          call test_get_phrase_implicit_repeat
-      BRK
 
 ; ---- UI (manual)
       IF enable
@@ -129,7 +125,8 @@ tests
  ;deactivated
           call test_prepend_event
       END
-          call test_track_get_event_hook_at
+          call test_track_get_hook_at
+          call test_track_get_event_at
           call test_set_transpose
           call test_set_phrase_after
           call test_set_phrase_far
@@ -1219,13 +1216,13 @@ dur1  = 1
           TRACK_EVENT(0,evt_set_transpose,&CABE)
       END
 
-test_track_get_event_hook_at
-;---------------------------
+test_track_get_hook_at
+;---------------------
           call nrt_init
 
 ;Note: there is an empty hook plugged by default
           ld hl,time0
-          call track_get_event_hook_at
+          call track_get_hook_at
 ; no next hook (brittle if we decide to plug "end of track" hook?)
           ld a,(hl):or a:call nz,fail
           inc hl
@@ -1239,10 +1236,50 @@ test_track_get_event_hook_at
           ld a,(hl):or a:call nz,fail
           ret
 
+test_track_get_event_at
+;----------------------
+; Filter against particular event (here, transpose, easier to test)
+          call nrt_init
+
+; No such event yet
+          ld hl,time0
+          ld a,evt_set_transpose AND &FF
+          call track_get_event_at:call nz,fail
+
+          ld a,val1
+          ld hl,time14
+          call Set_transpose_at_t
+
+; Before evt: return Z
+          ld hl,time13
+          ld a,evt_set_transpose AND &FF
+          call track_get_event_at:call nz,fail
+
+; Start of evt: NZ 
+          ld a,val1
+          ld hl,time14
+          call check_transpose
+
+; Far: still return same event
+          ld a,val1
+          ld hl,time_far
+          call check_transpose
+
+; With other kind of event in-between
+          call nrt_dummy_phrase
+          xor a
+          ld hl,time20
+          call Set_phrase_at_t
+          ld a,val1
+          ld hl,time325
+          call check_transpose
+          ret
+
+
 test_set_transpose
 ;-----------------
 ; Check transpose setting and update, via API
-; Prerequisite: test_track_get_event_hook_at
+; Prerequisite: test_track_get_event_at
 
           call nrt_init
 
@@ -1274,7 +1311,8 @@ test_set_phrase_after
           ld a,val1
           ld hl,time0
           call Set_transpose_at_t
-          xor a:call song_select_new_phrase
+
+          call nrt_dummy_phrase
           xor a
           ld hl,time0
           call Set_phrase_at_t
@@ -1289,8 +1327,17 @@ test_set_phrase_after
 
 ; -- ask a bit later
           xor a
-          ld hl,time0+&0142
-          ld de,&0142
+          ld hl,time325
+          ld de,325
+          call check_phrase:call nc,fail
+
+; -- now add unrelated event in between -> must return same result
+          ld a,val1
+          ld hl,time20
+          call Set_transpose_at_t
+          xor a
+          ld hl,time325
+          ld de,325
           call check_phrase:call nc,fail
           ret
 
@@ -1299,7 +1346,7 @@ test_set_phrase_far
 ; Check when hook must be place > &10000 ticks
           call nrt_init
 
-          xor a:call song_select_new_phrase
+          call nrt_dummy_phrase
           xor a
           ld hl,time_far
           call Set_phrase_at_t
@@ -1311,7 +1358,7 @@ test_set_phrase_far
 
 ; -- ask a bit later
           xor a
-          ld hl,time0+&0777
+          ld hl,time_far'
           ld de,&0777
           call check_phrase:call nc,fail
           ret
@@ -1324,6 +1371,7 @@ test_get_phrase_implicit_repeat
 
           xor a:call song_select_new_phrase
 dummy_dur = 7
+dummy_dur' = 100
           ld a,dummy_dur:call phrase_select_new_row
  ; Sanity check
           call phrase_get_duration
@@ -1337,11 +1385,13 @@ dummy_dur = 7
 
 ; Put other phrase at 14
           ld a,1:call song_select_new_phrase
+; new row so duration > 0 
+          ld a,dummy_dur':call phrase_select_new_row
           ld a,1
           ld hl,time14
           call Set_phrase_at_t
 
-;Sanity checks
+;Sanity checks                    
           xor a:ld hl,time0:ld de,0:call check_phrase
           call nc,fail  ; 1st iter
           xor a:ld hl,time6:ld de,6:call check_phrase
@@ -1349,19 +1399,26 @@ dummy_dur = 7
           ld a,1:ld hl,time14:ld de,0:call check_phrase
           call nc,fail  ; 1st iter
 ;Real checks
-          xor a:ld hl,time7:ld de,1:call check_phrase
+          xor a:ld hl,time7:ld de,7 - dummy_dur:call check_phrase
           call c,fail   ; 2nd iter
-          xor a:ld hl,time13:ld de,6:call check_phrase
+          xor a:ld hl,time13:ld de,13 - dummy_dur:call check_phrase
           call c,fail   ; 2nd iter
+          ld a,1:ld hl,time20:ld de,20 - 14:call check_phrase
+          call nc,fail  ; 1st iter   
+.expected = [325 - 14] MOD dummy_dur'
+          ld a,1:ld hl,time325:ld de,.expected:call check_phrase
+          call c,fail   ; nth iter
           ret
-
 
 time0     TIME(0)
 time6     TIME(6)
 time7     TIME(7)
 time13    TIME(13)
 time14    TIME(14)
+time20    TIME(20)
+time325   TIME(325)
 time_far WORD &CAFE:BYTE 2 ; > &10000
+time_far' WORD &CAFE+&0777:BYTE 2
 
 check_transpose
 ; Check transpose value at t
@@ -1411,23 +1468,18 @@ check_
 ; a= event type 
 
 ; Note: some copy/paste of track_get_phrase_at, with additional test
-          push de
-          push af
-          call track_get_event_hook_at
+          push af:push de
+          call track_get_event_at
           call z,fail   ; hook not found
- ; skip link to next hook and duration. 
-          idsz + evt0_link ** inc hl
-          pop af
-          call goto_event
-          call z,fail   ; event not found
           ex (sp),hl
-;Expected value (now hl) = got value (de)? 
+;Expected value (now hl) = return param (de)? 
           or a:sbc hl,de:add hl,de:call nz,fail
 ;-- check no other such same directive
           pop hl
       IF evt_param - 1
  !! review that
       END
+          pop af
           idsz+evt_type ** dec hl
           call goto_event
           call nz,fail
@@ -1495,7 +1547,7 @@ test_get_timestamp_from_hook
           ld hl,time_far
           call Set_phrase_at_t
           ld hl,time_far
-          call track_get_event_hook_at
+          call track_get_hook_at
           push hl
 
 ;Check
@@ -1570,6 +1622,13 @@ nrt_load_current_track
           ld a,l:ld (aum_regs + in0*4),a
           ld a,h:ld (aum_regs + in0*4+1),a
           xor a:ld (aum_regs + in0*4+2),a ; Non-bk pointer
+          ret
+
+nrt_dummy_phrase
+; Note: phrase set by Set_phrase_at_t must exists
+; Must have at least one row, otherwise duration = 0 ->assert
+          xor a:call song_select_new_phrase
+          xor a:call phrase_select_new_row:call nc,nrtfail
           ret
 
 

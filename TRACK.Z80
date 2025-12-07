@@ -5,7 +5,11 @@ makeroom = 1
 ; Song & Track handling for ayane (map/songlist)
 ; -----------------------------------------------
 
-; 2025
+; 2025 
+; -- alpha 1.02 --
+ ; Add get_event_at
+ ; Remove some dead code
+
 ; -- v0au -- 
  ; Nov
     ; 10: Reactivate do_set_loop
@@ -71,14 +75,14 @@ todo1                   ; !!! remove used_tracks
     ; track_get_hook_at
     ; track_get_last_hook
 
-; Aum helpers --------
-; --------------------
+; Aum helpers (do not use directly!) --------
+; -------------------------------------------
     ; ext_insert_hook_node_after
     ; ext_next_node
     ; ext_connect_head
     ; set_hook_at
-    ; get_hook_at (!use track_get_hook_at)
-
+    ; get_hook_at
+    ; get_event_at
 
 ; Track update -------
     ; Set_phrase_at_t
@@ -89,6 +93,7 @@ todo1                   ; !!! remove used_tracks
       END
 
       IMPORT "const.i"  ; for clip structure (fc_color etc)
+      IMPORT "macro.i"  ; ASSERT
       IF dev_checks
       IMPORT "memmap.i" ; for check BK_TRACK
       END
@@ -123,27 +128,27 @@ idsz  = 2               ; size of id node (just pnt: not cross bank)
 savepc = $
 saveobj = $$
 
-; ---- Struct of event amorce (hook)  -----
+; ---- Struct of event amorce (evt0=hook)  -----
       IF todo
  ; s/evt0/hook/ 
       END
       ORG 0
-;evt0_link0 skip idsz  ; Next evt0 at <> timestamp (implicit in node)
-evt0_dur SKIP 2         ; Duration in 16 bits (see design)
+;evt0_link0 skip idsz  ; Next hook (already in node header)
+evt0_dur WORD           ; Duration in 16 bits (see design)
 evt0_dur_
 evt0_link SKIP idsz     ; link to 1st event
-evt0_size
 ; Note: we use indirection, otherwise amorce would be bigger than
       ; subsequent nodes. Since we work with static node size, that's
       ; something we want to avoid
       ; Everything is inlined at compilation anyway.
+evt0_size
 ; No room left (node7)
 
-; ---- Struct of event (after node link) -----
+; ---- Struct of event (after node header) -----
       ORG 0
 ;evt_link skip idsz   ; Next evt at this timestamp
-evt_type SKIP 1
-evt_param SKIP 2        ; E.g. link to phrase
+evt_type BYTE 
+evt_param WORD          ; E.g. link to phrase
 evt_size
 
       IF 0
@@ -267,6 +272,12 @@ evt_size
       MACRO CALL_EXT10 rout,arg1
 ;Arg passed in CDE
       BYTE call_ext10:WORD rout:BYTE arg1
+      ENDM
+
+      MACRO CALL_EXT1'0 rout,arg1,arg2
+;Arg passed in CDE
+; Still one input parameter, but computed from 2 operands
+      BYTE call_ext10:WORD rout:BYTE arg1,arg2
       ENDM
 
       MACRO CALL_EXT11 rout,arg1
@@ -1834,7 +1845,7 @@ void  = r1
 .loop
 ; t1 = t0 + cur_clip.duration
           LD5(t1,t0 + add,conv16,tgcaclip + ind,lit + idsz + evt0_dur)
-; loop while t1 <= t and eoc not met
+; loop while t >= t1 and eoc not met
           LD3(void,t + sub,t1)
           RET_C()       ; NZ
 ; next clip  
@@ -1844,6 +1855,29 @@ void  = r1
 ; Only update t0 if we effectively went to next clip
           LD2(t0,t1)
           JP(.loop)
+
+          SIGN(2,3,FLAG_Z)
+get_event_at
+;-----------
+; Like /get_hook_at/ but filter against reg_event
+; !!! must be called at top-level since /ext_fetch_event/ reads in2
+    ; directly. 
+reg_event = in2
+          LD2(t0,lit + 0)
+          LD3(tgcaclip,track + ind,lit + tf_clips)
+          BRK_Z()       ; Programming error. At least one event
+.loop
+          LD5(t1,t0 + add,conv16,tgcaclip + ind,lit + idsz + evt0_dur)
+;!hack! reg_event passed implicitly
+;TODO: decide proper API when passing several args
+          CALL_EXT1'0(ext_fetch_event,tgcaclip+add,lit+idsz + evt0_link)
+          LD3(void,t + sub,t1)
+          RET_C()       ; NZ
+          CALL_EXT11(ext_next_node,tgcaclip)
+          RET_Z()
+          LD2(t0,t1)
+          JP(.loop)
+
 
 
 Song_select_track
@@ -1952,63 +1986,13 @@ set_event
           idsz ** inc hl ; skip link
 .oknode
           pop af:pop de
-      IF evt_type
- !! review this
-      END
+          ASSERT(evt_type == 0)
           ld (hl),a:inc hl
-      IF evt_param - 1
- !! review this
-      END
+          ASSERT(evt_param == 1)
           ld (hl),e:inc hl
           ld (hl),d
           ret
 
-      IF 0
-; Not needed for now. use /set_event/ instead
-prepend_event
-;------------
-; In:  A = type event  
-    ; de = param event      
-    ; hl = pnt to t
-          push af:push de
-          call setup_track_t
-
-      IF prepend_in_aum
-          ld hl,aum_prepend_event
-          call eval
-!! cleanup. It's rotting
-      ELSE
-          ld hl,set_hook_at
-          call eval
- ; here hl= hook structure
-          idsz + evt0_link ** inc hl
-          ld a,idsz + evt_size
-          call Insert_new_node:call nc,mess
-      END
-
-          ex de,hl
-      IF dev_checks
-          ld a,h
-          cp track_events/&0100:call c,mess
-          cp track_events_/&0100:call nc,mess
-      END
-
-; Setup node itself
-  ; We do it in z80 rather than aum for convenience
-  ; (as time of writing no modifier to read/write single bytes)
-          idsz ** inc hl ; skip link
-          pop de:pop af
-      IF evt_type
- !! review this
-      END
-          ld (hl),a:inc hl
-      IF evt_param - 1
- !! review this
-      END
-          ld (hl),e:inc hl
-          ld (hl),d
-          ret
-      END
 
 Set_transpose_at_t
 ;-----------------
@@ -2030,35 +2014,6 @@ Set_transpose_at_t
           ld a,evt_set_transpose AND &FF
           jr set_event
 
-      IF 0
-is_last_event
-; Return Z if terminating event 
-          cp evt_change_phrase AND &FF
-          ret
-      END
-
-select_next_row
-;-----------
-; Select next row and update corresponding timestamp 
-; (potentially in next phrase, that's why routine is not in phrase.o,
-; ;as we might need track_select_phrase_at)
-; 
-; In: hl = pnt to t (for update)
-    ; row selected
-;Out; If such row: NZ, row selected
-    ; Otherwise, Z
-    ; (hl) updated in any case     
-      BRK
- ; !!! todo for ui
-
-      IF 0
-;we won't need "get only" version, normally
-track_select_phrase_at
-;---------------------
-          call track_get_phrase_at
-          ret z
-          jp song_select_phrase
-      END
 
 track_select_phrase_at
 ;---------------------
@@ -2075,9 +2030,9 @@ track_select_phrase_at
           call track_get_event_at
           jr z,.exit
 ; -- Select phrase
-          inc hl
-          ld a,(hl):inc hl
-          ld h,(hl):ld l,a
+ ; Here de: phrase start (after header)
+          ld hl,fc_index - clip_header_size
+          add hl,de
           call get_phrase_id
           call song_select_phrase
       IF dev_checks
@@ -2085,7 +2040,7 @@ track_select_phrase_at
       END
 ; -- AHL = t-t0
           pop bc        ; was hl = t
-          ld hl,aum_regs + t0*4
+          ld hl,fetched_t0
           ld a,(bc):sub (hl):ld e,a:inc bc:inc hl
           ld a,(bc):sbc (hl):ld d,a:inc bc:inc hl
           ld a,(bc):sbc (hl)
@@ -2137,26 +2092,20 @@ track_get_event_at
                   ; hl = event structure
                   ; de = param (for convenience)
     ; Otherwise, Z
-    ; BC trashed
-          push af
-          call track_get_event_hook_at
-          pop bc        ; b=event type
-          ret z
-
- ; skip link to next hook and duration. 
-          idsz + evt0_link ** inc hl
-          ld a,b
-          jp goto_event
-
-track_get_event_hook_at
-;----------------------
-; In: hl = pnt to t
-;Out: If such hook, NZ
-                  ; hl = hook structure
-    ; Otherwise, Z
+    ; AF, BC trashed
           call setup_track_t
-          ld hl,get_hook_at
-          jp eval
+          ld (aum_regs + reg_event*4),a
+          ld hl,0:ld (fetched_event),hl
+          ld hl,get_event_at
+          call eval
+          ld hl,(fetched_event)
+          ld a,l:or h
+          ret z
+          ASSERT(evt_param == 1)
+          inc hl:ld e,(hl)
+          inc hl:ld d,(hl) ; For convenience
+          2 ** dec hl   ; NZ
+          ret
 
 get_timestamp_from_hook
 ;----------------------
@@ -2266,7 +2215,6 @@ goto_event
        ; Assume H<>0
    ;  a= event type (LSB routine)
 ;out: If found, NZ, HL points evt type, 
-                  ; DE=param for convenience.
     ; otherwise  Z. HL points to last link (0000),
                   ; DE points to prev link (can be = HL when no node) 
 
@@ -2280,10 +2228,7 @@ goto_event
           jr z,.last
           pop de        ; de = previous link
           idsz ** inc hl
-      IF evt_type
- !!! review that
-      END
-
+          ASSERT(evt_type == 0)
           cp (hl)
           jr z,.found
           idsz ** dec hl
@@ -2294,12 +2239,6 @@ goto_event
           ret
 
 .found
-      IF evt_param - 1
- !!! review that
-      END
-          inc hl:ld e,(hl)
-          inc hl:ld d,(hl) ; For convenience
-          2 ** dec hl
           inc h:dec h   ; NZ 
       IF dev_checks
           call z,fail
@@ -2739,6 +2678,20 @@ ext_connect_head
       END
           ret
 
+          SIGN(1,0,NO_FLAGS)
+ext_fetch_event
+;In: DE = pnt node (connected)
+          ld a,(aum_regs + reg_event*4)
+          ex de,hl
+          call goto_event
+          ret z
+
+          ld (fetched_event),hl
+          ld hl,aum_regs + t0*4
+          ld de,fetched_t0
+          3 ** ldi
+          ret
+
       IF 0
           SIGN(1,1,FLAG_Z)
 ext_get_track
@@ -2788,6 +2741,8 @@ time_zero FILL 3,0
 timestamp SKIP 3        ; tmp variable
 previous_timestamp SKIP 3
 
+fetched_event WORD 
+fetched_t0 SKIP 3
 
 ;---- Keep this order for /goto_pos/
 time_cursor TIME(0)     ; Position in sequencer
@@ -2797,6 +2752,7 @@ time_at_left TIME(0)    ; Position at left of screen
 
 cursor_screen_pos WORD 0
 cursor_backup SKIP CURSOR_HEIGHT ; save background
+
 
 ;-----------------
 ; AUM Variables     
