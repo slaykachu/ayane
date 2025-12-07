@@ -60,7 +60,10 @@ r14   = psg_regs+14     ; Reset by ply before iteration
               ; -> actually can be mitigated by shifting table
       END
 
-; \\\\\ 2025 ///
+; \\\\\ 2025 ///  
+; -- alpha 1.5 --
+; Dec
+ ;  2 instr_setup: Don't assert if instr doesn't exists (for dev mode)
 ; ---- v0at ----
 ;Oct
  ; 16 _instr_end: fix tm
@@ -801,6 +804,8 @@ instr_setup
 ;----------
 ; For piano and instrnrt
 ; IN: L = instr number > 0
+;OUT: Carry if ok (instr exist)
+    ; NC otherwise
       IF instr_head_size-8
  !! review this
       END
@@ -812,12 +817,12 @@ instr_setup
 
           ld bc,&7F00+BK_INSTR:out (c),c
 
-      IF dev_checks'
           ld a,(hl)
           cp instr_default AND &FF
-          call nz,mess
-      END
-
+          jr z,.ok
+          or a
+          ret
+.ok
           ld de,instr_code_pnt
           ldi
           ex de,hl
@@ -826,6 +831,7 @@ instr_setup
           ld (hl),instr_code/&0100:inc hl
           ld (hl),e:inc hl
           ld (hl),d
+          scf
           ret
 
 MAX_TM = &80
@@ -894,3 +900,9 @@ instr_state = compiled_instr_buf
       END
 
 
+s
+      END
+          ld h,instr_idx / &0800
+          3 ** add hl,hl
+
+          ld bc

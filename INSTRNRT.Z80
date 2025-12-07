@@ -54,7 +54,7 @@ test_instr
 ; Exercise instr_default 
           call dummy_instr
 
-          ld l,1:call instr_setup
+          ld l,1:call instr_setup:call nc,fail
 ;row0  
           ld hl,.ref0
           call check_from_channel_b
@@ -150,3 +150,5 @@ check_fx
       ORG free_ram_for_nrt
       IMPORT ":orgrel/prof.o"
 
+       or a:sbc hl,de:add hl,de:call nz,fail
+          ld de,.ref2code
