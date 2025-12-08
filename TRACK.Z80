@@ -1,13 +1,16 @@
 dev_checks = 1
 todo  = 1
 makeroom = 1
+do_set_loop = 1
 ; -----------------------------------------------
 ; Song & Track handling for ayane (map/songlist)
 ; -----------------------------------------------
 
 ; 2025 
-; -- alpha 1.03 --
- ; Dec        
+; -- alpha 1.05 --
+ ; Dec       
+    ;  2: ext_fetch_event: register t1 as well
+; -- alpha 1.04 --
     ;  2: Remove ply dependency
         ; Deactiveate replay period for now (defined in ply.o)
 do_set_replay_period = 0
@@ -19,30 +22,6 @@ use_widget = 0
     ; 30: Fix track_select_phrase_at
         ; Add get_event_at
         ; Remove some dead code
-
-; -- v0au -- 
-    ; 10: Reactivate do_set_loop
-        ; Add get_timestamp_from_hook
-
-do_set_loop = 1
-; -- v0at --        
- ; Nov  8: get_current_track_header: call connect_bk_track
-
- ; Oct 16: Move some subsong handling in song.o:
-            ; Needed for ply.Amorce_song not to depend on track.o
-              ; (memory full otherwise via uilooptt)
-            ; Cleaner anyway
-   ; Move get_track_header in tracknub.o
-       ; (same reason)
- ; Oct 14: Subsong_add_track: dynamic # of params
-         ; Song_select_new_track: output channel not param (anymore)
-                                ; (plugged in subsong tracklist instead)
-
-
-      IF todo
-todo1                   ; !!! remove used_tracks
-; -> instead introduce subsong's list of tracks
-      END
 
 ; Setup ------
 ; ------------
@@ -120,10 +99,11 @@ todo1                   ; !!! remove used_tracks
  ;  import "lizst.o" !!! don't use, see rationale in journal
 
 reg32 = 0
+reg_pad = 4
       IF reg32
 reg_size = 4
       ELSE
-reg_size = 3
+reg_size = 3            ; !! still padded every 4 bytes
       END
 
 scr_set_border = &BC38
@@ -2704,6 +2684,8 @@ ext_fetch_event
           ld hl,aum_regs + t0*4
           ld de,fetched_t0
           3 ** ldi
+          reg_pad*[t1-t0] - 3 ** inc hl
+          3 ** ldi
           ret
 
       IF 0
@@ -2757,6 +2739,8 @@ previous_timestamp SKIP 3
 
 fetched_event WORD 
 fetched_t0 SKIP 3
+fetched_t1 SKIP 3       ; for phrasui to know when next evt occurs
+          ASSERT(fetched_t1 == fetched_t0+3)
 
 ;---- Keep this order for /goto_pos/
 time_cursor TIME(0)     ; Position in sequencer
@@ -2804,5 +2788,3 @@ tmp_ext_args SKIP MAX_EXT_PARAMETERS * 2
 track_end
 
 
- de,hl
-          or d 

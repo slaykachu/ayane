@@ -1,0 +1,30 @@
+; <<< automated tests for DISP.O >>> 
+
+      ORG &1000
+      ENT tests
+
+      IMPORT "memmap.i"
+      IMPORT "const.i"
+      IMPORT "import.i"
+      IMPORT "conv.o"   ; disp's dep to be imported beforehand
+ ;     IMPORT "memcpc.o"
+      BANK BK_DISP
+          IMPORT_DISP()
+
+tests
+          call nrt_init
+          call test_dh_locate_y
+          ret
+
+nrt_init
+          ld bc,&7F00+BK_DISP:out (c),c
+          ret
+
+test_dh_locate_y
+          ld a,24
+          call dh_locate_y
+          ld hl,(dh_scrpos0)
+          ld de,&C000 + 3*r1*2
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+

@@ -20,7 +20,7 @@ dev_checks' = 1
       IMPORT "phrase.o"
       IMPORT "piano.o"
       IMPORT "ged.o"
-;      IMPORT "track.o"
+      IMPORT "track.o"
       SKIP -$ AND &0F
       IMPORT "phradisp.o"
 
@@ -46,6 +46,7 @@ phrase_cold_refresh
 ;------------------
  ; -- ad-hod display
           call refresh_page
+
  ; -- gedeihen 
           call gedeihen_init
 
@@ -60,12 +61,18 @@ phrase_cold_refresh
           ld hl,phrase_ui
           call setup_widget
 
+;refresh current row 
+ ; -- restore state
+          ld hl,saved_state
+          ld de,state
+          ld bc,state_
+          ldir
  ; -- sync model
+          ld a,(track_cur):call Song_select_track
           call select_row_ui
-
-;refresh_all
-          call gedeihen_disp ; Focus on current row
-;reenter
+ ; -- focus on current row
+          call gedeihen_disp
+ ; -- enter        
           ld hl,&0101:call _set_cursor
           ld hl,phrase_ui
           jp gedeihen_enter
@@ -251,7 +258,7 @@ refresh_row
 ; -- check if out of view port or out of phrase
 ; hl = time - time at top
           ld de,(time_row_at_top)
-          or a:sbc hl,de:jr c,_pre_view
+          or a:sbc hl,de:jr c,.pre_view
 
       IF dev_checks'
           inc h:dec h:call nz,mess ; Not expecting > &100
@@ -259,15 +266,25 @@ refresh_row
           ld ix,(pos_y) ; for ixl
           ld a,l
           CALL_DISP_BK(correct_y)
-          jr nc,_past_view
+          jr nc,.past_view
 
-          push af
-          call select_row_ui
-          pop af
           inc a         ; ged cursor is 1-based
-          call update_pos_y
+          call update_pos_y ; focus on new line
+
+          call select_row_ui
+
+          call enter    ; see rational in update_pos_y
           GED_HANDLED() ; when coming for e.g. edit_row_com
           ret
+
+.pre_view
+;todo
+      BRK
+
+.past_view
+;todo
+      BRK
+
 
 select_row_ui
 ;------------
@@ -284,15 +301,7 @@ select_row_ui
           ret
 .past_phrase
       BRK
-;Todo: new phrase?
 
-_pre_view
-;todo
-      BRK
-
-_past_view
-;todo
-      BRK
 
 row_up
 ;-----
@@ -373,11 +382,57 @@ refresh_page
 ; - compute time_phrase_at_bottom
 ; - compute delai
       END
-          ld hl,(time_row_at_top)
-          ld de,(time_row_at_bottom)
-          ld ix,0       ; cursor
+.lp
+          call refresh_phrase
+          jr nc,.lp
+          ret
+
+
+refresh_phrase
+; in: time_at_top set
+;Out: Carry if end of view reached
+    ; time_at_top and pos_y updated
+          call refresh_state
+
+          ld ix,(pos_phrase) ; cursor
           call get_delai_ui
           CALL_DISP_BK(disp_rows)
+          ld (pos_y),a
+          ret
+
+refresh_state
+; in: time_at_top set
+;out: time_at_top updated to next slice
+          ld hl,time_at_top
+          call track_select_phrase_at
+          sbc a:ld (is_first_iter),a
+          ld (time_row_at_top),hl ; tr_top
+          ld de,(time_at_top) ; t_top
+          push hl
+; -- de = min(duration, t1 - t_top + tr_top)
+; Note: for now we drop MSB 24 bits
+          or a:sbc hl,de
+          ld de,(fetched_t1):add hl,de
+          call phrase_get_duration
+          ex de,hl
+          or a:sbc hl,de
+          jr nc,.com    ; -- next event (de) comes first)
+;-- phrase end comes first
+          add hl,de
+          ex de,hl
+.com
+; for next slice: time_at_bottom = DE - tr_top + t_top
+          pop bc        ; was hl = tr_top
+          push bc:push de
+          ex de,hl
+          or a:sbc hl,bc
+; update t_top since used at ref.
+          ld bc,time_at_top
+add_ibc_ibc_hl
+          ld a,(bc):add l:ld (bc),a:inc bc
+          ld a,(bc):adc h:ld (bc),a:inc bc
+          ld a,(bc):adc 0:ld (bc),a
+          pop de:pop hl
           ret
 
 create_if_empty
@@ -398,12 +453,45 @@ buf_note_text SKIP 3:BYTE 0
 
 ;------
 ; vars
-;------
-time_row_at_top WORD 0  ; top of view, or top of phrase
-time_row WORD 0
-time_row_at_bottom WORD &FFFF
+;------                                        
+state_top
+time_at_top FILL 3,0    ; top of view
+time_at_bottom FILL 3,0 ; bottom of slice
+is_first_iter BYTE 0    ; 0 = implicit repeat
 row_exists BYTE 0       ; 0 = empty
 is_modified BYTE 0
+
+state                   ; to recover when switching screen
+time_row_at_top WORD 0  ; top of phrase
+time_row WORD 0
+;time_row_at_bottom WORD &FFFF
 pos_phrase              ; Pos top-left:
 pos_y BYTE 0            ;   >0 when phrase start in the middle)
 pos_x BYTE 0            ;   Offset track column
+state_ = $ - state
+
+saved_state_top
+
+defaut_state
+dfd   = $ - state
+          ASSERT($ == dfd+time_row_at_top)
+      WORD 0
+          ASSERT($ == dfd+time_row)
+      WORD 0
+          ASSERT($ == dfd+pos_y)
+      BYTE 0
+          ASSERT($ == dfd+pos_x)
+      BYTE 0
+
+saved_state
+dfs   = $ - state
+          ASSERT($ == dfs+time_row_at_top)
+      WORD 0
+          ASSERT($ == dfs+time_row)
+      WORD 0
+          ASSERT($ == dfs+pos_y)
+      BYTE 0
+          ASSERT($ == dfs+pos_x)
+      BYTE 0
+
+track_cur BYTE 1

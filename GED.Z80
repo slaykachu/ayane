@@ -1,30 +1,20 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
 ; -- alpha1 --
+; Dec
+  ; 8 update_pos_y: client must explicitly call enter
 ; Nov
   ;25 enter_child: propagate Y
   ;24 delegate_width: don't use clone!! a getter shouldn't change state
   ;19 Add sep1_ui & c0 (used by instrui and phrasui)
     ; -> Remove check about widget address (hinders more than it helps)
     ; -> gedeihen_enter: remove check about cursor being at (1,1) """
-; -- v0au --
-  ;15 multiline_top: fix top = 0   
-  ;14 key_hexa: fix buggy validation (e.g. was accepting Q)
-    ; _multiline_update_cur_y: must also update model
-  ;10 s/dev_checks/dev_checks' to avoid ambiguity
-; -- v0aq --
-; Sep    
-  ;30 multiline_ctrl_up:  Musn't refresh when line in view
-  ;29 multiline_ctrl_dwn: Musn't scroll when line in view
-    ; Deactivate multiline scrolling: too slughish
-do_scroll_multiline = 0
+do_scroll_multiline = 0 ; 1: too slugish
 
 dev_checks' = 1         ; forced for now
 dev_checks_display = 0  ; 0: let display fails, easier to see problem
 need_room = 1
 todo  = 1
 hack  = 1
-        ; Disable /test_all_fields_refreshed/ for now
-enable = 0
 
 ; ==== Shortcuts ========================
  ; - invariant (now in journal.o)
@@ -2297,8 +2287,11 @@ _ml_is_reachable
           ret
 
 update_pos_y
-;Used by phrasui to update 
+;Used by phrasui to dynamically change widget's pos_y
 ;In: a= offset y 
+;Out: !!! client must call /enter/ to refresh state for root.
+; (e.g. instr set on previous line but not new line, we must go through
+  ; w_optional again)
           push af
 ; Hack: needed to reset X position (at start of field)
       IF todo
@@ -2308,15 +2301,6 @@ update_pos_y
           call set_root_state
           pop af
           SET_STATE_BYTE(widget_pos_y)
-;          call update_nested_pos_y_
- ;         call _setup_widget ; propagate pos y
-;enter from start to refresh state 
-; (e.g. instr set on previous line but not new line, we must go through
-  ; w_optional again)
-          call enter
-; Hack: workaround to pass new location to nested widget (even
-      ; through several layers)
-    ;      call reset_widget_location_from_cursor
           ret
 
 

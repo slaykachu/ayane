@@ -900,9 +900,3 @@ instr_state = compiled_instr_buf
       END
 
 
-s
-      END
-          ld h,instr_idx / &0800
-          3 ** add hl,hl
-
-          ld bc

@@ -5,7 +5,11 @@ todo_wrong_chr = 0
 
 ; TODO???? refresh_focus in gedeihen_enter?
 
-; -- 2025 --       
+; -- 2025 -- 
+ ; --- Alpha ---
+; Dec
+  ; 8: test_focus_update_y: must explicitly call enter
+  ;??: Add test_focus_update_y
  ; --- v0au ---
 ; Nov  
   ;15: Add test_multiline_scrollB
@@ -76,6 +80,7 @@ tests
 
           ld a,&F7:ld (0),a
       IF 1
+          call test_focus_update_y
 ; --- test helpers --- 
           call test_field_editing
 
@@ -3211,6 +3216,7 @@ k_ml
 row_dwn
           ld a,2        ; line 2
           call update_pos_y
+          call enter
           GED_HANDLED()
           ret
 

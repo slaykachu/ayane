@@ -86,14 +86,13 @@ disp_rows
           ld de,0
           or a:sbc hl,de:add hl,de
           jr c,rowlp
-; separator    
+          push af
+; separator      
           dec a
           call set_cursor'
           ld a,&55
-.sepcom
-          ld b,9
-          ld de,(dh_scrpos)
-          call separator
+          call sepcom
+          pop af
           or a
           ret
 
@@ -101,7 +100,7 @@ disp_rows
 ;Shouldn't happen: client must provide valid range
 ;We put marker for visual debug
           ld a,&F0
-          call .sepcom
+          call sepcom
           or a
           ret
 
@@ -208,7 +207,10 @@ zoom_hook = $+1
           cp view_rows
           ret
 
-
+sepcom
+          ld b,9
+          ld de,(dh_scrpos)
+;enchaine
 separator
 .xlp
           ld (de),a:inc e

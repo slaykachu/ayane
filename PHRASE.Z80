@@ -1,4 +1,9 @@
 ; ====== Handling of phrases and rows ======
+do_add_empty_row = 0
+      IF do_add_empty_row
+ !! A bit inconvenient. must fix phrasnrt, chipn, salo ... 
+      END
+
 ; 2025    
  ; -- alpha 1 -- 
 ; Nov
@@ -14,23 +19,6 @@
       ; phrase_get_row_at: Set row_t1=&ffff for "infinite" duration
                          ; Return BC = t-t0 (simplify client code)
    ; 16 Remove ply and chung deps
- ; -- v0.0au --
-   ; 10 s/dev_checks/dev_checks' to avoid ambiguity
-      ; unpack_next_row: s/jr nz/jr nc (typo). Again?
-      ; [ON HOLD] song_select_new_phrase: create empty row  
-                ; (to avoid ply infinite autoloop on empty phrase)
-do_add_empty_row = 0
-      IF do_add_empty_row
- !! A bit inconvenient. must fix phrasnrt, chipn, salo ... 
-      END
- ; -- v0.0at --
-; Oct
-   ; 17 Add unpack_row_at/unpack_next_row
-      ; Reorder: note before vol to match ply
- ; -- v0.0ai --
-; Aug 8 set row_set_vol_encoded     ; for salo
-      ; s/song_reset/phrase_reset
-; v0.0ac 5 Mar 2025
 dev_checks' = 1
 todo  = 1
 makeroom = 1

@@ -1,7 +1,8 @@
 ; ----- Manual test of phrase editor -----
 
 dev_checks' = 1
-use_testlib = 1         ; 1: with instr, but mem full with track
+use_testlib = 0         ; 1: with instr, but mem full with track
+short_phrase = 1        ; 1: exercise implicit repeat
 
       IMPORT "memmap.i"
       IMPORT "const.i"  ; kesc
@@ -17,8 +18,11 @@ use_testlib = 1         ; 1: with instr, but mem full with track
       IMPORT "shortcut.o" ; for setup_keys
       IMPORT "phrase.o"
       IMPORT "phrasui.o"
+      IMPORT "track.o"
       IF use_testlib
       IMPORT "testlib.o" ; for dev test
+      ELSE
+      IMPORT "chunk.o"  ; Init_chunk_module
       END
       BANK BK_DISP
     ;      LOAD_FONTS()  ; no need all fonts RN
@@ -36,19 +40,32 @@ start
       ELSE
           call setup_keys
           call Init_chunk_module
+          call Init_track_module
       END
           call phrase_reset
           xor a:call song_select_new_phrase
 note1 = &14             ; G#1
 note2 = &26             ; D-2
-          ld a,0:call phrase_select_new_row:call nc,fail
+      IF short_phrase
+          ld a,delai_ui_default*4
+      ELSE
+          ld a,0
+      END
+          call phrase_select_new_row:call nc,fail
           ld a,note1:call row_set_note
           ld a,1:call row_set_instr
           ld de,delai_ui_default:call phrase_select_row_at
           ld a,note1+1:call row_set_note
           ld a,&0F:call row_set_vol
+      IF short_phrase
+          ld de,delai_ui_default*2+2:call phrase_select_row_at
+          ld a,note2:call row_set_note
+      ELSE
           ld de,delai_ui_default*16+2:call phrase_select_row_at
           ld a,note2:call row_set_note
+      END
+          ld a,1:call Song_select_new_track
+          xor a:ld hl,time0:call Set_phrase_at_t
 
           call phrase_cold_refresh
 .lp
@@ -58,6 +75,8 @@ note2 = &26             ; D-2
           cp kesc
           jr nz,.lp
           ret
+
+time0 FILL 3,0
 
 ho
           LIMIT(ramlimit)
