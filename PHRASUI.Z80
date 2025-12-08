@@ -67,6 +67,7 @@ phrase_cold_refresh
           ld de,state
           ld bc,state_
           ldir
+          call refresh_state
  ; -- sync model
           ld a,(track_cur):call Song_select_track
           call select_row_ui
@@ -250,7 +251,7 @@ row_dwn
 refresh_row
 ;----------
 ; Update cursor and select (refresh itself done by ged)
-; !!! Only called from ged event (update_nested_pos_y uses that)
+; !!! Only called from ged event (update_pos_y uses that)
 ; In: hl = time
           xor a:ld (is_modified),a
 
@@ -266,6 +267,7 @@ refresh_row
           ld ix,(pos_y) ; for ixl
           ld a,l
           CALL_DISP_BK(correct_y)
+          ld (cur_y),a
           jr nc,.past_view
 
           inc a         ; ged cursor is 1-based
@@ -289,6 +291,11 @@ refresh_row
 select_row_ui
 ;------------
 ; Don't create row if empty slot
+      IF dev_checks'
+          xor a
+select_row_ui_
+          ld (_sru_entered+1),a
+      END
           ld de,(time_row)
           call phrase_get_row_at
           jr nc,.past_phrase
@@ -299,9 +306,29 @@ select_row_ui
           xor a
           ld (row_exists),a
           ret
-.past_phrase
-      BRK
 
+.past_phrase
+; here "time_at_top" already = time at top next slice
+          call refresh_state
+      IF dev_checks'
+;Since start of phrase: should be 0
+          ld hl,(time_row_at_top)
+          ld a,l:or h:call nz,mess
+      END
+
+          ld hl,0:ld (time_row),hl
+;New Y offset
+          ld a,(cur_y):ld (pos_y),a
+
+      IF dev_checks'
+; Avoid infinite loop
+_sru_entered ld a,0
+          or a:call nz,mess
+          inc a
+          jr select_row_ui_
+      ELSE
+          jr select_row_ui
+      END
 
 row_up
 ;-----
@@ -323,7 +350,7 @@ row_up
           pop bc
           or a:sbc hl,bc:add hl,bc:jr nc,.ok
           ld l,c:ld h,b
-.ok       jr refresh_row
+.ok       jp refresh_row
 
 .prev_phrase
       BRK
@@ -384,6 +411,7 @@ refresh_page
       END
 .lp
           call refresh_phrase
+          ld (pos_y),a
           jr nc,.lp
           ret
 
@@ -397,7 +425,6 @@ refresh_phrase
           ld ix,(pos_phrase) ; cursor
           call get_delai_ui
           CALL_DISP_BK(disp_rows)
-          ld (pos_y),a
           ret
 
 refresh_state
@@ -454,15 +481,15 @@ buf_note_text SKIP 3:BYTE 0
 ;------
 ; vars
 ;------                                        
-state_top
-time_at_top FILL 3,0    ; top of view
 time_at_bottom FILL 3,0 ; bottom of slice
 is_first_iter BYTE 0    ; 0 = implicit repeat
 row_exists BYTE 0       ; 0 = empty
 is_modified BYTE 0
+cur_y BYTE 0
 
 state                   ; to recover when switching screen
-time_row_at_top WORD 0  ; top of phrase
+time_at_top FILL 3,0    ; time in track
+time_row_at_top WORD 0  ; time in phrase
 time_row WORD 0
 ;time_row_at_bottom WORD &FFFF
 pos_phrase              ; Pos top-left:
@@ -470,10 +497,11 @@ pos_y BYTE 0            ;   >0 when phrase start in the middle)
 pos_x BYTE 0            ;   Offset track column
 state_ = $ - state
 
-saved_state_top
-
+      IF 0
 defaut_state
 dfd   = $ - state
+          ASSERT($ == dfd+time_at_top)
+      FILL 3,0
           ASSERT($ == dfd+time_row_at_top)
       WORD 0
           ASSERT($ == dfd+time_row)
@@ -482,9 +510,12 @@ dfd   = $ - state
       BYTE 0
           ASSERT($ == dfd+pos_x)
       BYTE 0
+      END
 
 saved_state
 dfs   = $ - state
+          ASSERT($ == dfs+time_at_top)
+      FILL 3,0
           ASSERT($ == dfs+time_row_at_top)
       WORD 0
           ASSERT($ == dfs+time_row)

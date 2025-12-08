@@ -1,8 +1,14 @@
 ; ----- Manual test of phrase editor -----
-
+do_nrt = 1              ; 0: manual test
 dev_checks' = 1
 use_testlib = 0         ; 1: with instr, but mem full with track
-short_phrase = 1        ; 1: exercise implicit repeat
+short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
+
+; 2025
+  ; -- Alpha 1 --
+  ; Dec 8: Add test_time_at_top_updated
+
+nrtfail = &BE00
 
       IMPORT "memmap.i"
       IMPORT "const.i"  ; kesc
@@ -10,7 +16,11 @@ short_phrase = 1        ; 1: exercise implicit repeat
       IMPORT "import.i"
 
       ORG code_start
+      IF do_nrt
+      ENT tests
+      ELSE
       ENT start
+      END
 
 ;to do first    
           IMPORT_CORE()
@@ -34,6 +44,17 @@ short_phrase = 1        ; 1: exercise implicit repeat
 
 start
           ld a,2:call &BC0E
+          call dev_setup
+.lp
+          call km_wait_key
+          call phrase_ui_process
+          jr c,.lp
+          cp kesc
+          jr nz,.lp
+          ret
+
+
+dev_setup
       IF use_testlib
           call init_for_test
           call dummy_instr_ui
@@ -47,7 +68,8 @@ start
 note1 = &14             ; G#1
 note2 = &26             ; D-2
       IF short_phrase
-          ld a,delai_ui_default*4
+nrt_phrase0_dur = delai_ui_default*4
+          ld a,nrt_phrase0_dur
       ELSE
           ld a,0
       END
@@ -66,15 +88,312 @@ note2 = &26             ; D-2
       END
           ld a,1:call Song_select_new_track
           xor a:ld hl,time0:call Set_phrase_at_t
-
           call phrase_cold_refresh
-.lp
-          call km_wait_key
-          call phrase_ui_process
-          jr c,.lp
-          cp kesc
-          jr nz,.lp
           ret
+
+      IF do_nrt
+; -----------------------------
+      MACRO TEST_RUN test_data
+; Adapted from gednrt 
+;test_data consist in:
+  ; input (mocked) key sequence
+  ; expected text displayed
+  ; (removed!!!) Expected cursor sequence
+          ld de,test_data
+          call _test_run
+      ENDM
+
+      MACRO RESET_NRT_MOCK
+  ; For now, simply put cursor in top left of mocked screen
+          call _reset_nrt_mock
+      ENDM
+
+      MACRO END_OF_NRT_SEQUENCE
+ ; We use 0 as a sentinelle, as it is not a valid code.
+sentinelle = 0
+      BYTE sentinelle
+      ENDM
+
+      MACRO NRT_FOCUS x
+      BYTE x+&80
+      ENDM
+
+      MACRO CHECK_CURSOR x,y
+          ld de,x*&0100 + y
+          call check_cursor
+      ENDM
+
+          ld hl,(iotest_cursor)
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ret
+; -----------------------------
+
+tests
+          call test_time_at_top_updated
+          call test_row_dwn_to_repeated_phrase
+          ret
+
+test_time_at_top_updated
+;Check time_at_top is set-up for second slice
+          call dev_setup
+          ld hl,(time_at_top)
+          ld de,nrt_phrase0_dur
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ret
+
+test_row_dwn_to_repeated_phrase
+;Go past phrase
+;Prerequisite: test_time_at_top_updated
+          call dev_setup
+          TEST_RUN(.seq)
+;goto 2nd row 
+          TEST_RUN(.seq')
+          CHECK_CURSOR(4,nrt_phrase0_dur + delai_ui_default + 1)
+          call row_get_note:call z,nrtfail
+          cp note1+1:call nz,nrtfail
+;goto 1st row of next repetition
+          TEST_RUN(.seq'')
+          CHECK_CURSOR(4,nrt_phrase0_dur*2 + 1)
+          call row_get_note:call z,nrtfail
+          cp note1:call nz,nrtfail
+          ret
+
+.seq  FILL 5,kdwn
+          END_OF_NRT_SEQUENCE()
+      BYTE "G#1"        ; Only note was refreshed
+      FILL delai_ui_default,nrt_nl
+      BYTE "A-1"
+      FILL delai_ui_default,nrt_nl
+      BYTE "---"        ; empty row
+      FILL 2,nrt_nl     ; non-aligned
+      BYTE "D-3"
+      FILL delai_ui_default-2,nrt_nl
+      BYTE "---"
+      FILL delai_ui_default,nrt_nl
+          NRT_FOCUS("G")
+          NRT_FOCUS("#")
+          NRT_FOCUS("1")
+      BYTE nrtend
+
+.seq' BYTE kdwn
+          END_OF_NRT_SEQUENCE()
+      BYTE nrtend       ; don't check display this time
+
+.seq'' FILL 5-1,kdwn
+          END_OF_NRT_SEQUENCE()
+      BYTE nrtend
+
+; -----------------------------
+
+_test_run
+;Adapted from gednrt
+          ld (nrt_sequence_pnt),de
+
+          call nrt_cls  ; TODO? Also clean sprite/cursor?
+
+          call gedeihen_set_hooks_nrt
+          RESET_NRT_MOCK()
+    ;      call setup_widget
+    ;      call gedeihen_disp
+    ;      pop hl
+
+     ;     call nrt_enter
+
+          call nrt_gedeihen_loop
+
+; Check our fake screen is filled with expected first line.
+          ld de,(nrt_sequence_pnt) ; expected display
+          call compare_display_focus
+          ret
+
+; ==============================
+nrt_cls
+          push hl
+          ld hl,iotest_screen
+          ld de,iotest_screen+1
+          ld bc,&07FF
+          ld (hl),mockspace
+          ldir
+          pop hl
+          ret
+
+_reset_nrt_mock
+          push hl
+          ld hl,&0101:ld (iotest_cursor),hl
+          pop hl
+          ret
+
+gedeihen_set_hooks_nrt
+; out: hl preserved
+          push hl
+          ld hl,nrt_set_cursor
+          ld ix,nrt_get_cursor
+          ld iy,nrt_place_cursor
+          ld de,nrt_write_char
+          ld bc,nrt_paint_sprite
+          call gedeihen_set_hooks
+          pop hl
+          ret
+
+nrt_gedeihen_loop
+          call nrt_read_key ;Always return a key.
+          cp sentinelle:ret z
+
+          call phrase_ui_process
+          jr nrt_gedeihen_loop
+
+
+nrt_read_key
+          ld hl,(nrt_sequence_pnt)
+          ld a,(hl):inc hl
+          ld (nrt_sequence_pnt),hl
+          scf
+          ret
+
+scr_hw_roll
+      BRK
+;TODO (for now scrolling is not triggered in tests)
+
+
+nrt_set_cursor
+; Cursor is 1-indexed      
+          ld a,h:or a:call z,fail
+          cp 80:call nc,fail
+          ld a,l:or a:call z,fail
+          cp nrt_height:call nc,fail
+          ld (iotest_cursor),hl
+          ld hl,&CACA   ; mimic firmware trashing hl
+          scf
+          ret
+
+nrt_get_cursor
+          ld hl,(iotest_cursor)
+          ret
+
+iotest_get_char_pnt
+;Mimic a screen nrt_width x nrt_height
+;in:  hl:as in txt_set_cursor
+;out: hl:pointer in mimiced screen buffer. 
+          push de
+          dec h:dec l   ; From 1-based to 0 based
+          ld e,h:ld d,0 ;col
+nrt_width = 16
+nrt_height = 128
+nrt_screen_ = nrt_width * nrt_height
+      IF nrt_width - 16
+         !! fixme
+      END
+          ld h,d:4 ** add hl,hl ; row * 16
+          add hl,de
+          ld de,iotest_screen:add hl,de
+          call iotest_check_cursor_pos
+          pop de
+          ret
+
+
+iotest_check_cursor_pos
+; Sanity checks.
+; hl >= iotest_screen
+          push de
+          ld de,iotest_screen
+          or a:sbc hl,de:add hl,de:call c,&BE00
+; hl < iotest_screen+&800
+          ld de,iotest_screen + nrt_screen_
+          or a:sbc hl,de:add hl,de:call nc,&BE00
+          pop de
+          ret
+
+nrt_place_cursor
+          push hl
+          ld hl,(iotest_cursor)
+          call iotest_get_char_pnt
+;      BRK
+      IF 1
+; Dev: see if doublon on focus
+          bit 7,(hl):call nz,&BE00
+      END
+; Switch to mimic firmware
+          ld a,(hl):xor &80:ld (hl),a
+          pop hl
+          ret
+
+nrt_write_char
+; API: cf write_char
+          push hl
+          ld hl,(iotest_cursor)
+          push hl
+          call iotest_get_char_pnt
+      IF 0
+;for debug
+          push af
+          ld a,l
+          cp 2:call nc,&BE00
+          pop af
+      END
+          ld (hl),a
+
+          pop hl
+          inc h:call z,&BE00 ; TODO: new line
+          ld (iotest_cursor),hl
+          pop hl
+          scf
+          ret
+
+nrt_paint_sprite
+          call &BE00
+
+compare_display_focus
+          ld ixl,&FF
+          jr _compare
+compare_display
+          ld ixl,&7F    ; to remove focus flag
+_compare
+; Check our fake screen is filled with expected strings.
+; (Focus isn't checked)
+; In: DE = ref
+          ld hl,iotest_screen
+; Compare zone at HL and DE until nrt_end met in expected
+; Ie don't check the rest
+.comp
+          ld a,(de)
+          cp nrtend:ret z
+          cp nrt_nl:jr nz,.no_nl
+;go to next line in mock screen
+          ld a,l
+      IF nrt_width AND [nrt_width-1]
+  !! must be power of 2
+      END
+          and &FF XOR [nrt_width-1] ; go to start of line
+          add nrt_width ; next_line
+          ld l,a
+          jr nc,$+3:inc h
+          inc de
+          jr .comp
+
+.no_nl
+          xor (hl)
+          and ixl       ; no-op or remove focus flag
+          call nz,fail
+          inc de:inc hl
+          jr .comp
+
+check_cursor
+          ld hl,(iotest_cursor)
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ret
+
+
+mockspace = 0           ; Make it easier to analyze iotest_screen
+nrtend = &FF
+nrt_nl = 13
+
+nrt_sequence_pnt WORD 
+iotest_cursor WORD &0101 ; As txt_set_cursor H=column L=line (1-based)
+
+      SKIP -$ AND &FF
+iotest_screen SKIP nrt_screen_
+
+      END
 
 time0 FILL 3,0
 
