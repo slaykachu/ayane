@@ -3,6 +3,9 @@ todo  = 1
 do_brittle = 0
 
 ; ----- 2025 ----------
+; -- alpha 1.06 --
+ ; Dec
+     ;  9 Add test_track_select_phrase_far
 ; -- alpha 1.02 --
  ; Nov
      ; 30 s/test_track_get_event_hook_at/test_track_get_hook_at/
@@ -131,7 +134,7 @@ tests
           call test_set_phrase_after
           call test_set_phrase_far
           call test_get_phrase_implicit_repeat
-;          call test_track_get_phrase_at
+          call test_track_select_phrase_far
 
 ; ---- Test subsong -----
           call test_subsong_add_track
@@ -1410,6 +1413,40 @@ dummy_dur' = 100
           call c,fail   ; nth iter
           ret
 
+test_track_select_phrase_far
+; Setup 60 events (to mimic long module), 
+; and check selection of the last one
+; (used for manual profiling as well).
+.evts# = 60
+.dur  = 64 * 6
+
+          call nrt_init
+          call nrt_dummy_phrase
+          xor a:ld l,a:ld h,a:ld (time_dyn),hl:ld (time_dyn+2),a
+
+          ld b,.evts#
+.make_evts
+          push bc
+          xor a
+          ld hl,time_dyn
+          call Set_phrase_at_t
+          ld hl,(time_dyn)
+          ld de,.dur
+          add hl,de:call c,nrtfail ; .evts# * .dur <= &ffff
+          ld (time_dyn),hl
+          pop bc
+          djnz .make_evts
+
+          ld hl,.time_post_last
+          call track_select_phrase_at:call z,nrtfail
+          call nc,nrtfail ; first iter since phrase explicitly set
+          ld de,.dur + 42
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ret
+
+.time_post_last TIME(.evts# * .dur + 42)
+
+
 time0     TIME(0)
 time6     TIME(6)
 time7     TIME(7)
@@ -1419,6 +1456,8 @@ time20    TIME(20)
 time325   TIME(325)
 time_far WORD &CAFE:BYTE 2 ; > &10000
 time_far' WORD &CAFE+&0777:BYTE 2
+time_dyn  TIME(0)
+
 
 check_transpose
 ; Check transpose value at t
