@@ -2016,7 +2016,8 @@ track_select_phrase_at
 ;Out: If such phrase, NZ, phrase selected
                   ; HL = t - time at start of phrase MOD phrase duration
                   ; Carry if first iteration of phrase
-    ; Otherwise, Z
+    ; Otherwise, Z       
+          push ix
           push de
           push hl
           ld a,evt_change_phrase_lsb
@@ -2034,9 +2035,7 @@ track_select_phrase_at
 ; -- AHL = t-t0
           pop bc        ; was hl = t
           ld hl,fetched_t0
-          ld a,(bc):sub (hl):ld e,a:inc bc:inc hl
-          ld a,(bc):sbc (hl):ld d,a:inc bc:inc hl
-          ld a,(bc):sbc (hl)
+          call sub_ade_ibc_ihl
           ex de,hl
 ; Now check if < phrase duration
           call phrase_get_duration
@@ -2048,19 +2047,38 @@ track_select_phrase_at
           call sub_ahl_cde
           jr c,.done    ; Carry if yes
 ; Get modulo dur to get pos in phrase
-.mod      call sub_ahl_cde
+; and adjust t0 to point start of repetition
+.mod
+          push hl
+          ld hl,fetched_t0
+          call add_ihl_cde
+          pop hl
+          call sub_ahl_cde
           jr nc,.mod
           ccf           ; NC without touching NZ
 .done
 ; NZ here
           push af
           call add_ahl_cde
-          pop af
 ; Note: A is discarded, as we only handle time offset in 16 bits
+      IF dev_checks
+          or a:call nz,mess
+      END
+          pop af
           push hl
 .exit
           pop hl
           pop de
+          pop ix
+          ret
+
+;cp_ide_ihl
+cp_ide_ihl_end
+          ld a,(de):cp (hl):ret c:ret nz
+          dec de:dec hl
+          ld a,(de):cp (hl):ret c:ret nz
+          dec de:dec hl
+          ld a,(de):cp (hl)
           ret
 
 sub_ahl_cde
@@ -2070,12 +2088,54 @@ sub_ahl_cde
           sbc c
           ret
 
+sub_ade_ibc_ihl
+; ADE = (bc) - (hl)
+          ld a,(bc):sub (hl):ld e,a:inc bc:inc hl
+          ld a,(bc):sbc (hl):ld d,a:inc bc:inc hl
+          ld a,(bc):sbc (hl)
+          ret
+
 add_ahl_cde
 ; AHL += CDE
 ; Return C/NC (!!!! Z flag not accurate, NZ if Carry)
           add hl,de
           adc c
           ret
+
+sub_de_ibc_ihl
+; DE = (bc) - (hl)
+          ld a,(bc):sub (hl):ld e,a:inc bc:inc hl
+          ld a,(bc):sbc (hl):ld d,a:inc bc:inc hl
+          ld a,(bc):sbc (hl)
+      IF dev_checks
+          call nz,mess  ; ovf
+      END
+          ret
+
+add_ihl_cde
+; (hl) += cde
+          push af
+          ld a,(hl):add e:ld (hl),a:inc hl
+          ld a,(hl):adc d:ld (hl),a:inc hl
+          ld a,(hl):adc c:ld (hl),a
+          pop af
+          ret
+
+add_ihl_ibc_de
+; (hl) = (bc) + de
+          ld a,(bc):add e:ld (hl),a:inc bc:inc hl
+          ld a,(bc):adc d:ld (hl),a:inc bc:inc hl
+          ld a,(bc):adc 0:ld (hl),a
+          ret
+
+      IF 0
+add_ide_ibc_hl
+; (de) = (bc) + hl
+          ld a,(bc):add l:ld (de),a:inc bc:inc de
+          ld a,(bc):adc h:ld (de),a:inc bc:inc de
+          ld a,(bc):adc 0:ld (de),a
+          ret
+      END
 
 track_get_event_at
 ;-----------------
@@ -2738,7 +2798,7 @@ timestamp SKIP 3        ; tmp variable
 previous_timestamp SKIP 3
 
 fetched_event WORD 
-fetched_t0 SKIP 3
+fetched_t0 SKIP 3       ; for phrasui 
 fetched_t1 SKIP 3       ; for phrasui to know when next evt occurs
           ASSERT(fetched_t1 == fetched_t0+3)
 

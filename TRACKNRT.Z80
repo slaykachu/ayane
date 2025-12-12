@@ -5,6 +5,7 @@ do_brittle = 0
 ; ----- 2025 ----------
 ; -- alpha 1.06 --
  ; Dec
+     ; 12 Add test_t0_when_repeat
      ;  9 Add test_track_select_phrase_far
 ; -- alpha 1.02 --
  ; Nov
@@ -79,6 +80,7 @@ tests
           call nrt_init
 
 ; ---- Recent
+          call test_t0_when_repeat
 
 ; ---- UI (manual)
       IF enable
@@ -135,6 +137,7 @@ tests
           call test_set_phrase_far
           call test_get_phrase_implicit_repeat
           call test_track_select_phrase_far
+          call test_t0_when_repeat
 
 ; ---- Test subsong -----
           call test_subsong_add_track
@@ -1371,16 +1374,7 @@ test_get_phrase_implicit_repeat
 ; Check we get same phrase after its end (implicit repeat) 
 
           call nrt_init
-
-          xor a:call song_select_new_phrase
-dummy_dur = 7
-dummy_dur' = 100
-          ld a,dummy_dur:call phrase_select_new_row
- ; Sanity check
-          call phrase_get_duration
-          ld a,c:or a:call nz,nrtfail
-          ld a,d:or a:call nz,nrtfail
-          ld a,e:cp dummy_dur:call nz,nrtfail
+          call nrt_dummy_phrase_finite
 
           xor a
           ld hl,time0
@@ -1389,6 +1383,7 @@ dummy_dur' = 100
 ; Put other phrase at 14
           ld a,1:call song_select_new_phrase
 ; new row so duration > 0 
+dummy_dur' = 100
           ld a,dummy_dur':call phrase_select_new_row
           ld a,1
           ld hl,time14
@@ -1446,6 +1441,52 @@ test_track_select_phrase_far
 
 .time_post_last TIME(.evts# * .dur + 42)
 
+test_t0_when_repeat
+; The variable /fetched_t0/ is used by phraseui as start point
+; When a phrase is repeated, it must be adjusted at start of repetition
+          call nrt_init
+          call nrt_dummy_phrase_finite
+          xor a
+          ld hl,time0
+          call Set_phrase_at_t
+
+; Sanity: inside first iter
+          ld hl,time6
+          call track_select_phrase_at:call z,nrtfail
+          call nc,nrtfail
+ ; sanity pos in phrase
+          ld de,6
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ld hl,(fetched_t0):ld a,l:or h:call nz,nrtfail
+          ld a,(fetched_t0+2):or a:call nz,nrtfail
+
+; After first repeat
+          ld hl,time13
+          call track_select_phrase_at:call z,nrtfail
+          call c,nrtfail
+ ; sanity pos in phrase
+          ld de,13 MOD dummy_dur
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+ ; real check
+          ld hl,(fetched_t0)
+          ld de,dummy_dur
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ld a,(fetched_t0+2):or a:call nz,nrtfail
+
+; After xx repeat
+          ld hl,time325
+          call track_select_phrase_at:call z,nrtfail
+          call c,nrtfail
+ ; sanity pos in phrase
+.offset = 325 MOD dummy_dur
+          ld de,.offset
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+ ; real check
+          ld hl,(fetched_t0)
+          ld de,325 - .offset
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ld a,(fetched_t0+2):or a:call nz,nrtfail
+          ret
 
 time0     TIME(0)
 time6     TIME(6)
@@ -1670,6 +1711,17 @@ nrt_dummy_phrase
           xor a:call phrase_select_new_row:call nc,nrtfail
           ret
 
+nrt_dummy_phrase_finite
+;Finite duration
+          xor a:call song_select_new_phrase
+dummy_dur = 7
+          ld a,dummy_dur:call phrase_select_new_row
+ ; Sanity check
+          call phrase_get_duration
+          ld a,c:or a:call nz,nrtfail
+          ld a,d:or a:call nz,nrtfail
+          ld a,e:cp dummy_dur:call nz,nrtfail
+          ret
 
 compare_out0
           ld b,1
