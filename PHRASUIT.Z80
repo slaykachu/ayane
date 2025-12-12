@@ -6,7 +6,8 @@ short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 
 ; 2025
   ; -- Alpha 1 --
-  ; Dec 8: Add test_time_at_top_updated
+  ; Dec
+      ;10: [ON HOLD] Add test_up_to_prev_phrase
 
 nrtfail = &BE00
 
@@ -129,14 +130,20 @@ sentinelle = 0
 ; -----------------------------
 
 tests
-          call test_time_at_top_updated
+;          call test_up_to_prev_phrase
+ ;     BRK
+          call test_refresh_state
           call test_row_dwn_to_repeated_phrase
+  ;        call test_up_at_top
+   ;       call test_up_to_prev_phrase
           ret
 
-test_time_at_top_updated
-;Check time_at_top is set-up for second slice
-          call dev_setup
-          ld hl,(time_at_top)
+test_refresh_state
+;Check time_at_bottom set-up
+          call dev_setup ; will call refresh_state at time 0
+; Sanity check 
+          ld hl,(time_at_top):ld a,l:or h:call nz,nrtfail
+          ld hl,(time_end)
           ld de,nrt_phrase0_dur
           or a:sbc hl,de:add hl,de:call nz,nrtfail
           ret
@@ -180,6 +187,29 @@ test_row_dwn_to_repeated_phrase
       BYTE nrtend       ; don't check display this time
 
 .seq'' FILL 5-1,kdwn
+          END_OF_NRT_SEQUENCE()
+      BYTE nrtend
+
+test_up_at_top
+;If already at top: no-op 
+          call dev_setup
+          TEST_RUN(.seq)
+          ret
+
+.seq  BYTE kup
+          END_OF_NRT_SEQUENCE()
+      BYTE nrtend
+
+test_up_to_prev_phrase
+;Go to previous 
+;Prerequisite: test_row_dwn_to_repeated_phrase
+          call dev_setup
+          TEST_RUN(.seq)
+          CHECK_CURSOR(4,delai_ui_default*3 + 1)
+          ld a,(row_exists):or a:call nz,nrtfail
+          ret
+
+.seq  FILL 5,kdwn:BYTE kup
           END_OF_NRT_SEQUENCE()
       BYTE nrtend
 

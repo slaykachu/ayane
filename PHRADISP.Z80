@@ -44,7 +44,7 @@ disp_rows
           jr nz,.entry
 .rowlp
 ; Vars:
-; iyl = msb time at top
+; iyl = lsb time at top
 ; hl = current time, delai-aligned
 ; bc = time next row     
 
