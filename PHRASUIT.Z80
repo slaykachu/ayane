@@ -6,8 +6,8 @@ short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 
 ; 2025
   ; -- Alpha 1 --
-  ; Dec
-      ;10: [ON HOLD] Add test_up_to_prev_phrase
+  ; Dec 
+      ;12: Add test_up_to_prev_phrase
 
 nrtfail = &BE00
 
@@ -130,12 +130,12 @@ sentinelle = 0
 ; -----------------------------
 
 tests
-;          call test_up_to_prev_phrase
- ;     BRK
+          call test_up_at_top
+      BRK
           call test_refresh_state
           call test_row_dwn_to_repeated_phrase
-  ;        call test_up_at_top
-   ;       call test_up_to_prev_phrase
+          call test_up_at_top
+          call test_up_to_prev_phrase
           ret
 
 test_refresh_state
@@ -194,6 +194,9 @@ test_up_at_top
 ;If already at top: no-op 
           call dev_setup
           TEST_RUN(.seq)
+          CHECK_CURSOR(4,1)
+          call row_get_note:call z,nrtfail
+          cp note1:call nz,nrtfail
           ret
 
 .seq  BYTE kup

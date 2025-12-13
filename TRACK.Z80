@@ -2072,6 +2072,15 @@ track_select_phrase_at
           pop ix
           ret
 
+dec_ihl
+;(hl) -= 1
+          ld a,(hl):dec (hl):or a:ret nz
+          inc hl
+          ld a,(hl):dec (hl):or a:ret nz
+          inc hl
+          dec (hl)
+          ret
+
 ;cp_ide_ihl
 cp_ide_ihl_end
           ld a,(de):cp (hl):ret c:ret nz
@@ -2097,13 +2106,15 @@ sub_ade_ibc_ihl
 
 add_ahl_cde
 ; AHL += CDE
-; Return C/NC (!!!! Z flag not accurate, NZ if Carry)
+; Return C/NC (!!!! Z flag not accurate if NC, NZ if Carry)
           add hl,de
           adc c
           ret
 
+      IF 0
 sub_de_ibc_ihl
 ; DE = (bc) - (hl)
+; Return C/NC (!!!! Z flag not accurate if NC, NZ if Carry)
           ld a,(bc):sub (hl):ld e,a:inc bc:inc hl
           ld a,(bc):sbc (hl):ld d,a:inc bc:inc hl
           ld a,(bc):sbc (hl)
@@ -2111,9 +2122,11 @@ sub_de_ibc_ihl
           call nz,mess  ; ovf
       END
           ret
+      END
 
 add_ihl_cde
 ; (hl) += cde
+; AF preserved
           push af
           ld a,(hl):add e:ld (hl),a:inc hl
           ld a,(hl):adc d:ld (hl),a:inc hl

@@ -2,6 +2,8 @@
 
 ; 2025
 ; -- alpha1 --
+; Dec
+  ; 12: Add test_phrase_get_last_row
 ; Nov
   ; 27: Add test_get_duration_10000
   ; 22: Add test_phrase_get_row_at'
@@ -32,8 +34,6 @@
 fail  = &BE00
 
 tests
-          call test_get_duration_10000
-      BRK
           call test_phrase_get_rows#
           call test_phrase_get_row_at
           call test_phrase_get_row_at'
@@ -45,6 +45,7 @@ tests
           call test_phrase_select_row_from_empty_phrase
           call test_phrase_select_row_far
           call test_phrase_select_row_at_past
+          call test_phrase_get_last_row
           call test_get_duration_empty
           call test_get_duration_single
           call test_get_duration_16bits
@@ -266,6 +267,20 @@ test_phrase_select_row_at_past
           ld de,&0300:call phrase_get_row_at:call nc,fail
           call nz,fail
           call row_get_note:cp note2:call nz,&BE00
+          ret
+
+test_phrase_get_last_row
+;-----------------------
+          call nrt_init
+          xor a:call song_select_new_phrase
+;finite duration
+          ld a,11:call phrase_select_new_row:call nc,fail
+          ld a,13:call phrase_select_new_row:call nc,fail ; at +11
+          ld a,15:call phrase_select_new_row:call nc,fail ; at +11+13
+
+          call phrase_get_last_row
+          ld a,e:cp 11+13:call nz,fail
+          ld a,d:or a:call nz,fail
           ret
 
 check_blank_row

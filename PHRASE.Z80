@@ -5,7 +5,9 @@ do_add_empty_row = 0
       END
 
 ; 2025    
- ; -- alpha 1 -- 
+ ; -- alpha 1 --
+; Dec
+   ; 12 Add phrase_get_last_row 
 ; Nov
    ; 27 Add get_phrase_id
       ; phrase_get_duration: handle duration 0 as &10000
@@ -584,6 +586,27 @@ phrase_get_rows#
           ld a,c
           jp _postlude
 
+phrase_get_last_row
+;------------------
+;!!! for now doesn't work for infinite
+   ; nevermind as ui-wise we won't create such phrases
+; In: N/A
+;Out: like phrase_get_row_at
+    ; except de = time last row
+
+          call phrase_get_duration
+      IF dev_checks'
+          ld a,c:or a:call nz,mess ; not expecting >= &10000
+          ld a,c:or d:or e:call z,mess ; not expecting empty phrase
+      END
+          dec de        ; last tick
+          call phrase_get_row_at
+      IF dev_checks'
+          call nc,mess  ; must exists!
+      END
+; get again 
+          ld de,(row_t0)
+;enchaine
 phrase_get_row_at
 ;----------------
 ; Pick row (t0, dur) such that t0 <= t < t1 (t0+dur)
@@ -594,7 +617,8 @@ phrase_get_row_at
              ; BC = t - t0
              ;  Z if t = t0 (row exactly at t)
              ; NZ otherwise
-    ; Otherwise, NC
+    ; Otherwise, NC (empty phrase or past 
+             ; 
     ; DE preserved in any case.
 
           call connect_phrase_begin

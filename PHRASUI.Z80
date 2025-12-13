@@ -311,7 +311,7 @@ get_time_row
 
 select_row_ui
 ;------------
-; Non- select: Don't create row if empty slot
+; Non-modifying select: Don't create row if empty slot
 ; Change phrase if past phrase
 ; In: time_cur setup
 
@@ -388,12 +388,28 @@ row_up
 .ok       jp refresh_row
 
 .prev_phrase
-          ld hl,time_at_top
+          ld hl,time_cur
           call is_time_zero
-          ret nc
-      BRK
-
-
+          ret z
+; select previous phrase
+          call dec_ihl
+          call refresh_state
+; must point to last row or delai-aligned, whichever is last
+  ; must rewind a bit, as get_delai_aligned return >= input
+          call get_delai_ui
+          inc hl
+          ld c,a:xor a:ld b,a:sbc hl,bc:jr nc,.okclip
+          ld hl,0
+.okclip
+          ex de,hl
+          call get_delai_aligned
+          push hl
+          call phrase_get_last_row
+          pop hl
+          or a:sbc hl,de:add hl,de:jr nc,.okmax
+          ex de,hl
+.okmax
+          jp refresh_row
 
 is_time_zero
 ;In: HL: time field (24 bits)
