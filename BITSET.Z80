@@ -10,6 +10,11 @@ dev_checks = 1
 mess  = &BE00
 
 ; ========================================
+      MACRO DECLARE_BITSET n
+; Reserve space for bitset of size n
+      SKIP [n+7]/8 + 1
+      ENDM
+
       MACRO SIZE_IN_BYTES
  ; A= size-1 
           add 8:rra:2 ** srl a
@@ -19,7 +24,6 @@ mess  = &BE00
 ; Assert (No-op if ok. Breakpoint otherwise)
 ;[codesize] If invoked twice, should use a routine instead.
 
-      IF dev_checks
           cp (hl)       ; cp with size-1
           jr c,.ok
           jr z,.ok
@@ -119,4 +123,5 @@ get_pnt
           add hl,bc
           pop bc
           ret
+
 

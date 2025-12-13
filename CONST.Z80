@@ -19,6 +19,7 @@ delai_ui_default = 6
 diapason_default = 440*128
 
 MAX_INSTRS = 99         ; instrsel
+MAX_PHRASES = 99        ; 99 for ui. shall be extended
 MAX_TRACKS = 16         ; used by track, ply, salo
 MAX_FX_BY_INSTR = 2     ; 7 max (see timer.fxcutend)
 ;MAX_TIMER_FXS = 15      ; in timer.o

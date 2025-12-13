@@ -2,7 +2,8 @@
 todo  = 1
 ; 2025
 ; -- Alpha1 --
-  ; Dec       
+  ; Dec
+    ; 13 Refresh all instances of repeated phrase       
     ; 12 Handle page change
        ; Handle kcup/kcdwn
     ; 10 Clean-up code: - All vars infered from time_at_top & time_cur
@@ -23,6 +24,7 @@ dev_checks' = 1
       IF todo
 ;use shared imports
       END
+      IMPORT "bitset.o"
       IMPORT "song.o"   ; Song_get_instr
       IMPORT "phrase.o"
       IMPORT "piano.o"
@@ -83,12 +85,19 @@ phrase_cold_refresh
           jp gedeihen_enter
 
 phrase_ui_process
+          ld b,a
+          xor a:ld (is_modified),a
+          ld a,b
           call gedeihen_process
           ret nc
           ld a,(is_modified)
           or a
           scf
           ret z
+ ; Must we refresh repeated phrase?
+          call song_get_current_phrase
+          ld hl,phrase_dup:call bs_get
+          call nz,refresh_page
  ; After row edited: skip exactly delai
           call refresh_nofocus ; needed for env
           call get_time_row
@@ -298,7 +307,7 @@ refresh_row_
           xor a:ld (_rr_entered+1),a
       END
 refresh_row__
-          xor a:ld (is_modified),a
+;          xor a:ld (is_modified),a
 
 ; -- check if out of view port or out of phrase
           ld hl,(time_cur)
@@ -548,6 +557,8 @@ refresh_page
 ; - for all tracks
       END
           CALL_DISP_BK(cls_)
+          ld hl,phrase_met:ld a,MAX_PHRASES:call bs_init
+          ld hl,phrase_dup:ld a,MAX_PHRASES:call bs_init
 
           ld hl,time_at_top
           ld ixl,0      ; cursor y
@@ -564,6 +575,18 @@ refresh_page
           ld ixh,0      ; cursor x
           CALL_DISP_BK(disp_rows)
           ex de,hl      ; de : cur time
+
+; --flag repeated phrase
+          push af
+          call song_get_current_phrase
+          ld hl,phrase_met:call bs_get
+          jr z,.nodup
+          push hl
+          ld hl,phrase_dup:call bs_set
+          pop hl
+.nodup
+          call bs_set
+          pop af
           ld ixl,a
           ld hl,time_end
           jr nc,.lp
@@ -664,4 +687,7 @@ dfs   = $ - state
           TIME(0)
           ASSERT($ == dfs+track_cur)
       BYTE 1
+
+phrase_met DECLARE_BITSET(MAX_PHRASES)
+phrase_dup DECLARE_BITSET(MAX_PHRASES)
 
