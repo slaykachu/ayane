@@ -3,7 +3,8 @@ todo  = 1
 ; 2025
 ; -- Alpha1 --
   ; Dec       
-    ; 12 Handle kcup/kcdwn
+    ; 12 Handle page change
+       ; Handle kcup/kcdwn
     ; 10 Clean-up code: - All vars infered from time_at_top & time_cur
                           ; See /state/
                       ; - Better naming
@@ -50,7 +51,14 @@ dev_checks' = 1
 
 phrase_cold_refresh
 ;------------------
- ; -- ad-hod display
+ ; -- restore state
+          ld hl,saved_state
+          ld de,state
+          ld bc,state_
+          ldir
+ ; -- sync model
+          ld a,(track_cur):call Song_select_track
+ ; -- ad-hod display (
           call refresh_page
 
  ; -- gedeihen 
@@ -67,16 +75,6 @@ phrase_cold_refresh
           ld hl,phrase_ui
           call setup_widget
 
-;refresh current row 
- ; -- restore state
-          ld hl,saved_state
-          ld de,state
-          ld bc,state_
-          ldir
-          call refresh_state_cur
- ; -- sync model
-          ld a,(track_cur):call Song_select_track
-          call select_row_ui
  ; -- focus on current row
           call gedeihen_disp
  ; -- enter        
@@ -296,6 +294,10 @@ refresh_row
           ld (time_cur+2),a
 
 refresh_row_
+      IF dev_checks'
+          xor a:ld (_rr_entered+1),a
+      END
+refresh_row__
           xor a:ld (is_modified),a
 
 ; -- check if out of view port or out of phrase
@@ -303,9 +305,7 @@ refresh_row_
           ld de,(time_at_top)
           or a:sbc hl,de:jr c,.pre_view
 
-      IF dev_checks'
-          inc h:dec h:call nz,mess ; Not expecting > &100
-      END
+          inc h:dec h:jr nz,.past_view
           ld a,l
           ld ix,0
           CALL_DISP_BK(correct_y)
@@ -321,12 +321,28 @@ refresh_row_
           ret
 
 .pre_view
-;todo
-      BRK
+          call get_delai_ui
+          CALL_DISP_BK(ticks_per_page)
+          ld d,0
+          ld hl,time_at_top
+          call sub_ihl_de_clipped
+          jr .refresh_view
+
 
 .past_view
-;todo
-      BRK
+          ld hl,time_at_bottom
+          ld de,time_at_top
+          call copy_time
+.refresh_view
+          call refresh_page
+      IF dev_checks'
+;Avoid infinite loop in case of bug
+_rr_entered ld a,0
+          or a:call nz,mess
+          inc a
+          ld (_rr_entered+1),a
+      END
+          jr refresh_row__
 
 get_time_row
 ;-----------
@@ -445,8 +461,7 @@ row_ctrl_up
 ;-----------
 ; Go exaclty -16 * delai_ui (don't try to align)
           call get_shift_ctrl
-          ld hl,time_cur:push hl:call sub_ihl_de:pop hl
-          call c,set_time_zero ; clip
+          ld hl,time_cur:call sub_ihl_de_clipped
           jp refresh_row_from_time_cur
 
 ; --------------------------------
@@ -461,6 +476,9 @@ is_time_zero
           2 ** dec hl
           ret
 
+sub_ihl_de_clipped
+          call sub_ihl_de
+          ret nc
 set_time_zero
 ;In: HL: time field (24 bits)
           xor a
@@ -528,9 +546,9 @@ refresh_page
 ;-----------   
       IF todo
 ; - for all tracks
-; - compute time_phrase_at_bottom
-; - compute delai
       END
+          CALL_DISP_BK(cls_)
+
           ld hl,time_at_top
           ld ixl,0      ; cursor y
 .lp
@@ -545,10 +563,18 @@ refresh_page
           call get_delai_ui
           ld ixh,0      ; cursor x
           CALL_DISP_BK(disp_rows)
+          ex de,hl      ; de : cur time
           ld ixl,a
           ld hl,time_end
           jr nc,.lp
-          ret
+
+;for page down
+          ld hl,time_at_bottom
+          ld bc,fetched_t0
+          call add_ihl_ibc_de
+
+          call refresh_state_cur
+          jp select_row_ui
 
 
 refresh_state_cur
@@ -611,8 +637,8 @@ time_cur FILL 3,0       ; absolute time (determine pos in page)
 track_cur BYTE 1
 state_ = $ - state
 
-; -- work variables
-;time_row_start WORD 0   ; time in phrase
+; -- work variables                      
+time_at_bottom FILL 3,0 ; bottom of view
 time_end FILL 3,0       ; bottom of slice
 is_first_iter BYTE 0    ; 0 = implicit repeat
 row_exists BYTE 0       ; 0 = empty

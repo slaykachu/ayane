@@ -252,11 +252,6 @@ nrtfail = &BE00
       ENDM
 
 
-      MACRO TIME val
-; Encode value 24 bytes. Timestamp
-      WORD val AND &FFFF:BYTE val/&0100/&0100
-      ENDM
-
 ; -----------------------------
 ; MACRO for AUM virtual machine
 ; -----------------------------   

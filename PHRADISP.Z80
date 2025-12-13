@@ -1,6 +1,12 @@
 ; <<<<< Fast phrase display >>>>>
-
 dev_checks' = 1
+
+; 2025
+; -- Alpha1 --
+  ; Dec       
+    ; 12 correct_y: must return NC when zoom overflow
+
+
 
 ;      IMPORT "const.i"
       IMPORT "memmap.i" ; BK_DISP
@@ -16,21 +22,23 @@ ref_pc
 ho
           ASSERT($ == ref_pc) ; deps must have been imported by host
 
-view_rows = 200-4       ; in scanlines
+view_hei = 200
+view_rows = view_hei-4  ; in scanlines
 
 disp_rows
 ; Display phrase    
 ; ==============
 ; In: hl = time start (must be multiple of step)
       IF todo
-; relax this constraint: shifted phrases on different track might
+       ; relax this constraint? shifted phrases on different track might
                        ; not respect that
       END
     ; de = time end
     ;  a = (minimum) step for zoom correction
     ; ixh = pos x
     ; ixl = pos y
-    ; phrase selected
+    ; phrase selected   
+; Out: hl = time at end of view
 
           ld (.time_end),de
 
@@ -203,7 +211,9 @@ correct_y
        ; NC otherwise
 zoom_hook = $+1
           call &BE00
+          ccf:ret nc    ; If ovf -> NC
           add ixl
+          ccf:ret nc    ; If ovf -> NC
           cp view_rows
           ret
 
@@ -216,6 +226,28 @@ separator
           ld (de),a:inc e
           call z,inc_d_wrap
           djnz .xlp
+          ret
+
+ticks_per_page
+; in: A = step
+;out: E = ticks per page
+.rows = view_hei/6
+          ld e,.rows:dec a:ret z
+          ld e,.rows*2:dec a:ret z
+          ld e,.rows*3:dec a:ret z
+          ld e,.rows*4:dec a:ret z
+;5: use zoom 1.5 -> 7.5 lines per row
+          ld e,view_hei*2/15 *5:dec a:ret z
+
+; view_hei / delai * delai
+          add 5
+          ld e,a
+          ld a,view_hei
+          ld b,-1
+.div      inc b:sub e:jr nc,.div
+          xor a
+.mul      add e:djnz .mul
+          ld e,a
           ret
 
 
@@ -231,13 +263,14 @@ get_zoom
           ld de,zoom1
           ret
 
-zoom6     add a
+zoom6     add a:ret c
 ;enchaine
-zoom3     ld l,a:add a:add l:ret
+zoom3     ld l,a:add a:ret c:add l:ret
 zoom2     add a:ret
-zoom1_5   ld l,a:srl a:add l
-;enchaine
-zoom1     ret
+zoom1_5   ld l,a:srl a:add l:ret
+zoom1     or a:ret      ;NC: no ovf
+
+cls_      jp cls
 
 ;---------------------------------
 ph_get_cursor

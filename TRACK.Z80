@@ -2105,11 +2105,13 @@ sub_ade_ibc_ihl
           ret
 
 sub_ihl_de
-; (hl) -= de
+; (hl) -= de               
+; HL preserved
 ; Return C/NC (!!!! Z flag not accurate if NC, NZ if Carry)
           ld a,(hl):sub e:ld (hl),a:inc hl
           ld a,(hl):sbc d:ld (hl),a:inc hl
           ld a,(hl):sbc 0:ld (hl),a ; for N/NC
+          2 ** dec hl
           ret
 
 
@@ -2166,6 +2168,12 @@ add_ide_ibc_hl
           ld a,(bc):adc 0:ld (de),a
           ret
       END
+
+copy_time
+; in: hl = src
+    ; de = dest
+          3 ** ldi
+          ret
 
 track_get_event_at
 ;-----------------

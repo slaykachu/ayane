@@ -6,8 +6,10 @@ short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 
 ; 2025
   ; -- Alpha 1 --
-  ; Dec 
-      ;12: Add test_kcdwn
+  ; Dec
+      ;13: Add test_refresh_page 
+      ;12: Add test_next_page
+         ; Add test_kcdwn
          ; Add test_kcup
          ; Add test_up_to_prev_phrase
 
@@ -133,11 +135,15 @@ sentinelle = 0
 
 tests
           call test_refresh_state
+          call test_refresh_page
           call test_row_dwn_to_repeated_phrase
           call test_up_at_top
           call test_up_to_prev_phrase
           call test_kcdwn
+          call test_kcdwn'
           call test_kcup
+          call test_next_page
+          call test_prev_page
           ret
 
 test_refresh_state
@@ -148,7 +154,30 @@ test_refresh_state
           ld hl,(time_end)
           ld de,nrt_phrase0_dur
           or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ld hl,(time_at_bottom)
+          ld de,33 * delai_ui_default
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
           ret
+
+test_refresh_page
+; Test when time_at_top > 0
+          call dev_setup
+          ld hl,time6:ld de,time_at_top:call copy_time
+; Focus at top, since refresh_page doesn't use nrt hooks for display
+          ld hl,time6:ld de,time_cur:call copy_time
+          call refresh_page
+          TEST_RUN(.seq)
+          ret
+
+.seq
+      BYTE krgt,klft    ; trigger refresh
+          END_OF_NRT_SEQUENCE()
+ ; hm, no focus? no sure why
+    ;      NRT_FOCUS("A")
+    ;      NRT_FOCUS("-")
+    ;      NRT_FOCUS("1")   
+      BYTE "A-1"
+      BYTE nrtend
 
 test_row_dwn_to_repeated_phrase
 ;Go past phrase
@@ -233,6 +262,22 @@ test_kcdwn
           END_OF_NRT_SEQUENCE()
       BYTE nrtend
 
+test_kcdwn'
+;2 * CONTROL-DOWN
+          call dev_setup
+          TEST_RUN(.seq)
+          CHECK_CURSOR(4,delai_ui_default*32 + 1)
+          ld a,(row_exists):or a:call z,nrtfail
+          ld a,(is_first_iter):or a:call nz,nrtfail
+          call row_get_note:call z,nrtfail
+          cp note1:call nz,nrtfail
+          ret
+
+.seq  FILL 2,kcdwn
+          END_OF_NRT_SEQUENCE()
+      BYTE nrtend
+
+
 test_kcup
 ;DOWN + CTRL-DOWN + CTRL-UP: go delai_ui down
           call dev_setup
@@ -247,6 +292,40 @@ test_kcup
 .seq  BYTE kdwn,kcdwn,kcup
           END_OF_NRT_SEQUENCE()
       BYTE nrtend
+
+test_next_page
+; Past view: go to next page
+          call dev_setup
+          TEST_RUN(.seq)
+; View: 33 rows. 
+          CHECK_CURSOR(4,[3*16 MOD 33]*delai_ui_default + 1)
+          ld a,(row_exists):or a:call z,nrtfail
+          ld a,(is_first_iter):or a:call nz,nrtfail
+          call row_get_note:call z,nrtfail
+          cp note1:call nz,nrtfail
+          ret
+
+.seq  FILL 3,kcdwn
+          END_OF_NRT_SEQUENCE()
+;cannot check: focus on line 48 mod 33 = 15
+             ; disp doesn't use hooks
+      BYTE nrtend
+
+test_prev_page
+          call dev_setup
+          TEST_RUN(.seq)
+          CHECK_CURSOR(4,1)
+          ld a,(row_exists):or a:call z,nrtfail
+          ld a,(is_first_iter):or a:call z,nrtfail
+          call row_get_note:call z,nrtfail
+          cp note1:call nz,nrtfail
+          ret
+
+.seq  FILL 3,kcdwn
+      FILL 3,kcup
+          END_OF_NRT_SEQUENCE()
+      BYTE nrtend
+
 
 
 ; -----------------------------
@@ -344,7 +423,7 @@ iotest_get_char_pnt
           dec h:dec l   ; From 1-based to 0 based
           ld e,h:ld d,0 ;col
 nrt_width = 16
-nrt_height = 128
+nrt_height = 200
 nrt_screen_ = nrt_width * nrt_height
       IF nrt_width - 16
          !! fixme
@@ -461,7 +540,8 @@ iotest_screen SKIP nrt_screen_
 
       END
 
-time0 FILL 3,0
+time0     TIME(0)
+time6     TIME(6)
 
 ho
           LIMIT(ramlimit)
