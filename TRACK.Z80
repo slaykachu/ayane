@@ -2104,6 +2104,15 @@ sub_ade_ibc_ihl
           ld a,(bc):sbc (hl)
           ret
 
+sub_ihl_de
+; (hl) -= de
+; Return C/NC (!!!! Z flag not accurate if NC, NZ if Carry)
+          ld a,(hl):sub e:ld (hl),a:inc hl
+          ld a,(hl):sbc d:ld (hl),a:inc hl
+          ld a,(hl):sbc 0:ld (hl),a ; for N/NC
+          ret
+
+
 add_ahl_cde
 ; AHL += CDE
 ; Return C/NC (!!!! Z flag not accurate if NC, NZ if Carry)
@@ -2139,6 +2148,14 @@ add_ihl_ibc_de
           ld a,(bc):add e:ld (hl),a:inc bc:inc hl
           ld a,(bc):adc d:ld (hl),a:inc bc:inc hl
           ld a,(bc):adc 0:ld (hl),a
+          ret
+
+add_ihl_de
+; (hl) += de
+          ld a,(hl):add e:ld (hl),a:inc hl
+          ld a,(hl):adc d:ld (hl),a:inc hl
+          ret nc
+          inc (hl)
           ret
 
       IF 0

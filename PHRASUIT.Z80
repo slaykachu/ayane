@@ -7,7 +7,9 @@ short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 ; 2025
   ; -- Alpha 1 --
   ; Dec 
-      ;12: Add test_up_to_prev_phrase
+      ;12: Add test_kcdwn
+         ; Add test_kcup
+         ; Add test_up_to_prev_phrase
 
 nrtfail = &BE00
 
@@ -130,12 +132,12 @@ sentinelle = 0
 ; -----------------------------
 
 tests
-          call test_up_at_top
-      BRK
           call test_refresh_state
           call test_row_dwn_to_repeated_phrase
           call test_up_at_top
           call test_up_to_prev_phrase
+          call test_kcdwn
+          call test_kcup
           ret
 
 test_refresh_state
@@ -215,6 +217,37 @@ test_up_to_prev_phrase
 .seq  FILL 5,kdwn:BYTE kup
           END_OF_NRT_SEQUENCE()
       BYTE nrtend
+
+test_kcdwn
+;DOWN+CONTROL-DOWN: go 17*delai_ui down
+          call dev_setup
+          TEST_RUN(.seq)
+          CHECK_CURSOR(4,delai_ui_default*17 + 1)
+          ld a,(row_exists):or a:call z,nrtfail
+          ld a,(is_first_iter):or a:call nz,nrtfail
+          call row_get_note:call z,nrtfail
+          cp note1+1:call nz,nrtfail
+          ret
+
+.seq  BYTE kdwn,kcdwn
+          END_OF_NRT_SEQUENCE()
+      BYTE nrtend
+
+test_kcup
+;DOWN + CTRL-DOWN + CTRL-UP: go delai_ui down
+          call dev_setup
+          TEST_RUN(.seq)
+          CHECK_CURSOR(4,delai_ui_default + 1)
+          ld a,(row_exists):or a:call z,nrtfail
+          ld a,(is_first_iter):or a:call z,nrtfail
+          call row_get_note:call z,nrtfail
+          cp note1+1:call nz,nrtfail
+          ret
+
+.seq  BYTE kdwn,kcdwn,kcup
+          END_OF_NRT_SEQUENCE()
+      BYTE nrtend
+
 
 ; -----------------------------
 

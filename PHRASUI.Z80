@@ -2,7 +2,8 @@
 todo  = 1
 ; 2025
 ; -- Alpha1 --
-  ; Dec
+  ; Dec       
+    ; 12 Handle kcup/kcdwn
     ; 10 Clean-up code: - All vars infered from time_at_top & time_cur
                           ; See /state/
                       ; - Better naming
@@ -158,7 +159,9 @@ vol_handler
 
 k_ml
       BYTE kdwn:WORD row_dwn
+      BYTE kcdwn:WORD row_ctrl_dwn
       BYTE kup:WORD row_up
+      BYTE kcup:WORD row_ctrl_up
       BYTE "R"-&40:WORD refresh_page ; debug
 ;!! put at this level, so that /refresh_row/ update widget's Y at 
   ; the right level (struct)
@@ -252,7 +255,31 @@ row_dwn
           or a:sbc hl,bc:add hl,bc:jr c,.ok
           ld l,c:ld h,b
 .ok
+          jr refresh_row
+
+row_ctrl_dwn
+;-----------
+; Go exaclty +16 * delai_ui (don't try to align)
+          call get_shift_ctrl
+          ld hl,time_cur:call add_ihl_de
 ;enchaine
+refresh_row_from_time_cur
+;------------------------
+; Like /refresh_row/
+; In: time_cur set     
+
+; before current phrase?
+; Note: other tests (after current? in view?) done in refresh_row
+          ld de,time_cur+2
+          ld hl,fetched_t0+2
+          call cp_ide_ihl_end
+          jr nc,refresh_row_ ; no 
+; yes: switch phrase
+          call refresh_state_cur
+; time_cur will not change,
+; as well pass hl = time_cur - fetched_t0
+; save one "jr"
+;enchaine 
 refresh_row
 ;----------
 ; Update time_cur and cursor
@@ -260,7 +287,6 @@ refresh_row
 ; Change phrase or page if needed 
 ; !!! Only called from ged event (update_pos_y uses that?)
 ; In: HL: relative time in current phrase
-          xor a:ld (is_modified),a
 
           ld de,(fetched_t0)
           add hl,de
@@ -269,7 +295,11 @@ refresh_row
           adc 0
           ld (time_cur+2),a
 
+refresh_row_
+          xor a:ld (is_modified),a
+
 ; -- check if out of view port or out of phrase
+          ld hl,(time_cur)
           ld de,(time_at_top)
           or a:sbc hl,de:jr c,.pre_view
 
@@ -411,6 +441,15 @@ row_up
 .okmax
           jp refresh_row
 
+row_ctrl_up
+;-----------
+; Go exaclty -16 * delai_ui (don't try to align)
+          call get_shift_ctrl
+          ld hl,time_cur:push hl:call sub_ihl_de:pop hl
+          call c,set_time_zero ; clip
+          jp refresh_row_from_time_cur
+
+; --------------------------------
 is_time_zero
 ;In: HL: time field (24 bits)
 ;OUT: Return Z if yes
@@ -422,6 +461,21 @@ is_time_zero
           2 ** dec hl
           ret
 
+set_time_zero
+;In: HL: time field (24 bits)
+          xor a
+          ld (hl),a:inc hl
+          ld (hl),a:inc hl
+          ld (hl),a
+          ret
+
+get_shift_ctrl
+; de := 16 * step
+          call get_delai_ui
+          ld l,a:ld h,0
+          4 ** add hl,hl
+          ex de,hl
+          ret
 
 get_delai_aligned
 ; Get lowest k*step >= DE i.e (k-1)*step < DE
