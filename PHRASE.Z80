@@ -7,6 +7,7 @@ do_add_empty_row = 0
 ; 2025    
  ; -- alpha 1 --
 ; Dec
+   ; 13 phrase_get_row_at: must use goto_next_row for multi-chunks
    ; 12 Add phrase_get_last_row 
 ; Nov
    ; 27 Add get_phrase_id
@@ -628,6 +629,7 @@ phrase_get_row_at
           ld (row_t0),bc
           call is_end_of_phrase
           scf:ccf:ret z ; exit NC
+; loop while t1 <= t and eoc not met
           ld a,(hl)
           add c:ld c,a:jr nc,$+3:inc b
           ld (row_t1),bc
@@ -640,10 +642,10 @@ phrase_get_row_at
           or a:sbc hl,bc:add hl,bc
           ex de,hl
           jr c,.found
-; musn't use goto_next_row.
-; Otherwise, we would follow eoc: infinite loop!
-          call skip_all
-          jr .lp
+          call goto_next_row
+          jr nz,.lp
+          or a
+          ret           ; ret nc
 
 .found'
 ; Indicate next row is at +inf (needed for phradisp)

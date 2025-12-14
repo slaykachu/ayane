@@ -3,6 +3,8 @@
 ; 2025
 ; -- alpha1 --
 ; Dec
+  ; 14: [on hold] Add call test_clone_phrase
+      ; Add test_phrase_get_row_crosschunk
   ; 12: Add test_phrase_get_last_row
 ; Nov
   ; 27: Add test_get_duration_10000
@@ -38,6 +40,7 @@ tests
           call test_phrase_get_row_at
           call test_phrase_get_row_at'
           call test_phrase_get_row_at_inf
+          call test_phrase_get_row_crosschunk
           call test_phrase_set_blank_row_at
           call test_phrase_set_blank_row_at'
           call test_phrase_select_row_at
@@ -55,6 +58,7 @@ tests
           call test_unpack_row_at
           call test_unpack_row_at'
           call test_unpack_row_at_inf
+          call test_clone_phrase
           ret
 
 nrt_init
@@ -125,6 +129,19 @@ test_phrase_get_row_at_inf
           ld hl,(row_t1)
           ld a,l:cp &FF:call nz,fail
           ld a,h:cp &FF:call nz,fail
+          ret
+
+test_phrase_get_row_crosschunk
+;-----------------------------      
+; Must follow link eoc and point on a concrete row
+          call nrt_init
+          call dummy_phrase
+; point first row of second chunk (a bit brittle, nevermind)
+; a more complete test is done later view check_phrase
+          ld de,60*nrt_delai
+          call phrase_get_row_at:call nc,fail
+          call nz,fail
+          ld a,(hl):cp nrt_delai:call nz,fail
           ret
 
 test_phrase_set_blank_row_at
@@ -539,21 +556,39 @@ test_unpack_row_at_inf
           ld a,c:cp &FF:call nz,fail
           ret
 
+test_clone_phrase
+          ld b,3
+          call .check_clone_phrase
+          ld b,nrt_rows# ; now spanning on several chunks
+          call .check_clone_phrase
+          ret
 
+.check_clone_phrase
+          push bc
+          call nrt_init
+          call dummy_phrase_custom
+          pop bc
+          push bc
+; Sanity check
+          call check_phrase
+          pop bc
+          ret
 
 dummy_phrase
 ; Create phrase spanning on several chunks
-          xor a:call song_select_new_phrase
 nrt_delai = 6
 nrt_rows# = 100
           ld b,nrt_rows#
+dummy_phrase_custom
+          ld c,b
+          xor a:call song_select_new_phrase
 .lp
           push bc
           ld a,nrt_delai:call phrase_select_new_row:call nc,fail
           pop bc
           push bc
 ;note 0,1,2 ...
-          ld a,nrt_rows#:sub b
+          ld a,c:sub b
           call row_set_note
           pop bc
           djnz .lp
@@ -570,6 +605,27 @@ dummy_phrase_inf
 ; expected duration = 0
           ld a,(hl):or a:call nz,fail
           ret
+
+check_phrase
+; Check phrase created by dummy_phrase
+; IN: b: rows#      
+          ld c,b
+          ld de,0
+.lp
+          push de
+          push bc
+          call phrase_select_row_at
+          pop bc
+          ld a,c:sub b:ld e,a
+          call row_get_note:call z,fail
+          cp e:call nz,fail
+          pop hl
+          ld de,nrt_delai
+          add hl,de
+          ex de,hl
+          djnz .lp
+          ret
+
 
 
       SKIP -$ AND &FF
