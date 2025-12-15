@@ -3,7 +3,8 @@ todo  = 1
 ; 2025
 ; -- Alpha1 --
   ; Dec
-    ; 15 Clone when modifying repetition (clone_if_needed)
+    ; 15 Handle deletion note/vol/instr
+       ; Clone when modifying repetition (clone_if_needed)
     ; 13 Refresh all instances of repeated phrase       
     ; 12 Handle page change
        ; Handle kcup/kcdwn
@@ -131,20 +132,34 @@ note_ui
       BYTE w_refresh
       WORD note_ui'
 note_ui'
+      BYTE w_key_handler
+      WORD note_ui''
+      WORD note_handler
+note_ui''
       BYTE w_text_dyn
       WORD note_as_text
+note_handler
+      BYTE kdel:WORD _del_note
+      BYTE 0:WORD 0
 
 instr_ui
       BYTE w_refresh
       WORD instr_ui'
 instr_ui'
-      BYTE w_optional_readwrite
+      BYTE w_key_handler
       WORD instr_ui''
-      WORD has_instr
+      WORD instr_handler
 instr_ui''
+      BYTE w_optional_readwrite
+      WORD instr_ui'''
+      WORD has_instr
+instr_ui'''
       BYTE w_deci_99_custom
       WORD _set_instr
       WORD _get_instr
+instr_handler
+      BYTE kdel:WORD _del_instr
+      BYTE 0:WORD 0
 
 vol_ui
       BYTE w_refresh
@@ -162,7 +177,7 @@ vol_ui'''
       WORD _set_vol
       WORD _get_vol
 vol_handler
-      BYTE kclr:WORD _del_vol
+      BYTE kdel:WORD _del_vol
       BYTE 0:WORD 0
 
 k_ml
@@ -194,6 +209,13 @@ has_note
           ret z
           call row_get_note
           jr z_to_val
+_del_note
+          call row_get_note
+          scf
+          ret z         ; no modif if no instr
+          call pre_modif
+          call row_del_note
+          jr edit_row_com
 
 has_instr
           call is_empty
@@ -207,6 +229,13 @@ _get_instr
 _set_instr
           call pre_modif
           call row_set_instr
+          jr edit_row_com
+_del_instr
+          call row_get_instr
+          scf
+          ret z         ; no modif if no instr
+          call pre_modif
+          call row_del_instr
           jr edit_row_com
 
 has_vol
@@ -227,10 +256,12 @@ _set_vol
           call row_set_vol
           jr edit_row_com
 _del_vol
-      IF todo
-; todo
-      END
-          ret
+          call row_get_vol
+          scf
+          ret z         ; no modif if no instr
+          call pre_modif
+          call row_del_vol
+          jr edit_row_com
 
 is_empty
 ;Needed to avoid inserting empty rows when just navigating

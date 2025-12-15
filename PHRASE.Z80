@@ -7,7 +7,8 @@ do_add_empty_row = 0
 ; 2025    
  ; -- alpha 1 --
 ; Dec     
-   ; 15 Add phrase_clone
+   ; 15 Add row_del_note/instr/vol
+      ; Add phrase_clone
       ; phrase_def: fix 'last' (was pointing one extra byte)
    ; 13 phrase_get_row_at: must use goto_next_row for multi-chunks
    ; 12 Add phrase_get_last_row 
@@ -857,6 +858,23 @@ row_get_note
           ld a,(hl)
           jp _postlude
 
+row_del_note
+;-----------
+; in: N/A
+
+          call _prelude
+
+          call connect_current_row_skip_length
+          bit bit_note,(hl)
+          jr z,_exit
+          res bit_note,(hl)
+          call skip_fx_ins
+_delete_com
+          call delete_byte
+_exit
+          jp _postlude
+
+
 row_set_vol
 ;----------
 ; in: A= volume (F=max)
@@ -897,6 +915,15 @@ row_get_vol
           inc h         ; NZ
           jp _postlude
 
+row_del_vol
+;----------
+          call _prelude
+          call connect_current_row_skip_length
+          bit bit_vol,(hl)
+          jr z,_exit
+          res bit_vol,(hl)
+          call skip_fx_ins_note
+          jr _delete_com
 
 row_set_instr
 ;------------
@@ -936,6 +963,18 @@ row_get_instr
           ld a,(hl)
           jp _postlude
 
+row_del_instr
+;------------
+          call _prelude
+          call connect_current_row_skip_length
+          bit bit_instr,(hl)
+          jp z,_exit
+          res bit_instr,(hl)
+          call skip_fx
+          jp _delete_com
+
+
+      IF 0
 row_set_no_param_fx_
           call _prelude
 row_set_no_param_fx
@@ -1055,6 +1094,8 @@ row_set_3_param_fx
 _change_fx3
       BRK               ; todo: remove previous fx!
           jp _postlude
+
+      END
 
       IF 0
 ;-------------------------------
@@ -2025,6 +2066,24 @@ move_tail_in_new_chunk'
           scf
           ret
 
+delete_byte
+; In: hl : pos byte in chunk to be deleted
+          ld e,l
+          ld d,h
+          inc l
+          ld a,l:neg
+      IF dev_checks'
+          call z,mess
+      END
+          ld c,a
+          ld b,0
+          ldir
+          dec h
+          ld l,chead_last
+          dec (hl)
+          ret
+
+;-------------------------
 get_phrase_id
 ; Used by track.o to convert pnt to id
 ; In: hl = phrase header

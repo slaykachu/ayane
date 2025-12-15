@@ -3,7 +3,10 @@
 ; 2025
 ; -- alpha1 --
 ; Dec 
-  ; 15: Add test_phrase_set_blank_crosschunk
+  ; 15: Add test_remove_note
+      ; Add test_remove_instr
+      ; Add test_remove_vol
+      ; Add test_phrase_set_blank_crosschunk
       ; Add call test_clone_phrase
   ; 14: Add test_phrase_get_row_crosschunk
   ; 12: Add test_phrase_get_last_row
@@ -61,6 +64,9 @@ tests
           call test_unpack_row_at'
           call test_unpack_row_at_inf
           call test_clone_phrase
+          call test_remove_note
+          call test_remove_instr
+          call test_remove_vol
           ret
 
 nrt_init
@@ -462,6 +468,43 @@ check_row_set
           call row_get_note:cp 43:call nz,fail
           ret
 
+test_remove_note
+          call nrt_init
+          ld b,3:call dummy_phrase_custom
+          ld de,nrt_delai:call phrase_select_row_at
+          call row_del_note
+          call row_get_note:call nz,fail
+;Line before
+          ld de,0:call phrase_select_row_at
+          call row_get_note:call z,fail
+          cp 0:call nz,fail
+;Line after
+          ld de,nrt_delai*2:call phrase_select_row_at
+          call row_get_note:call z,fail
+          cp 2:call nz,fail
+          ret
+
+test_remove_instr
+          call nrt_init
+          ld b,3:call dummy_phrase_custom
+          ld de,nrt_delai:call phrase_select_row_at
+          ld a,2:call row_set_instr
+          call row_del_instr
+          call row_get_instr:call nz,fail
+          call row_get_note:call z,fail
+          cp 1:call nz,fail
+          ret
+
+test_remove_vol
+          call nrt_init
+          ld b,3:call dummy_phrase_custom
+          ld de,nrt_delai:call phrase_select_row_at
+          ld a,4:call row_set_vol
+          call row_del_vol
+          call row_get_vol:call nz,fail
+          call row_get_note:call z,fail
+          cp 1:call nz,fail
+          ret
 
 test_unpack_row_at
           call nrt_init
