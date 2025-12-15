@@ -3,6 +3,7 @@ todo  = 1
 ; 2025
 ; -- Alpha1 --
   ; Dec
+    ; 15 Clone when modifying repetition (clone_if_needed)
     ; 13 Refresh all instances of repeated phrase       
     ; 12 Handle page change
        ; Handle kcup/kcdwn
@@ -204,7 +205,7 @@ _get_instr
           scf
           ret
 _set_instr
-          call create_if_empty
+          call pre_modif
           call row_set_instr
           jr edit_row_com
 
@@ -222,7 +223,7 @@ _get_vol
           scf
           ret
 _set_vol
-          call create_if_empty
+          call pre_modif
           call row_set_vol
           jr edit_row_com
 _del_vol
@@ -533,7 +534,7 @@ get_delai_aligned
 piano_keys
           call is_piano_key_pressed
           ret nc
-          call create_if_empty
+          call pre_modif
           call row_set_note
           call Song_get_instr
           call row_set_instr
@@ -634,9 +635,30 @@ refresh_state
           pop hl
           ret
 
-create_if_empty
+pre_modif
+; 1/ Clone phrase if needed
+; 2/ Create row if empty
 ; A preserved
-          ld b,a
+          push af
+          ld a,(is_first_iter):or a:jr nz,.okclone
+;-- clone phrase
+          ld hl,fetched_t0
+          ld de,time_tmp
+          call copy_time
+          call song_get_current_phrase
+          ld hl,phrase_dup:call bs_get
+          push af
+          call phrase_clone
+          ld hl,time_tmp
+          call Set_phrase_at_t
+          call select_row_ui
+          pop af
+          jr z,.okclone
+; If source phrase was duplicated, considere new phrase as duplicated
+          call song_get_current_phrase
+          ld hl,phrase_dup:call bs_set
+.okclone
+          pop bc        ; was A
           call is_empty
           ld a,b
           ret nz
@@ -663,6 +685,7 @@ state_ = $ - state
 ; -- work variables                      
 time_at_bottom FILL 3,0 ; bottom of view
 time_end FILL 3,0       ; bottom of slice
+time_tmp FILL 3,0
 is_first_iter BYTE 0    ; 0 = implicit repeat
 row_exists BYTE 0       ; 0 = empty
 is_modified BYTE 0

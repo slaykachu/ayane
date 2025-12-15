@@ -6,7 +6,9 @@ do_add_empty_row = 0
 
 ; 2025    
  ; -- alpha 1 --
-; Dec
+; Dec     
+   ; 15 Add phrase_clone
+      ; phrase_def: fix 'last' (was pointing one extra byte)
    ; 13 phrase_get_row_at: must use goto_next_row for multi-chunks
    ; 12 Add phrase_get_last_row 
 ; Nov
@@ -260,6 +262,94 @@ song_get_phrases#
 
 err_toomuchphrases
       BRK
+
+song_get_empty_phrase
+;--------------------
+;Out: A= id empty phrase
+          call _prelude
+
+;Scan all phrases, and count non-empty
+          ld c,0
+.lp
+          ld a,c
+          call Get_phrase
+          jr z,.found
+          inc c
+          jr nz,.lp
+          call memory_full
+.found
+          ld a,c
+          jp _postlude
+
+phrase_clone
+;In: phrase selected
+;Out: id phrase clone
+          call connect_phrase_begin
+          push hl
+          call song_get_empty_phrase
+          call song_select_new_phrase
+          call connect_phrase_begin
+          ex de,hl
+          pop hl
+          push de       ; start
+          call copy_chunk_raw
+; copy linked chunks
+.copylp
+          ld a,(hl):inc l
+          ld h,(hl):ld l,a
+          or h:jr z,.done
+; hl: src
+; de: dest
+          push hl
+          ld h,d
+          ld l,BK_PHRASE
+          call insert_new_chunk_from_id_
+          ld l,chead_next+1
+          ld d,(hl)
+          ld e,chunk_start
+          call set_eoc_link
+          pop hl
+          ld l,e
+          call copy_chunk_raw
+          jr .copylp
+
+.done
+; set loop to start of cloned pharse
+          ex de,hl
+          pop de
+          call set_eoc_link
+          jp song_get_current_phrase
+
+copy_chunk_raw
+;Copy data as-is (doesn't include header) and update chead_last
+;Out: HL points to chead_next
+          ld a,l
+      IF dev_checks'
+          cp e:call nz,mess
+      END
+          neg
+      IF dev_checks'
+          call z,mess
+      END
+          ld c,a:ld b,0
+          ldir
+          dec d:dec h
+          ld l,chead_last
+          ld a,(hl)
+          ld e,l
+          ld (de),a
+          ld l,chead_next
+          ret
+
+set_eoc_link
+; Set link at end of chunk (like /put_eoc/)
+;In: HL: points in chunk
+   ; DE: ID link
+          ld l,chead_last
+          ld l,(hl)
+          ld (hl),d:dec l
+          ld (hl),e
+          ret
 
 phrase_set_params
 ;----------------
@@ -1202,7 +1292,7 @@ connect_phrase_begin
 
 song_get_current_phrase
 ; Get selected phrase
-;OUT:If such phrase, NZ, H= MSB, L= BK, A=id 
+;OUT:If such phrase, NZ, HL= pointer (not connected), A=id 
 
           push bc
       IF makeroom
@@ -1399,9 +1489,7 @@ copy_from_chunk_to_next
     ; Dest chunk updated (chead_last). !! TODO: checksum etc.
     ; Source bk reconnected.
 
-; TODO: more trans bk-nrts!
 ; TODO: simpler code by coping to tmp buf out of bank.
-; TODO: macroize!
 
           push iy
           ld iyh,b      ;bk source
@@ -1455,6 +1543,10 @@ insert_new_chunk_from_bhl
           pop hl
           ret
 
+insert_new_chunk_from_id_
+;------------------------
+          ld ix,new_chunk_ext
+;enchaine
 insert_new_chunk_from_id
 ;-----------------------
       IF makeroom
@@ -2023,7 +2115,7 @@ _install_com
 phrase_def
 ;-------
 ;phrase chunk header (after last, reset by new_chunk)
-      BYTE phrase_def_+3 ; +3: same reason as for /chunk_def/
+      BYTE phrase_def_+2 ; +2: field 'next'
       BYTE 0            ;checksum (unused now)
       BYTE 0            ; row# (mimic line# in orgams's chunk)
 _header
@@ -2047,7 +2139,7 @@ tag_end                 ; address used by chungnrt.o
       BYTE phrase_start ; lsb self loop. MSB depends on chunk!
 ; !!! if changed review follow_link_if_eoc
 
-tag_end_size = $ - tag_end + 2 ;+2: Address jump 
+tag_end_size = $ - tag_end + 1 ;+1: msb self floop
 phrase_def_ = $ - phrase_def
 
 chunk_def
@@ -2055,7 +2147,7 @@ chunk_def
 ;Standard chunk without phrase header.
 ;Used for tables(?) and phrases continuation (hence tag_end, which will
 ;be overwritten for tables)
-      BYTE chunk_def_+3 ;+2: next field. +2-1: word for phrase_end
+      BYTE chunk_def_+3 ;+2: field 'next' +1: byte 
       BYTE 0            ;checksum (unused now)
       BYTE 0            ; row# (mimic line# in orgams's chunk)
       IF $ - chunk_def + 2 - chunk_start ;2: next field
@@ -2070,13 +2162,11 @@ chunk_def
 chunk_def_ = $ - chunk_def
 
 
-
 ; Maximum contiguous size in chunk.
 ; Actually could be a bit bigger since chunk_link_size < tag_end_size.
 ; Nevermind for now.
 ; Also, that's the max for the first chunk, for next (ext) it's bigger
 chunk_free = &0100-phrase_def_-2 ; -2 next field
-nrtfree = chunk_free
 
 sentinel_phrase_eoc
       BYTE sentinel_phrase_eoc_ ; Size of sentinel for generic append
@@ -2095,13 +2185,6 @@ sentinel_phrase_eoc_ = $ - sentinel_phrase_eoc - 1
                 ; end: follow loop
   ; (next and loop written like after phrase_end)
       END
-
-; Maximum contiguous size in chunk.
-; Actually could be a bit bigger since chunk_link_size < tag_end_size.
-; Nevermind for now.
-; Also, that's the max for the first chunk, for next (ext) it's bigger
-chunk_free = &0100-phrase_def_-2 ; -2 next field
-nrtfree = chunk_free
 
 ; ----------------------------
 vars
