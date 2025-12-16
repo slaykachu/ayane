@@ -6,8 +6,9 @@ todo_wrong_chr = 0
 ; TODO???? refresh_focus in gedeihen_enter?
 
 ; -- 2025 -- 
- ; --- Alpha ---
-; Dec
+ ; --- Alpha 1---
+; Dec     
+  ;16: [on hold] Add test_focus_update_x
   ; 8: test_focus_update_y: must explicitly call enter
   ;??: Add test_focus_update_y
  ; --- v0au ---
@@ -80,7 +81,6 @@ tests
 
           ld a,&F7:ld (0),a
       IF 1
-          call test_focus_update_y
 ; --- test helpers --- 
           call test_field_editing
 
@@ -277,6 +277,7 @@ tests
           call test_focus_multiline_keyhandler_struct_refresh
       END
           call test_focus_update_y
+;          call test_focus_update_x
 ;          call test_remove_line
           ret
 
@@ -3209,8 +3210,10 @@ ui_update_y
       WORD ui_struct_3fields
       WORD k_ml
 
+
 k_ml
       BYTE kdwn:WORD row_dwn
+      BYTE krgt:WORD next_col
       BYTE 0:WORD 0
 
 row_dwn
@@ -3219,6 +3222,35 @@ row_dwn
           call enter
           GED_HANDLED()
           ret
+
+next_col
+          ld a,10
+          call update_pos_x
+          call enter
+          GED_HANDLED()
+          ret
+
+      IF 0
+;see /ged.propagate_x/
+test_focus_update_x
+;-----------------
+; Check pos Y of struct updated externally (reproduce phrasui.o)
+          ld a,1:ld (dummy_byte),a ; toggle on
+          ld a,29:ld (nrt_deci_byte),a
+          ld a,&0C:ld (nrt_hexa_digit),a
+          TEST_RUN_FOCUS(ui_update_y,.seq)
+          ld hl,(iotest_cursor)
+          ld de,10 * &0100 + 1
+          call check_hl_eq_de
+          ld a,(iotest_screen + &10 + 6):cp "C"+&80:call nz,fail
+          ret
+.seq
+      FILL 3,krgt       ; past struct
+          END_OF_NRT_SEQUENCE()
+
+      BYTE toggle_char,sep,"+29",sep:FOCUS("C")
+      BYTE nrtend
+      END
 
       IF 0
 test_refresh_all

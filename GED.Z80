@@ -1,6 +1,12 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
 ; -- alpha1 --
-; Dec
+; Dec      
+  ;16 [on_hold] enter_child: propagate both X and Y
+propagate_x = 0
+      IF propagate_x
+!! breaks struct_on_enter ; To fix: must reselect child for X pos
+      END
+  ;15 Add update_pos_x
   ; 8 update_pos_y: client must explicitly call enter
 ; Nov
   ;25 enter_child: propagate Y
@@ -1493,11 +1499,17 @@ struct_on_enter
 ; (re)enter current field (concrete widget that must catch events)
 enter_child
 ; Go to child (already setup)
-; HACK!! must re-propagate Y (needed when coming from update_pos_y)
-; X: already done via setup_field
+; HACK!! must re-propagate X/Y (needed when coming from update_pos_x/y)
+      IF propagate_x
+          GET_STATE(widget_pos)
+          call push_state
+          SET_STATE(widget_pos)
+      ELSE
+; Keep X as-is, struct_on_enter expect X as defined by widget_setup
           GET_STATE_BYTE(widget_pos_y)
           call push_state
           SET_STATE_BYTE(widget_pos_y)
+      END
           call enter
           scf           ;no event
           ret
@@ -2303,6 +2315,15 @@ update_pos_y
           SET_STATE_BYTE(widget_pos_y)
           ret
 
+;1/ didn't work  2/ phrasui uses gedeihen_init anyway
+update_pos_x
+; See /update_pos_y/
+          push af
+          call reset_cursor_from_widget_location
+          call set_root_state
+          pop af
+          SET_STATE_BYTE(widget_pos_x)
+          ret
 
 update_nested_pos_y_
 ; !!Hack!! Update cursor so new position can be passed (by caller)

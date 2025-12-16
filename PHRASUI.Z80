@@ -3,7 +3,8 @@ todo  = 1
 ; 2025
 ; -- Alpha1 --
   ; Dec
-    ; 15 Handle deletion note/vol/instr
+    ; 15 Handle all tracks
+       ; Handle deletion note/vol/instr
        ; Clone when modifying repetition (clone_if_needed)
     ; 13 Refresh all instances of repeated phrase       
     ; 12 Handle page change
@@ -66,18 +67,8 @@ phrase_cold_refresh
           call refresh_page
 
  ; -- gedeihen 
-          call gedeihen_init
-
-          ld hl,_set_cursor
-          ld ix,_get_cursor
-          ld iy,_place_cursor
-          ld de,_write_char
-          ld bc,_paint_sprite
-          call gedeihen_set_hooks
-
-          ld hl,&0101:call _set_cursor
-          ld hl,phrase_ui
-          call setup_widget
+          ld hl,&0101
+          call setup_phrase_ui
 
  ; -- focus on current row
           call gedeihen_disp
@@ -185,6 +176,8 @@ k_ml
       BYTE kcdwn:WORD row_ctrl_dwn
       BYTE kup:WORD row_up
       BYTE kcup:WORD row_ctrl_up
+      BYTE krgt:WORD next_track
+      BYTE klft:WORD prev_track
       BYTE "R"-&40:WORD refresh_page ; debug
 ;!! put at this level, so that /refresh_row/ update widget's Y at 
   ; the right level (struct)
@@ -562,6 +555,45 @@ get_delai_aligned
           ret
 
 ;-------------------------
+next_track
+          ld hl,track_cur
+          ld a,(hl)
+          cp 3:jr c,$+3:xor a
+          inc a
+          jr switch_track
+
+prev_track
+          ld hl,track_cur
+          ld a,(hl)
+          cp 2:jr nc,$+4:ld a,4
+          dec a
+switch_track
+          ld (hl),a
+          push af
+          call gedeihen_disp ; remove focus
+          pop af
+          push af
+          call Song_select_track
+          call refresh_state_cur
+          pop af
+          dec a
+track_wid = 20
+          ASSERT(track_wid == 20)
+          ld c,a:2 ** add a:add c:2 ** add a ; * 20
+          inc a         ;ged cursor 1-based
+          ld h,a
+          GET_STATE_BYTE(widget_pos_y)
+          ld l,a
+; we don't use update_pos_x, which would require ged.propagate_x = 1
+; also, setup_phrase_ui rewind to 1st field, 
+; which is what we want for next_track
+          call setup_phrase_ui
+          call select_row_ui
+          call gedeihen_enter
+          GED_HANDLED() ; when coming for e.g. edit_row_com
+          ret
+
+;-------------------------
 piano_keys
           call is_piano_key_pressed
           ret nc
@@ -585,16 +617,19 @@ _paint_sprite = &BE00
 
 refresh_page
 ;-----------   
-      IF todo
-; - for all tracks
-      END
           CALL_DISP_BK(cls_)
           ld hl,phrase_met:ld a,MAX_PHRASES:call bs_init
           ld hl,phrase_dup:ld a,MAX_PHRASES:call bs_init
 
+          ld b,3
+          ld ixh,0      ; cursor x
+.track_lp
+          push bc
+          ld a,4:sub b:call Song_select_track
+
           ld hl,time_at_top
           ld ixl,0      ; cursor y
-.lp
+.slice_lp
           call refresh_state
 
 ; Set DE: time end   
@@ -604,7 +639,6 @@ refresh_page
           or a:sbc hl,bc
           ex de,hl
           call get_delai_ui
-          ld ixh,0      ; cursor x
           CALL_DISP_BK(disp_rows)
           ex de,hl      ; de : cur time
 
@@ -621,12 +655,18 @@ refresh_page
           pop af
           ld ixl,a
           ld hl,time_end
-          jr nc,.lp
+          jr nc,.slice_lp
 
 ;for page down
           ld hl,time_at_bottom
           ld bc,fetched_t0
           call add_ihl_ibc_de
+
+          ld a,ixh:add track_wid:ld ixh,a
+          pop bc
+          djnz .track_lp
+
+          ld a,(track_cur):call Song_select_track
 
           call refresh_state_cur
           jp select_row_ui
@@ -698,6 +738,22 @@ pre_modif
           call phrase_select_row_at
           ld a,b
           ret
+; ----------------------
+setup_phrase_ui
+;IN: hl = cursor (1-based)
+          call _set_cursor
+
+          call gedeihen_init ;needed before (re)calling setup_widget
+
+          ld hl,_set_cursor
+          ld ix,_get_cursor
+          ld iy,_place_cursor
+          ld de,_write_char
+          ld bc,_paint_sprite
+          call gedeihen_set_hooks
+
+          ld hl,phrase_ui
+          jp setup_widget
 ; ----------------------
 
 note_empty BYTE "---",0

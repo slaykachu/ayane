@@ -74,6 +74,7 @@ note1 = &14             ; G#1
 note2 = &26             ; D-2
       IF short_phrase
 nrt_phrase0_dur = delai_ui_default*4
+nrt_phrase1_dur = delai_ui_default*8
           ld a,nrt_phrase0_dur
       ELSE
           ld a,0
@@ -93,6 +94,23 @@ nrt_phrase0_dur = delai_ui_default*4
       END
           ld a,1:call Song_select_new_track
           xor a:ld hl,time0:call Set_phrase_at_t
+
+          ld a,1:call song_select_new_phrase
+note3 = &34
+          ld a,nrt_phrase1_dur
+          call phrase_select_new_row:call nc,fail
+          ld a,note3:call row_set_note
+          ld a,2:call Song_select_new_track
+          ld a,1:ld hl,time0:call Set_phrase_at_t
+
+          ld a,2:call song_select_new_phrase
+note4 = &43
+          ld a,200      ; no repeat
+          call phrase_select_new_row:call nc,fail
+          ld a,note4:call row_set_note
+          ld a,3:call Song_select_new_track
+          ld a,2:ld hl,time0:call Set_phrase_at_t
+
           call phrase_cold_refresh
           ret
 
