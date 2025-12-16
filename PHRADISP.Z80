@@ -3,10 +3,9 @@ dev_checks' = 1
 
 ; 2025
 ; -- Alpha1 --
-  ; Dec       
+  ; Dec
+    ; 16 disp_rows: fix returned pos y when size not multiple of delai
     ; 12 correct_y: must return NC when zoom overflow
-
-
 
 ;      IMPORT "const.i"
       IMPORT "memmap.i" ; BK_DISP
@@ -39,7 +38,7 @@ disp_rows
     ; ixl = pos y
     ; phrase selected   
 ; Out: hl = time at end of view
-
+     ;  a = pos y at end of slice
           ld (.time_end),de
 
           call get_zoom
@@ -84,16 +83,17 @@ disp_rows
 .next
 ; time
           call get_delai_ui
-          add l:ld l,a:jr nz,$+3:inc h
+          add l:ld l,a:jr nc,$+3:inc h
 ; reached end of view? Test first so we can return Carry=finished
-          sub iyl
-          call correct_y
+          call correct_y_
           ccf:ret c     ; Exit, done
 ; reached end of phrase?
 .time_end = $+1
           ld de,0
           or a:sbc hl,de:add hl,de
           jr c,rowlp
+          ld a,e
+          call correct_y_
           push af
 ; separator      
           dec a
@@ -203,6 +203,8 @@ set_cursor'
           ld a,ixh
           jp dh_locate_x
 
+correct_y_
+          sub iyl
 correct_y
 ; in:   A = time offset  
     ; IXL = pos Y (at phrase start or top)
@@ -298,9 +300,6 @@ ph_write_char
           ret
 
 ;---------------------------------
-      SKIP -$ AND &0F   ; for align and debug
-
-row_buf SKIP 3
 phradisp_buf FILL 8," ":BYTE 0 ; C-4 11 F
           CHECK_CONFINE(phradisp_buf)
 empty_row
@@ -309,4 +308,6 @@ empty_row
       BYTE ._,._,._,0,._,._,0,._
 empty_row_ = $ - empty_row
           CHECK_CONFINE(empty_row)
+
+row_buf SKIP 3
 

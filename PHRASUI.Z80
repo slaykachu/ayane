@@ -177,7 +177,9 @@ k_ml
       BYTE kup:WORD row_up
       BYTE kcup:WORD row_ctrl_up
       BYTE krgt:WORD next_track
+      BYTE kcrgt:WORD next_track
       BYTE klft:WORD prev_track
+      BYTE kclft:WORD prev_track
       BYTE "R"-&40:WORD refresh_page ; debug
 ;!! put at this level, so that /refresh_row/ update widget's Y at 
   ; the right level (struct)
