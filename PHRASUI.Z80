@@ -3,7 +3,8 @@ todo  = 1
 ; 2025
 ; -- Alpha1 --
   ; Dec 
-    ; 16 Fix display of non-aligned row at end of page.
+    ; 16 IMPORT_PHRADISP: in BK_DISP
+       ; Fix display of non-aligned row at end of page.
          ; (switch pages by 32 rows instead of 33)
     ; 15 Handle all tracks
        ; Handle deletion note/vol/instr
@@ -22,7 +23,7 @@ todo  = 1
 dev_checks' = 1
 
       IMPORT "const.i"  ; kclr
-;      IMPORT "memmap.i"
+      IMPORT "memmap.i" ; BK_DISP
       IMPORT "macro.i"
       IMPORT "import.i"
           IMPORT_CORE() ; conv.put_note
@@ -35,9 +36,13 @@ dev_checks' = 1
       IMPORT "piano.o"
       IMPORT "ged.o"
       IMPORT "track.o"
-      SKIP -$ AND &0F
+      BANK BK_DISP
+;          IMPORT_PHRADISP() ;  bug#1f7
+.save
+      ORG phradisp
       IMPORT "phradisp.o"
-
+      ORG .save
+      BANK &C0
 
 ;------------------
       MACRO CALL_DISP_BK adr
@@ -55,7 +60,6 @@ dev_checks' = 1
       ENDM
 
 ;------------------
-
 phrase_cold_refresh
 ;------------------
  ; -- restore state
@@ -65,13 +69,11 @@ phrase_cold_refresh
           ldir
  ; -- sync model
           ld a,(track_cur):call Song_select_track
- ; -- ad-hod display (
+ ; -- ad-hod display
           call refresh_page
-
  ; -- gedeihen 
           ld hl,&0101
           call setup_phrase_ui
-
  ; -- focus on current row
           call gedeihen_disp
  ; -- enter        

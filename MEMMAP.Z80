@@ -152,7 +152,8 @@ fonte = &4400
 fonte_small = &4800
 disp  = &48C8           ; start of code after fonts
 pianoui = &4F00
-disp_ayane = &5620      ; other modules imported by ayane.o
+phradisp = &5620
+disp_ayane = &57C0      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
 
