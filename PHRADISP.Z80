@@ -4,7 +4,8 @@ dev_checks' = 1
 ; 2025
 ; -- Alpha1 --
   ; Dec
-    ; 16 disp_rows: fix returned pos y when size not multiple of delai
+    ; 16 ticks_per_page: round to 32 rows
+       ; disp_rows: fix returned pos y when size not multiple of delai
     ; 12 correct_y: must return NC when zoom overflow
 
 ;      IMPORT "const.i"
@@ -233,18 +234,18 @@ separator
 ticks_per_page
 ; in: A = step
 ;out: E = ticks per page
-.rows = view_hei/6
+.rows = 32              ; view_hei/6
+          ASSERT(.rows*6 <= view_rows)
           ld e,.rows:dec a:ret z
           ld e,.rows*2:dec a:ret z
           ld e,.rows*3:dec a:ret z
           ld e,.rows*4:dec a:ret z
 ;5: use zoom 1.5 -> 7.5 lines per row
-          ld e,view_hei*2/15 *5:dec a:ret z
-
-; view_hei / delai * delai
+          ld e,.rows*6*2/15 *5:dec a:ret z
+; 32*6 / delai * delai
           add 5
           ld e,a
-          ld a,view_hei
+          ld a,.rows*6
           ld b,-1
 .div      inc b:sub e:jr nc,.div
           xor a

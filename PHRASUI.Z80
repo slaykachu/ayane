@@ -2,7 +2,9 @@
 todo  = 1
 ; 2025
 ; -- Alpha1 --
-  ; Dec
+  ; Dec 
+    ; 16 Fix display of non-aligned row at end of page.
+         ; (switch pages by 32 rows instead of 33)
     ; 15 Handle all tracks
        ; Handle deletion note/vol/instr
        ; Clone when modifying repetition (clone_if_needed)
@@ -334,15 +336,14 @@ refresh_row_
           xor a:ld (_rr_entered+1),a
       END
 refresh_row__
-;          xor a:ld (is_modified),a
+; -- Get offset from top (and check if out of view port)
+          ld bc,time_cur
+          ld hl,time_at_top
+          call sub_ade_ibc_ihl
+          jr c,.pre_view
 
-; -- check if out of view port or out of phrase
-          ld hl,(time_cur)
-          ld de,(time_at_top)
-          or a:sbc hl,de:jr c,.pre_view
-
-          inc h:dec h:jr nz,.past_view
-          ld a,l
+          or d:jr nz,.past_view
+          ld a,e
           ld ix,0
           CALL_DISP_BK(correct_y)
           jr nc,.past_view
@@ -357,18 +358,14 @@ refresh_row__
           ret
 
 .pre_view
-          call get_delai_ui
-          CALL_DISP_BK(ticks_per_page)
-          ld d,0
-          ld hl,time_at_top
+          call get_page_shift
           call sub_ihl_de_clipped
           jr .refresh_view
 
 
 .past_view
-          ld hl,time_at_bottom
-          ld de,time_at_top
-          call copy_time
+          call get_page_shift
+          call add_ihl_de
 .refresh_view
           call refresh_page
       IF dev_checks'
@@ -429,13 +426,7 @@ select_row_ui_
           ret
 
 .past_phrase
-; here "time_at_top" already = time at top next slice
           call refresh_state_cur
-;      IF dev_checks'
-;;Since start of phrase: should be 0
-;          ld hl,(time_row_start)
-;          ld a,l:or h:call nz,mess
-;      END
 
       IF dev_checks'
 ; Avoid infinite loop
@@ -659,11 +650,6 @@ refresh_page
           ld hl,time_end
           jr nc,.slice_lp
 
-;for page down
-          ld hl,time_at_bottom
-          ld bc,fetched_t0
-          call add_ihl_ibc_de
-
           ld a,ixh:add track_wid:ld ixh,a
           pop bc
           djnz .track_lp
@@ -741,6 +727,15 @@ pre_modif
           ld a,b
           ret
 ; ----------------------
+get_page_shift
+; Out: HL= time_at_top
+     ; DE= shift in ticks
+          call get_delai_ui
+          CALL_DISP_BK(ticks_per_page)
+          ld d,0
+          ld hl,time_at_top
+          ret
+
 setup_phrase_ui
 ;IN: hl = cursor (1-based)
           call _set_cursor
@@ -772,7 +767,6 @@ track_cur BYTE 1
 state_ = $ - state
 
 ; -- work variables                      
-time_at_bottom FILL 3,0 ; bottom of view
 time_end FILL 3,0       ; bottom of slice
 time_tmp FILL 3,0
 is_first_iter BYTE 0    ; 0 = implicit repeat

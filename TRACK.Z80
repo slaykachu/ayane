@@ -2099,6 +2099,7 @@ sub_ahl_cde
 
 sub_ade_ibc_ihl
 ; ADE = (bc) - (hl)
+; Return C/NC (!!!! Z flag not accurate, NZ if Carry)
           ld a,(bc):sub (hl):ld e,a:inc bc:inc hl
           ld a,(bc):sbc (hl):ld d,a:inc bc:inc hl
           ld a,(bc):sbc (hl)
@@ -2154,10 +2155,13 @@ add_ihl_ibc_de
 
 add_ihl_de
 ; (hl) += de
+          push hl
           ld a,(hl):add e:ld (hl),a:inc hl
           ld a,(hl):adc d:ld (hl),a:inc hl
-          ret nc
+          jr nc,.ok
           inc (hl)
+.ok
+          pop hl
           ret
 
       IF 0

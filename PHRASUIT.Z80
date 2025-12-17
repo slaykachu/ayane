@@ -1,12 +1,13 @@
 ; ----- Manual test of phrase editor -----
-do_nrt = 0              ; 0: manual test
+do_nrt = 1              ; 0: manual test
 dev_checks' = 1
 use_testlib = 0         ; 1: with instr, but mem full with track
 short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 
 ; 2025
   ; -- Alpha 1 --
-  ; Dec
+  ; Dec    
+      ;16: Add test_fuzz
       ;13: Add test_refresh_page 
       ;12: Add test_next_page
          ; Add test_kcdwn
@@ -162,18 +163,15 @@ tests
           call test_kcup
           call test_next_page
           call test_prev_page
+          call test_fuzz
           ret
 
 test_refresh_state
-;Check time_at_bottom set-up
+;Check time_end set-up
           call dev_setup ; will call refresh_state at time 0
-; Sanity check 
           ld hl,(time_at_top):ld a,l:or h:call nz,nrtfail
           ld hl,(time_end)
           ld de,nrt_phrase0_dur
-          or a:sbc hl,de:add hl,de:call nz,nrtfail
-          ld hl,(time_at_bottom)
-          ld de,33 * delai_ui_default
           or a:sbc hl,de:add hl,de:call nz,nrtfail
           ret
 
@@ -315,8 +313,8 @@ test_next_page
 ; Past view: go to next page
           call dev_setup
           TEST_RUN(.seq)
-; View: 33 rows. 
-          CHECK_CURSOR(4,[3*16 MOD 33]*delai_ui_default + 1)
+; View shift: 32 rows. 
+          CHECK_CURSOR(4,[3*16 MOD 32]*delai_ui_default + 1)
           ld a,(row_exists):or a:call z,nrtfail
           ld a,(is_first_iter):or a:call nz,nrtfail
           call row_get_note:call z,nrtfail
@@ -325,7 +323,7 @@ test_next_page
 
 .seq  FILL 3,kcdwn
           END_OF_NRT_SEQUENCE()
-;cannot check: focus on line 48 mod 33 = 15
+;cannot check: focus on line 48 mod 32 = 16
              ; disp doesn't use hooks
       BYTE nrtend
 
@@ -344,7 +342,20 @@ test_prev_page
           END_OF_NRT_SEQUENCE()
       BYTE nrtend
 
-
+test_fuzz
+          call dev_setup
+keys_buffer = tmp_buf
+          ld ix,.keys
+          ld iyl,15
+          call fuzz_keys
+; Just check it doesn't assert
+          TEST_RUN(keys_buffer)
+          ret
+.keys
+      BYTE klft,krgt,"A",kcdel
+      BYTE "0",kcup,kcdwn,kup
+      BYTE kcf+0,kcfdot,kdwn,kclr
+      BYTE kclft,kcrgt," 1"
 
 ; -----------------------------
 
@@ -367,6 +378,38 @@ _test_run
 ; Check our fake screen is filled with expected first line.
           ld de,(nrt_sequence_pnt) ; expected display
           call compare_display_focus
+          ret
+
+fuzz_keys
+;In: ix: keys to test 
+   ; iyl: nb keys - 1
+          ld b,256-2    ; &8100 overwritten by ged?
+          ld hl,0
+          ld de,keys_buffer
+.prep
+          push bc
+          push de
+          push hl
+;pseudo-random
+          rlca:add l:xor (hl)
+          push af
+
+          and iyl:add ixl:ld l,a
+          ld a,ixh:ld h,a
+          jr nc,$+3:inc h
+          ldi
+
+          pop af
+          pop hl
+          pop de
+          pop bc
+          inc hl
+          inc de
+          djnz .prep
+
+          ld a,sentinelle:ld (de),a:inc de
+; don't check screen output
+          ld a,nrtend:ld (de),a
           ret
 
 ; ==============================
