@@ -1,6 +1,7 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
 ; -- alpha1 --
-; Dec      
+; Dec   
+  ;17 Less strict check on ui pnt, since phrasui is in bank.   
   ;16 [on_hold] enter_child: propagate both X and Y
 propagate_x = 0
       IF propagate_x
@@ -300,8 +301,8 @@ _check_address
 _check_key_table
           push hl:push de
           ex de,hl
-   ; external tables, for now all ui < &4000
-          ld hl,&3FC0:or a:sbc hl,de:jr nc,.ok
+   ; external tables, for now all ui < &8000
+          ld hl,&7FFF:or a:sbc hl,de:jr nc,.ok
           ld hl,keytables:scf:sbc hl,de:call nc,fail
           ld hl,keytables_:or a:sbc hl,de:call c,fail
 .ok
@@ -1539,7 +1540,7 @@ refresh_on_enter
           ld (validate_hook+1),hl
           GET_STATE(embedded_ui)
       IF dev_checks'
-          ld a,h:cp &40:call nc,fail
+          ld a,h:cp &80:call nc,fail
       END
           jp enter_child
 

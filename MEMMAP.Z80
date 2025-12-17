@@ -44,12 +44,13 @@ rgb256 = &2620
 track_module = &2A91
 init_module = &3760
 ;via uilooptt
-uiloop = &3A90          ; Could be lower !
+uiloop = &3B90
 
-code_main = &3B20       ; ayane.o
+code_main = &3C20       ; ayane.o
 
-ramlimit = &4000
-
+ramlimit = &3FF0
+phrasui_shared_vars = &3FF0
+phradisp_shared_vars = &3FFD
 ; ----------------------------------------------
 ; --------- c0: IO BK --------------
 ; ----------------------------------------------
@@ -152,7 +153,7 @@ fonte = &4400
 fonte_small = &4800
 disp  = &48C8           ; start of code after fonts
 pianoui = &4F00
-phradisp = &5620
+phrasui = &5620
 disp_ayane = &57C0      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00

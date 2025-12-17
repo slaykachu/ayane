@@ -3,7 +3,8 @@ dev_checks' = 1
 
 ; 2025
 ; -- Alpha1 --
-  ; Dec
+  ; Dec        
+    ; 17 row_buf: out of bank   
     ; 16 ticks_per_page: round to 32 rows
        ; disp_rows: fix returned pos y when size not multiple of delai
     ; 12 correct_y: must return NC when zoom overflow
@@ -310,5 +311,11 @@ empty_row
 empty_row_ = $ - empty_row
           CHECK_CONFINE(empty_row)
 
+_savepc
+
+      ORG phradisp_shared_vars
 row_buf SKIP 3
+          CHECK_CONFINE(row_buf)
+
+      ORG _savepc
 

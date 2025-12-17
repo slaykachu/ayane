@@ -41,7 +41,7 @@ todo  = 1
           IMPORT_CORE()
       IMPORT "chunk.o"  ; salo:Next_node
       IMPORT "chung.o"  ; salo:instr
-      IMPORT "ply.o"    ; salo:/events/ mapping
+      IMPORT "ply.o"    ; salo:/events/ mapping (todo: use memmamp)
    ;   IMPORT "disp-jp.o" ; salo: future (no: use disp directly)
       ENDM
 
@@ -141,9 +141,18 @@ status_off = bandaya +8
       IF $ - &8000 != $$
  !! out of sync
       END
-          ASSERT($$ <= disp_ayane)
+          ASSERT($$ <= phradisp)
       ORG .save
       ENDM
+
+      MACRO IMPORT_PHRASUI
+.save
+      ORG phrasui
+      IMPORT "phrasui.o"
+          ASSERT($ <= disp_ayane)
+      ORG .save
+      ENDM
+
 
       MACRO LOAD_PIANOUI
 .save

@@ -4,7 +4,8 @@ do_brittle = 0
 
 ; ----- 2025 ----------
 ; -- alpha 1.06 --
- ; Dec
+ ; Dec  
+     ; 17 phrase_select_new_row doesn't return Carry anymore
      ; 12 Add test_t0_when_repeat
      ;  9 Add test_track_select_phrase_far
 ; -- alpha 1.02 --
@@ -1703,7 +1704,7 @@ nrt_dummy_phrase
 ; Note: phrase set by Set_phrase_at_t must exists
 ; Must have at least one row, otherwise duration = 0 ->assert
           xor a:call song_select_new_phrase
-          xor a:call phrase_select_new_row:call nc,nrtfail
+          xor a:call phrase_select_new_row
           ret
 
 nrt_dummy_phrase_finite

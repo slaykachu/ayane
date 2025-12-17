@@ -27,7 +27,15 @@
       ENDM
 
 ; --------------------
-; z80
+; Directives
+; --------------------
+      MACRO ALIGN n
+; FILL rather than SKIP for easier debugging and crunching
+      FILL -$ MOD n,&F7
+      ENDM
+
+; --------------------
+; Z80
 ; --------------------
       MACRO EX_SP_DE
           ex de,hl:ex (sp),hl:ex de,hl

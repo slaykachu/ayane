@@ -1,7 +1,7 @@
 ; << Memory bank handling for ayane >>
 ; CPC specific PAGING (out &7fxx,&cX)
 ; 2025
- ; --alpha 1--
+ ; --alpha 1-- 
      ; Nov 16: call_disp: update checks (no more jp table)
  ; --v0.a?--
      ; Aug 25: Remove jump table. Short module: neater to import
@@ -10,6 +10,7 @@
 todo  = 1
 
       IMPORT "memmap.i"
+      IMPORT "macro.i"  ; ASSERT
      ; IMPORT "const.i"  ; dev_checks
 
 dev_checks' = 1         ; for now, don't use const.dev_checks
@@ -138,22 +139,44 @@ scope_bk_base
           ex (sp),hl
           ld (_jump+1),hl
           ld hl,(bk_connected)
-          ex (sp),hl
           call connect_bk_base
+_scope_com
+          ex (sp),hl
 _jump     call mess
           ex (sp),hl
           call connect_l
           pop hl
           ret
 
+          ASSERT(BK_TRACK == BK_BASE)
+scope_bk_track = scope_bk_base
+          ASSERT(BK_INSTR == BK_BASE)
+scope_bk_instr = scope_bk_base
+
 scope_bk_phrase
           ex (sp),hl
           ld (_jump+1),hl
           ld hl,(bk_connected)
-          ex (sp),hl
           call connect_bk_phrase
-          jr _jump
+          jr _scope_com
 
+      IF 0
+; not tested. not worth it size wise?
+scope_bk_phrase_save_hl
+          ex (sp),hl
+          ld (_jump'+1),hl
+          ld hl,(bk_connected)
+          call connect_bk_phrase
+          ex (sp),hl
+          push hl
+_jump'    call mess
+      BRK
+          pop hl
+          ex (sp),hl
+          call connect_l
+          pop hl
+          ret
+      END
 
 set_sp_backup
 ;------------

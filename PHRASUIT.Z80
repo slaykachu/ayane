@@ -6,7 +6,8 @@ short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 
 ; 2025
   ; -- Alpha 1 --
-  ; Dec    
+  ; Dec     
+      ;17: Move phrasui in BK_DISP
       ;16: Add test_fuzz
       ;13: Add test_refresh_page 
       ;12: Add test_next_page
@@ -31,10 +32,14 @@ nrtfail = &BE00
 ;to do first    
           IMPORT_CORE()
           IMPORT_GED()
-      IMPORT "shortcut.o" ; for setup_keys
+;pre-import for phrasui
+      IMPORT "bitset.o"
+      IMPORT "song.o"   ; Song_get_instr
       IMPORT "phrase.o"
-      IMPORT "phrasui.o"
+      IMPORT "piano.o"
       IMPORT "track.o"
+
+      IMPORT "shortcut.o" ; for setup_keys
       IF use_testlib
       IMPORT "testlib.o" ; for dev test
       ELSE
@@ -44,16 +49,26 @@ nrtfail = &BE00
     ;      LOAD_FONTS()  ; no need all fonts RN
 .save
       ORG fonte_small:LOAD "fntsmall.bin"
+      ORG phrasui:IMPORT "phrasui.o"
       ORG .save
           IMPORT_DISP() ; phradisp expect deps to be imported
 ;      ORG bandaya_end
+
+;---------------------------
+      MACRO CALL_DISP_BK adr
+; When caller out of bank
+          ASSERT($ AND &C000 != &4000)
+   ;       ASSERT(adr AND &C000 == &4000) (cannot check: forward ref)
+          call call_disp:WORD adr
+      ENDM
+;---------------------------
 
 start
           ld a,2:call &BC0E
           call dev_setup
 .lp
           call km_wait_key
-          call phrase_ui_process
+          CALL_DISP_BK(phrase_ui_process)
           jr c,.lp
           cp kesc
           jr nz,.lp
@@ -112,7 +127,8 @@ note4 = &43
           ld a,3:call Song_select_new_track
           ld a,2:ld hl,time0:call Set_phrase_at_t
 
-          call phrase_cold_refresh
+          ld a,BK_DISP:call connect_a ; for checks against phrasui's var
+          CALL_DISP_BK(phrase_cold_refresh)
           ret
 
       IF do_nrt
@@ -153,6 +169,7 @@ sentinelle = 0
 ; -----------------------------
 
 tests
+          ld a,&F7:ld (0),a
           call test_refresh_state
           call test_refresh_page
           call test_row_dwn_to_repeated_phrase
@@ -181,7 +198,7 @@ test_refresh_page
           ld hl,time6:ld de,time_at_top:call copy_time
 ; Focus at top, since refresh_page doesn't use nrt hooks for display
           ld hl,time6:ld de,time_cur:call copy_time
-          call refresh_page
+          CALL_DISP_BK(refresh_page)
           TEST_RUN(.seq)
           ret
 
@@ -445,7 +462,7 @@ nrt_gedeihen_loop
           call nrt_read_key ;Always return a key.
           cp sentinelle:ret z
 
-          call phrase_ui_process
+          CALL_DISP_BK(phrase_ui_process)
           jr nrt_gedeihen_loop
 
 

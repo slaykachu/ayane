@@ -7,8 +7,11 @@ do_set_loop = 1
 ; -----------------------------------------------
 
 ; 2025 
+; -- alpha 1.07 --
+ ; Dec         
+    ; 17: s/connect_bk_track/scope_bk_track to reconnect caller bank 
+        ; (only for externally used routines)
 ; -- alpha 1.05 --
- ; Dec       
     ;  2: ext_fetch_event: register t1 as well
 ; -- alpha 1.04 --
     ;  2: Remove ply dependency
@@ -1876,7 +1879,7 @@ reg_event = in2
 Song_select_track
 ;----------------
 ;IN: A= track id
-          call connect_bk_track
+          call scope_bk_track
           ld (current_track),a
           ret
 
@@ -1896,8 +1899,8 @@ Song_select_new_track
 ; Without dummy first HOOK already there,
 ; we would have to create 2 hooks. Ugly.
 
+          call scope_bk_track
           push af
-          call connect_bk_track
           ld c,a
           ld a,(used_tracks):cp MAX_TRACKS:call nc,mess
           inc a
@@ -1929,6 +1932,7 @@ Set_phrase_at_t
 ; Set phrase into current track 
 ; In: A = id phrase        
     ; hl = pnt to t
+          call scope_bk_track
           push hl
           call Get_phrase:call z,mess
           ex de,hl
@@ -2017,6 +2021,7 @@ track_select_phrase_at
                   ; HL = t - time at start of phrase MOD phrase duration
                   ; Carry if first iteration of phrase
     ; Otherwise, Z       
+          call scope_bk_track
           push ix
           push de
           push hl
@@ -2344,7 +2349,7 @@ get_current_track_header
 ;-----------------------
 ;In: N/A
 ;out: hl: track pnt
-          call connect_bk_track
+          call connect_bk_track ; !! No /scope_bk_track/
           ld a,(current_track)
           jp get_track_header
 
@@ -2371,7 +2376,7 @@ Reset_tracks_and_subsongs
 ;------------------------
 ; No tracks, no subsong.
 
-          call connect_bk_track
+          call scope_bk_track
       IF do_set_replay_period
           ld hl,replay_50_08Hz
           call set_replay_period
@@ -2812,37 +2817,24 @@ ext_get_track
           ret
       END
 
+time_zero FILL 3,0
 time_inf FILL 3,&FF
 
-end_of_code
-
-;---------------------
-; Buffer and Variables     
-;---------------------
-
-      MACRO ALIGN n
-; FILL rather than SKIP for easier debugging and crunching
-      FILL -$ MOD n,&F7
-      ENDM
-
-          ALIGN(&0100)
-aum_regs
-;32 regs * 4 = &80.
-      FILL MAX_FRAMES * FRAME_REGS_SIZE,0 ; fill for easier debugs
-aum_regs_
-
+;--------------------------
+; Buffers and tmp variables     
+;--------------------------
           ALIGN(&10)    ; align for easier debug
-vars
-; Persistent vars in memmap.i 
 
-time_zero FILL 3,0
-timestamp SKIP 3        ; tmp variable
+;for phrasui
+          ASSERT($ AND &C000 != &4000) ; out of bank for sharing
+fetched_t0 SKIP 3
+fetched_t1 SKIP 3
+          ASSERT(fetched_t1 == fetched_t0+3)
+
+timestamp SKIP 3
 previous_timestamp SKIP 3
 
 fetched_event WORD 
-fetched_t0 SKIP 3       ; for phrasui 
-fetched_t1 SKIP 3       ; for phrasui to know when next evt occurs
-          ASSERT(fetched_t1 == fetched_t0+3)
 
 ;---- Keep this order for /goto_pos/
 time_cursor TIME(0)     ; Position in sequencer
@@ -2853,39 +2845,31 @@ time_at_left TIME(0)    ; Position at left of screen
 cursor_screen_pos WORD 0
 cursor_backup SKIP CURSOR_HEIGHT ; save background
 
-
 ;-----------------
 ; AUM Variables     
 ;-----------------
-          ALIGN(&10)    ; align for easier debug
-
 frame_pnt WORD          ; point 
 aum_af WORD             ; A: Unused, but makes F easier to store
 aum_sp WORD 
 aum_pc WORD             ; for debug
 aum_stack SKIP MAX_FRAMES*2 ; only AUM'S PC saved.
 aum_stack_
-      IF $/&0100 - aum_stack/&0100
-  !! error align
-      END
+          CHECK_CONFINE(aum_stack)
 
 ; Since we manipulate all values by reference,
 ; we must store literals.
 ; The alternative would be a static array of litterals.
   ; -> Faster but requires &80 bytes.
-tmp_lit SKIP 4
-      IF $-1 / &0100 - tmp_lit/&0100
-  !! error align
-      END
+tmp_lit SKIP 4:CHECK_CONFINE(tmp_lit)
 tmp_arg = tmp_lit
-tmp_binary SKIP 4       ; We could reuse tmp_lit if thight in memory
-      IF $-1 / &0100 - tmp_binary/&0100
-  !! error align
-      END
-tmp_ext_args SKIP MAX_EXT_PARAMETERS * 2
-      IF $-1 / &0100 - tmp_ext_args/&0100
-  !! error align
-      END
+tmp_binary SKIP 4:CHECK_CONFINE(tmp_binary)
+tmp_ext_args SKIP MAX_EXT_PARAMETERS * 2:CHECK_CONFINE(tmp_ext_args)
+
+          ALIGN(&0100)
+aum_regs
+;32 regs * 4 = &80.
+      FILL MAX_FRAMES * FRAME_REGS_SIZE,0 ; fill for easier debugs
+aum_regs_
 
 track_end
 

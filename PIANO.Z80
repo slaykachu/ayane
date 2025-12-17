@@ -6,8 +6,13 @@ tmp_rast = 0
 ; -> Using hardware keycode: locale agnostic (azerty/qwerty)
 
  ; 2025                
-    ; -- v0au --
+    ; -- alpha1 --
+  ;Dec
+   ;17: Use scope_bk_instr ensuring proper bk connection (at return too)
   ;Nov
+   ;19: Move play_song in playsong.o (remove ply dependency) 
+      ; s/va_current_instr/Song_get_instr so proper bank is connected
+    ; -- v0au --
    ;10: play_song: also exit with space (+ anti test)
     ; -- v0as --
   ;Oct
@@ -17,9 +22,9 @@ tmp_rast = 0
       IMPORT "memmap.i"
       IMPORT "macro.i"
 
-      IMPORT "chung.o"  ; For va_current_instr
-      IMPORT "ply.o"    ; play
-      IMPORT "instr.o"  ; for instr_setup
+      IMPORT "memcpc.o" ; scope_bk_instr
+      IMPORT "song.o"   ; Song_get_instr
+      IMPORT "instr.o"  ; instr_setup
       IMPORT "timer.o"
       IMPORT "ppi.o"
 
@@ -48,59 +53,12 @@ fail  = &BE00
       ENDM
 ;---------------------------------------
 piano_code
-play_song
-;--------
-; Done in this source since shared code
-; In: Amorce_song called
-; Out: N/A (We loop until ESC pressed)
-          ASSERT($ == piano_code) ; called from ayane.o
-
-          call _prelude
-          xor a:ld (.keyprev+1),a ; consider space pressed
-          call play_prelude
-          call play     ; prepare regs
-          call play_prelude'
-          jr .play_song_entry
-
-.play_song_lp
-;------------
-; Here A=TM  (value doesn't matter for first iteration)
-          call vsync_timed
-; Must be done at stable position
-.play_song_entry
-          call set_timer_and_psg
-
-          ex af,af
-          ld a,&48:call testkey
-          inc c         ; ESC, 1, tab ...
-          jp nz,_stop_play
-          SUB_TM_CALL(5+17) ; including call vsync_timed
-
-.keyprev  ld de,0       ; only for e
-          ex af,af
-          ld a,&45:call testkey
-;Only stop at pressdown
-          ld (.keyprev+1),bc
-; anti-key test (otherwise too fast)
-          inc e:jr nz,.held
-          inc c         ; space, 6, 7, u, y ...
-          jp nz,_stop_play
-          SUB_TM(4-1)
-.held
-          SUB_TM_CALL(21)
-
-          call play     ; regs for next frame
-
-          SUB_TM_CALL(5+3)
-          jr .play_song_lp
-
-
 play_piano
 ;---------
 ; Called when no note currently playing
 ; Check if there is a piano key pressed and start playing le cas echeant
 ; Out: N/A (We loop as long key presed)
-
+          call scope_bk_instr
           call _prelude
           call scan_piano_keys
           jp nc,_postlude
@@ -109,7 +67,7 @@ start_note
           ld (current_note),a
           push af
 ;Setup instr code
-          ld hl,(va_current_instr) ; for l
+          call Song_get_instr:ld l,a
           call instr_setup
 ;         call debug
           call play_prelude

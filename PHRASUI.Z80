@@ -8,7 +8,7 @@ todo  = 1
          ; (switch pages by 32 rows instead of 33)
     ; 15 Handle all tracks
        ; Handle deletion note/vol/instr
-       ; Clone when modifying repetition (clone_if_needed)
+       ; Clone when modifying repetition (pre_modif)
     ; 13 Refresh all instances of repeated phrase       
     ; 12 Handle page change
        ; Handle kcup/kcdwn
@@ -26,7 +26,9 @@ dev_checks' = 1
       IMPORT "memmap.i" ; BK_DISP
       IMPORT "macro.i"
       IMPORT "import.i"
+ref_pc
           IMPORT_CORE() ; conv.put_note
+          IMPORT_GED()
       IF todo
 ;use shared imports
       END
@@ -36,28 +38,9 @@ dev_checks' = 1
       IMPORT "piano.o"
       IMPORT "ged.o"
       IMPORT "track.o"
-      BANK BK_DISP
-;          IMPORT_PHRADISP() ;  bug#1f7
-.save
-      ORG phradisp
+          ASSERT($ == ref_pc) ; deps must have been imported by client
+
       IMPORT "phradisp.o"
-      ORG .save
-      BANK &C0
-
-;------------------
-      MACRO CALL_DISP_BK adr
-; When caller out of bank
-          ASSERT($ AND &C000 != &4000)
-   ;       ASSERT(adr AND &C000 == &4000) (cannot check: forward ref)
-          call call_disp:WORD adr
-      ENDM
-
-      MACRO JP_DISP_BK adr
-; When caller out of bank
-          ASSERT($ AND &C000 != &4000)
-   ;       ASSERT(adr AND &C000 == &4000) (cannot check: forward ref)
-          call jp_disp:WORD adr
-      ENDM
 
 ;------------------
 phrase_cold_refresh
@@ -282,7 +265,7 @@ row_dwn
 ; whichever comes first
 ; -- next row
           call get_time_row
-          call phrase_get_row_at
+          call phrase_seek_row_at
           ld hl,(row_t1)
           push hl
 ; -- next delai aligned
@@ -347,7 +330,7 @@ refresh_row__
           or d:jr nz,.past_view
           ld a,e
           ld ix,0
-          CALL_DISP_BK(correct_y)
+          call correct_y
           jr nc,.past_view
 
           inc a         ; ged cursor is 1-based
@@ -414,7 +397,7 @@ select_row_ui_
           jr nc,.past_phrase
 
           call get_time_row
-          call phrase_get_row_at
+          call phrase_seek_row_at
       IF dev_checks'
 ; past phrase already checked
           call nc,mess
@@ -449,7 +432,7 @@ row_up
           call get_time_row
           jr z,.prev_phrase
           dec de
-          call phrase_get_row_at
+          call phrase_seek_row_at
           ld hl,(row_t0)
           push hl
 ; -- prev delai aligned   
@@ -479,7 +462,7 @@ row_up
           ex de,hl
           call get_delai_aligned
           push hl
-          call phrase_get_last_row
+          call phrase_seek_last_row
           pop hl
           or a:sbc hl,de:add hl,de:jr nc,.okmax
           ex de,hl
@@ -602,17 +585,15 @@ piano_keys
 ;          call &BB06
 ;          ld bc,&0606:call &BC38
           jp edit_row_com
+
 ; ----------------------
-_set_cursor JP_DISP_BK(ph_set_cursor)
-_get_cursor JP_DISP_BK(ph_get_cursor)
-_place_cursor JP_DISP_BK(ph_place_cursor)
-_write_char JP_DISP_BK(ph_write_char)
+_set_cursor = ph_set_cursor
 _paint_sprite = &BE00
 ; ----------------------
 
 refresh_page
 ;-----------   
-          CALL_DISP_BK(cls_)
+          call cls_
           ld hl,phrase_met:ld a,MAX_PHRASES:call bs_init
           ld hl,phrase_dup:ld a,MAX_PHRASES:call bs_init
 
@@ -634,7 +615,7 @@ refresh_page
           or a:sbc hl,bc
           ex de,hl
           call get_delai_ui
-          CALL_DISP_BK(disp_rows)
+          call disp_rows
           ex de,hl      ; de : cur time
 
 ; --flag repeated phrase
@@ -648,6 +629,7 @@ refresh_page
 .nodup
           call bs_set
           pop af
+
           ld ixl,a
           ld hl,time_end
           jr nc,.slice_lp
@@ -733,7 +715,7 @@ get_page_shift
 ; Out: HL= time_at_top
      ; DE= shift in ticks
           call get_delai_ui
-          CALL_DISP_BK(ticks_per_page)
+          call ticks_per_page
           ld d,0
           ld hl,time_at_top
           ret
@@ -744,10 +726,10 @@ setup_phrase_ui
 
           call gedeihen_init ;needed before (re)calling setup_widget
 
-          ld hl,_set_cursor
-          ld ix,_get_cursor
-          ld iy,_place_cursor
-          ld de,_write_char
+          ld hl,ph_set_cursor
+          ld ix,ph_get_cursor
+          ld iy,ph_place_cursor
+          ld de,ph_write_char
           ld bc,_paint_sprite
           call gedeihen_set_hooks
 
@@ -761,20 +743,28 @@ buf_note_text SKIP 3:BYTE 0
 ;------
 ; vars
 ;------                                        
-state
-; All vars needed to recover when switching screen
-time_at_top FILL 3,0    ; absolute time (determines "page")
-time_cur FILL 3,0       ; absolute time (determine pos in page)
-track_cur BYTE 1
-state_ = $ - state
-
-; -- work variables                      
-time_end FILL 3,0       ; bottom of slice
-time_tmp FILL 3,0
 is_first_iter BYTE 0    ; 0 = implicit repeat
 row_exists BYTE 0       ; 0 = empty
 is_modified BYTE 0
 cur_y BYTE 0
+
+_savepc
+
+      ORG phrasui_shared_vars
+; Time passed to track.o must be out of bank
+state
+; All vars needed to recover when switching screen
+time_at_top SKIP 3      ; absolute time (determines "page")
+time_cur SKIP 3         ; absolute time (determine pos in page)
+track_cur BYTE          ; not shared 
+state_ = $ - state
+
+time_end SKIP 3         ; bottom of slice
+time_tmp SKIP 3
+
+          LIMIT(&4000)
+
+      ORG _savepc
 
       IF 0
 defaut_state
@@ -798,4 +788,4 @@ dfs   = $ - state
 
 phrase_met DECLARE_BITSET(MAX_PHRASES)
 phrase_dup DECLARE_BITSET(MAX_PHRASES)
-
+phrasui_end

@@ -6,7 +6,9 @@ do_add_empty_row = 0
 
 ; 2025    
  ; -- alpha 1 --
-; Dec     
+; Dec 
+   ; 17 s/_prelude/scope_bk_phrase so can be called from bank    
+      ; phrase_select_new_row: exception if memory full instead of NC
    ; 15 Add row_del_note/instr/vol
       ; Add phrase_clone
       ; phrase_def: fix 'last' (was pointing one extra byte)
@@ -167,7 +169,7 @@ song_select_new_phrase
                             ; by salo.o 
                    ; - useful for user (use ids as he likes)
 
-          call _prelude
+          call scope_bk_phrase
 
 ;Must set header value **before** new_phrase_chunk which 'install' them
 ;We store idx, so that track can directly point to phrase (using pnt)
@@ -177,7 +179,7 @@ song_select_new_phrase
           inc a:call z,err_toomuchphrases
           ld (phrase_color),a
 
-          call new_phrase_chunk:jr nc,_postlude ; Exit if memory full
+          call new_phrase_chunk:ret nc ; Exit if memory full
       IF dev_checks'
           ld a,l:cp BK_PHRASE:call nz,mess
       END
@@ -217,7 +219,7 @@ song_select_phrase
 ; Out: Like /Get_phrase/
   ; !! Current phrase changed even when non-initialised. Nevermind?
 
-          call _prelude
+          call scope_bk_phrase
           ld (va_current_phrase),a
           call Get_phrase
 _set_row_pnt
@@ -230,14 +232,8 @@ _set_row_pnt
           call nz,connect_phrase_begin
           ld (va_row_pnt),hl
           pop af
-;enchaine
-_postlude
 ; Is carry really needed if we use exception mecanism?
           scf
-_postlude_fail
-          pop hl
-_postlude_
-          pop ix:pop de:pop bc
           ret
 
 
@@ -247,7 +243,7 @@ song_get_phrases#
       IF todo
 ;!!! BUG: if 256 phrases, returns 0
       END
-          call _prelude
+          call scope_bk_phrase
 
 ;Scan all phrases, and count non-empty
           ld bc,0       ;c = cnt
@@ -259,7 +255,7 @@ song_get_phrases#
 .next
           djnz .lp
           ld a,c
-          jp _postlude
+          ret
 
 err_toomuchphrases
       BRK
@@ -267,7 +263,7 @@ err_toomuchphrases
 song_get_empty_phrase
 ;--------------------
 ;Out: A= id empty phrase
-          call _prelude
+          call scope_bk_phrase
 
 ;Scan all phrases, and count non-empty
           ld c,0
@@ -280,11 +276,12 @@ song_get_empty_phrase
           call memory_full
 .found
           ld a,c
-          jp _postlude
+          ret
 
 phrase_clone
 ;In: phrase selected
 ;Out: id phrase clone
+          call scope_bk_phrase
           call connect_phrase_begin
           push hl
           call song_get_empty_phrase
@@ -359,7 +356,7 @@ phrase_set_params
    ;  c: size params
           ld a,c:or a:ret z
           dec a:call nz,unexpected ; just 1 param for now (fc_color)
-          call _prelude
+          call scope_bk_phrase
           ex de,hl
           call connect_phrase_begin
       IF fc_color - 4
@@ -374,19 +371,17 @@ phrase_set_params
           cp 2:call nc,mess
       END
           ldir
-          jp _postlude
+          ret
 
 phrase_select_new_row
 ;--------------------
 ; create (append) row in current phrase, and select it.
 ; In:  A = duration
-; Out: Carry if ok, row selected
-     ; NC otherwise (memory full)
+; Out: exception if memory full
 
 ; TODO: check if there is actual a phrase selected
 
-          call _prelude
-
+          call scope_bk_phrase
           push af
           ld hl,(va_current_phrase) ; for l only
           ld h,phrases_rows/&0100
@@ -408,14 +403,14 @@ row_size0 = 1+pos_flags+reserved_byte ; duration, flags, reserved
           ld (hl),0     ; flags
           pop hl
           ld (va_row_pnt),hl
-          jp _postlude
+          ret
 
 unpack_row_at
 ;------------
 ; Flatten and reorder row at exactly time t
                   ; note, instr, vol  (-1 if absent)
 ; In: HL = t
-    ; DE = dest buf
+    ; DE = dest buf (confined)
 ;Out: - If such row,    Carry, NZ
     ; - If no row at t  Carry, Z   
                       ; In both cases BC = time next (non-empty) row
@@ -497,7 +492,7 @@ phrase_select_row_at
 ; In: DE = t
 ;Out: row selected.     
     ; AF thrashed, all other registers preserved.
-
+          call scope_bk_phrase
           push hl
           call phrase_set_blank_row_at
           ld (va_row_pnt),hl
@@ -507,10 +502,9 @@ phrase_select_row_at
       IF 0
 phrase_get_row_position
 ;----------------------
-          call _prelude
-          pop hl        ; rectify stack
+          call scope_bk_phrase
           ld hl,(va_position)
-          jp _postlude_
+          ret
       END
 
 phrase_set_blank_row_at
@@ -522,7 +516,7 @@ phrase_set_blank_row_at
       IF todo
 ; factorize with add_duration?
       END
-          call _prelude
+          call scope_bk_phrase
           ld (va_position),de
 .retry
           call phrase_get_row_at
@@ -530,7 +524,7 @@ phrase_set_blank_row_at
 .retry'
 ; BC:new duration of previous row = t - t0
 ; If 0, nothing to do.
-          jr z,.done
+          ret z
 ; intermediate row if t-t0 >= &100 
           inc b
 .padlp
@@ -559,7 +553,7 @@ phrase_set_blank_row_at
 ; (21 minutes at 50hz replay) -> nevermind.
 ; Anyway 0 duration should only be used for last row of phrase.
           or a
-          jr z,.done
+          ret z
 
           ld bc,(row_t1)
           ld a,c:sub e:ld c,a
@@ -568,9 +562,7 @@ phrase_set_blank_row_at
           call nz,to_be_implemented
           ld a,c:or a:call z,mess ; should have t < t1  
           ld (hl),a
-.done
-          pop af        ; stack correction
-          jp _postlude_
+          ret
 
 .new_row
 ; Empty phrase, or past finite duration
@@ -604,10 +596,6 @@ phrase_set_blank_row_at
           jr .retry
       END
 
-          call insert_new_row
-;duration = 0 as expected, since last row.
-          jr .done
-
       IF 0
 phrase_delete_row_at
 ;In:  DE= time
@@ -615,7 +603,7 @@ phrase_delete_row_at
       IF todo
 ; See TODO goto_last_row
       END
-          call _prelude
+          call scope_bk_phrase
           ld c,a
           call phrase_get_row_at
           jr nz,.okrow
@@ -624,7 +612,7 @@ phrase_delete_row_at
           ld a,(hl):sub c:jr c,.remove
           jr z,.remove
           ld (hl),a
-          jr .done
+          ret
 
 .remove
           push af       ; remaining <= 0
@@ -632,13 +620,12 @@ phrase_delete_row_at
       BRK
           pop af
           neg
-          jr z,.done
+          ret z
 ; Remove remaining 
           ld c,a
           call goto_next_row
           jr nz,.okrow
-.done
-          jr _postlude
+          ret
       END
 
 
@@ -651,7 +638,7 @@ insert_new_row
           push bc:push de
           ld e,l:ld d,h
           ld c,pos_flags+flags_sz+reserved_byte
-          call shift_in_row:call nc,memory_full
+          call shift_in_row
 ; setup row:
           ld (hl),0:inc l ; dur
           ld (hl),0     ; flags
@@ -665,7 +652,7 @@ phrase_get_rows#
 ;In: Phrase selected
 ;Out:A = nb rows  (!! different API than instr_get_rows#, simpler code) 
 
-          call _prelude
+          call scope_bk_phrase
           call connect_phrase_begin
           ld c,0
 .lp
@@ -676,8 +663,18 @@ phrase_get_rows#
           jr .lp
 .done
           ld a,c
-          jp _postlude
+          ret
 
+phrase_seek_row_at
+;-----------------
+; like phrase_get_row_at, but reconnect bank for phrase_ui
+          call scope_bk_base
+          jr phrase_get_row_at
+
+phrase_seek_last_row
+;-------------------
+          call scope_bk_base
+;enchaine
 phrase_get_last_row
 ;------------------
 ;!!! for now doesn't work for infinite
@@ -705,7 +702,8 @@ phrase_get_row_at
 ;   Written at nu gulho (such a nice waitress, Raquel)
 ; In: DE = t (16 bits is enough, 1024 rows at delai 64)
 ;OUt: If such a row:
-      ; Carry, HL = row start, row_t0 = t0,  row_t1 = t0+dur
+      ; Carry, HL = row start
+             ; row_t0 = t0,  row_t1 = t0+dur
              ; BC = t - t0
              ;  Z if t = t0 (row exactly at t)
              ; NZ otherwise
@@ -765,6 +763,7 @@ phrase_get_duration
     ; AF, HL preserved
 ; Note: returned on 24 bits to account for dur 0 = &10000,
       ; but we can only set row at 16 bits timestamp.
+          call scope_bk_phrase
           push af:push hl
           call connect_phrase_begin
           ld de,0
@@ -797,7 +796,7 @@ row_add_duration
 ;---------------
 ; Extend duration of current row
 ; IN: A= additional duration
-          call _prelude
+          call scope_bk_phrase
           call connect_current_row
           add (hl):jr nc,.ok
 ; insert blank row **after** with length = 255
@@ -812,16 +811,16 @@ row_add_duration
 ;enchaine
 .ok
           ld (hl),a
-          jp _postlude
+          ret
 
 row_set_note
 ;-----------
 ; in: A= note
 ;out: A preserved
 
-          call _prelude
-
-          call connect_current_row_skip_length
+          call scope_bk_phrase
+          push bc:push de:push hl
+          call connect_current_row_skip_length'
           bit bit_note,(hl)
           push af
           call skip_fx_ins
@@ -839,7 +838,8 @@ _change_com
           pop af
 _change_byte
           ld (hl),a
-          jp _postlude
+          pop hl:pop de:pop bc
+          ret
 
 
 row_get_note
@@ -848,31 +848,42 @@ row_get_note
 ;out: NZ A= note  if any
     ; Z if no note defined here
 
-          call _prelude
+          call scope_bk_phrase
           call connect_current_row_skip_length
           bit bit_note,(hl)
-          jp z,_postlude
+          ret z
 
           call skip_fx_ins
           xor a:inc a   ; NZ
           ld a,(hl)
-          jp _postlude
+          ret
 
 row_del_note
 ;-----------
 ; in: N/A
 
-          call _prelude
-
+          call scope_bk_phrase
           call connect_current_row_skip_length
           bit bit_note,(hl)
-          jr z,_exit
+          ret z
           res bit_note,(hl)
           call skip_fx_ins
-_delete_com
-          call delete_byte
-_exit
-          jp _postlude
+delete_byte
+; In: hl : pos byte in chunk to be deleted
+          ld e,l
+          ld d,h
+          inc l
+          ld a,l:neg
+      IF dev_checks'
+          call z,mess
+      END
+          ld c,a
+          ld b,0
+          ldir
+          dec h
+          ld l,chead_last
+          dec (hl)
+          ret
 
 
 row_set_vol
@@ -882,8 +893,9 @@ row_set_vol
           cpl:add 15+1  ; Negative. 0=max 15=mute
 row_set_vol_encoded     ; for salo
 ;------------------
-          call _prelude
-          call connect_current_row_skip_length
+          call scope_bk_phrase
+          push bc:push de:push hl
+          call connect_current_row_skip_length'
           bit bit_vol,(hl)
           push af
           call skip_fx_ins_note
@@ -905,37 +917,38 @@ row_get_vol
 ;out: NZ A= vol if any
     ; Z if no vol defined here
 
-          call _prelude
+          call scope_bk_phrase
           call connect_current_row_skip_length
           bit bit_vol,(hl)
-          jp z,_postlude
+          ret z
 
           call skip_fx_ins_note
           ld a,15:sub (hl)
           inc h         ; NZ
-          jp _postlude
+          ret
 
 row_del_vol
 ;----------
-          call _prelude
+          call scope_bk_phrase
           call connect_current_row_skip_length
           bit bit_vol,(hl)
-          jr z,_exit
+          ret z
           res bit_vol,(hl)
           call skip_fx_ins_note
-          jr _delete_com
+          jr delete_byte
 
 row_set_instr
 ;------------
 ; in: A= ins
 ;out: A preserved
-          call _prelude
-          call connect_current_row_skip_length
+          call scope_bk_phrase
+          push bc:push de:push hl
+          call connect_current_row_skip_length'
           bit bit_instr,(hl)
           push af
           call skip_fx
           pop af
-          jr nz,_change_instr
+          jp nz,_change_byte
 
 ;insert 
           push af
@@ -943,17 +956,12 @@ row_set_instr
           ex de,hl
           SKIP_LENGTH()
           set bit_instr,(hl) ;CANNOT be done before
-          ex de,hl
-          pop af
-
-_change_instr
-          ld (hl),a
-          jp _postlude
+          jp _change_com
 
 row_get_instr
 ; Out: If instr: NZ, A=instr id
      ; otherwise Z, A trashed
-          call _prelude
+          call scope_bk_phrase
           call connect_current_row_skip_length
           bit bit_instr,(hl)
 ;If Z, read garbage: nevermind 
@@ -961,22 +969,22 @@ row_get_instr
           call skip_fx
           pop af
           ld a,(hl)
-          jp _postlude
+          ret
 
 row_del_instr
 ;------------
-          call _prelude
+          call scope_bk_phrase
           call connect_current_row_skip_length
           bit bit_instr,(hl)
-          jp z,_exit
+          ret z
           res bit_instr,(hl)
           call skip_fx
-          jp _delete_com
+          jp delete_byte
 
 
       IF 0
 row_set_no_param_fx_
-          call _prelude
+          call scope_bk_phrase
 row_set_no_param_fx
 ;.......................
 ; in: BK connected
@@ -984,7 +992,7 @@ row_set_no_param_fx
     ; DE: fx routine
 
           push de
-          call connect_current_row_skip_length
+          call connect_current_row_skip_length'
 ;on se place sur bon fx
           ld b,a
           call skip_nfx
@@ -998,14 +1006,14 @@ row_set_no_param_fx
           SKIP_LENGTH_DE()
           ld a,(de):or c:ld (de),a ;cannot be done before
           pop de:call ld_hl_de
-          jp _postlude
+          ret
 
 _change_fxnoparam
       BRK               ; todo: remove previous fx!
-          jp _postlude
+          ret
 
 row_set_byte_param_fx_
-          call _prelude
+          call scope_bk_phrase
 row_set_byte_param_fx
 ;..................
 ; in: BK connected
@@ -1015,7 +1023,7 @@ row_set_byte_param_fx
 
           push bc:push de
 ;on se place sur bon fx
-          call connect_current_row_skip_length
+          call connect_current_row_skip_length'
           ld b,a
           call skip_nfx
           rra
@@ -1028,15 +1036,15 @@ row_set_byte_param_fx
           ld a,(de):or c:ld (de),a ;cannot be done before
           pop de:call ld_hl_de
           pop bc:ld (hl),c
-          jp _postlude
+          ret
 
 _change_fx0
       BRK               ; todo: remove previous fx!
-          jp _postlude
+          ret
 
 
 row_set_word_param_fx_
-          call _prelude
+          call scope_bk_phrase
 row_set_word_param_fx
 ;.......................
 ; in: BK connected
@@ -1045,7 +1053,7 @@ row_set_word_param_fx
     ; BC: adr table/param
 
           push bc:push de
-          call connect_current_row_skip_length
+          call connect_current_row_skip_length'
 ;on se place sur bon fx
           ld b,a
           call skip_nfx
@@ -1059,11 +1067,11 @@ row_set_word_param_fx
           ld a,(de):or c:ld (de),a ;cannot be done before
           pop de:call ld_hl_de
           pop bc:call ld_hl_bc
-          jp _postlude
+          ret
 
 _change_fx
       BRK               ; todo: remove previous fx!
-          jp _postlude
+          ret
 
 
 row_set_3_param_fx
@@ -1074,7 +1082,7 @@ row_set_3_param_fx
     ; C,B,L: parameter
 
           push hl:push bc:push de
-          call connect_current_row_skip_length
+          call connect_current_row_skip_length'
 ;on se place sur bon fx
           ld b,a
           call skip_nfx
@@ -1089,11 +1097,11 @@ row_set_3_param_fx
           pop de:call ld_hl_de
           pop bc:call ld_hl_bc
           pop bc:ld (hl),c
-          jp _postlude
+          ret
 
 _change_fx3
       BRK               ; todo: remove previous fx!
-          jp _postlude
+          ret
 
       END
 
@@ -1104,14 +1112,14 @@ irow_set_type_vol
 ; in: A= type + vol   ttttvvvv
 ;out: A preserved
 
-          call _prelude
+          call scope_bk_phrase
           call connect_current_irow
           ld (hl),a
-          jp _postlude
+          ret
 
 irow_set_period
 ; in: de= period (abs or rel depending on type)
-          call _prelude
+          call scope_bk_phrase
           call connect_current_irow
 ; !! wip !! todo: reflechir comment set/update/sera fait + in bank.
       END
@@ -1131,7 +1139,7 @@ fx_append_byte
 ;insert     
           ld c,1:call shift_in_row
           pop af:ld (hl),a
-          jp _postlude
+          ret
       END
 
 ;-------------------------------
@@ -1260,12 +1268,21 @@ get_fx_sign
 connect_current_row_skip_length
 ;In: bk base connected!
 ;Out: HL= post length
-    ; DE= start (used for shift in row)
+;don't change A !              
+          call connect_current_row
+          SKIP_LENGTH()
+          ret
+
+connect_current_row_skip_length'
+;In: bk base connected!
+;Out: HL= post length
+    ; DE= start row
 ;don't change A !              
           call connect_current_row
           ld e,l:ld d,h
           SKIP_LENGTH()
           ret
+
 
 connect_current_row
 ;In:  The row was selected.
@@ -1335,18 +1352,11 @@ song_get_current_phrase
 ; Get selected phrase
 ;OUT:If such phrase, NZ, HL= pointer (not connected), A=id 
 
+          call scope_bk_phrase
           push bc
-      IF makeroom
-; Move bank saving in _prelude and restore in _postlude
-      END
-          call get_bk_connected
-          ld c,a
-          call connect_bk_phrase
-
           ld a,(va_current_phrase)
           call Get_phrase
           ld a,(va_current_phrase) ; reload without touching F
-          call connect_c
           pop bc
           ret
 
@@ -1358,16 +1368,8 @@ Get_phrase
             ; Needed by compile.o to iterate among existing phrases.
     ; Reconnect caller's bank (handy for track.o to plug pnt).
     ; A trashed
+          call scope_bk_phrase
           push bc
-      IF makeroom
-; Move bank saving in _prelude and restore in _postlude
-      END
-          push af
-          call get_bk_connected
-          ld c,a
-          pop af
-          call connect_bk_phrase
-
 ; legacy: ID with BK number
 ; todo: full pointer directly (to allow mini chunks, or no chunks
       ; at all -> big pool).
@@ -1385,7 +1387,6 @@ Get_phrase
       END
           ld h,(hl)
           ld l,chunk_start ; phrase header
-          call connect_c
           pop bc
 ;We can ask for non-existing phrase
 ;(needed for compile.o and song_get_phrases#)
@@ -1393,24 +1394,6 @@ Get_phrase
           ld a,h:or a   ; Z/NZ
           ret
 
-
-_prelude
-; save registers and sp (for 'exception mechanisme)
-; then connect work bank. note: caller bank not reconnect at /_postlude/
-; More space-efficient, we don't need to be fast
-
-          push de:push ix:push hl
-          ld hl,6:add hl,sp
-          push af
-          ld a,&C3:ld (jp_ret),a ; done each time, nevermind
-          ld a,(hl):ld (jp_ret+1),a:ld (hl),c:inc hl
-          ld a,(hl):ld (jp_ret+2),a:ld (hl),b:inc hl
-          ld (va_savesp),hl
-          pop af
-          pop hl
-          push hl
-          call connect_bk_phrase
-          jp jp_ret
 
 goto_last_row
 ;Out: If empty, Z
@@ -1603,7 +1586,7 @@ insert_new_chunk_from_id
           push bc:push de:push hl
 
           ld l,chead_next:ld e,(hl):inc l:ld d,(hl)
-          call hook_new_chunk:jr nc,ret_pop_hl_de_bc
+          call hook_new_chunk:call nc,memory_full
           ld b,a        ; backup
 
 ;new.next = cur.next
@@ -1620,7 +1603,6 @@ insert_new_chunk_from_id
           ld l,chead_next:ld (hl),e:inc l:ld (hl),d
           scf
           ld a,b        ; chunk_start
-ret_pop_hl_de_bc
           pop hl:pop de:pop bc
           ret
 
@@ -1840,7 +1822,7 @@ aric_com
 
           push hl
           ld h,d:ld l,b
-          call insert_new_chunk_from_id:call nc,memory_full
+          call insert_new_chunk_from_id
           call connect_next_chunk:call z,programming_error
           ld e,l:ld d,h
           pop hl
@@ -1904,8 +1886,9 @@ shift_in_chunk
                   ; - move tail
                   ; - /put_end_of_chunk/
     ; Bank agnostic.
-; Out: If ok: Carry, bhl= post dest (possibly new chunk) 
+; Out: If ok bhl= post dest (possibly new chunk) 
             ; Chunk bhl connected.
+     ; Exception if mem full
      ; DE preserved
 
 ; If chunk is full, ALL the remaining from insertion point is moved:
@@ -2021,7 +2004,7 @@ move_tail_in_new_chunk'
 ;out: reconnect source chunk     
     ; bhl, de preserved
 
-          call insert_new_chunk_from_bhl:ret nc
+          call insert_new_chunk_from_bhl
 
           push bc:push de:push hl
           ld c,a        ; chunk_start
@@ -2064,23 +2047,6 @@ move_tail_in_new_chunk'
           pop hl
           pop de:pop bc
           scf
-          ret
-
-delete_byte
-; In: hl : pos byte in chunk to be deleted
-          ld e,l
-          ld d,h
-          inc l
-          ld a,l:neg
-      IF dev_checks'
-          call z,mess
-      END
-          ld c,a
-          ld b,0
-          ldir
-          dec h
-          ld l,chead_last
-          dec (hl)
           ret
 
 ;-------------------------
@@ -2253,7 +2219,6 @@ row_t0 WORD             ; tmp
 row_t1 WORD             ; tmp
 
 va_savesp WORD 
-jp_ret SKIP 3
 
 dbg1  WORD 
 dbg2  WORD 
