@@ -1,35 +1,68 @@
 ;   <<<<< SAVE/LOAD module >>>>>
+; 2025      
+ ; Sep
+;--- Alpha 1 ---
+ ; Dec:
+  ;17: WTF? Line 1510 we had ld b,3 instead of ld c,3 to save track loop
+;--- v0au ---
+ ; Nov           
+  ;25: load_file/save_file: connect_bk_io  
+  ;14: save: reselect instrument
+  ;13: progress_bar
+  ; 7: song_track_lp: fix saving of song map
+;--- v0at ---
+  ; 6: phrases_lp: reorder to instr note vol (match bit and mem order)
+;--- v0ar ---
+ ; Oct 
+  ;14: set_diapason: 16 bits now 
+
+;--- v0aq ---   
+ ; Aug
+  ;28: instr_lp: load/save hard env columns separately
+               ; load/save syncbuzzer 
+     ; salo_code: jump block (again?)
+;--- v0ap ---   
+  ;17: Use connect_bk_io in save_bloc (rather than feu .write_bloc)
+               ; -> serve both io_write_bloc and ramdisk 
+     ; save_bloc: copy bloc from bank (since buf io in c0:4000)
+     ; load_bloc: same
+
+;--- v0ao ---
+  ;16: Use IMPORT_SALO_SHARED_DEPS
+
+;--- v0ak ---
+  ; 9: save_bloc: must handle 0 = 256
+     ;  Remove global track_param#:
+         ; - instead # of meta params saved for each track
+     ; Connect BK_IO before disc_out_close!
+;--- v0aj ---
+  ; 8: write_bloc/read_bloc: connect bk io as buffer is in &c0:&4000
+                 ; See there for slowness concern
+  ; 7: Adapt code for new track.o
+     ; Fix load_col / SAVE_COL
+     ; Each phrase defines its metadata size (0 for now)
+ ; Mar 6 v0.0ac WIP
+
 dev_checks = 1
 need_room = 1
 todo  = 1
 to_be_implemented = &BE00
 
-hist
-; \/\/ 2024 \/\/\/\/\/\/\/\/\/
- ; Jun
-   ; ---- v0l ------
-    ; 22 Serialize instr by columns
-    ; 19 Disable nest: would actually be a kind of phrase!
-       ; save/load selected assets (to keep UI)
-use_nest = 0
-    ; 11 Reprise! Remove call to ayane rom and orgams rom!
-       ; Clean-up obsolote code base on old api
-
 memmap
       IMPORT "const.i"
+      IMPORT "macro.i"
       IMPORT "memmap.i"
-      IMPORT "memcpc.o"
-      IMPORT "chung.o"  ; instr
-      IMPORT "chunk.o"  ; Next_node
-      IMPORT "phrase.o"
-      IMPORT "track.o"
-      IMPORT "ply.o"    ; from mapping /events/
+      IMPORT "import.i"
+          IMPORT_SALO_DEPS(1)
+
+      ORG io
+      IMPORT "io.o"
 
 disp_nl = &BE00         ; TODO: init (+test?)
 disp_chr = &BE00        ; "
 
-buffer = &8800          ; after disc_buffer at 8000
-buffer' = &8900
+buffer = salo_buf1
+buffer' = salo_buf2
 
 ;--------------
 disc_in_open = &BC77
@@ -40,6 +73,8 @@ disc_out_open = &BC8C
 disc_out_close = &BC8F
 disc_out_abandon = &BC92
 
+txt_get_cursor = &BB78
+src_char_position = &BC1A
 
 ; Follow same ids than orgams.
 
@@ -176,7 +211,7 @@ lt_lp
           ld (de),a:inc e
           ld c,a:ld b,0
           inc bc        ; +1 for loop len
-          call io_load_bloc
+          call _load_bloc
 
           pop hl
           call register_table
@@ -268,6 +303,78 @@ li_end
       ENDM
 
 ;-----------------------------------
+      ORG salo
+salo_code
+          jr load_file
+;--------------------------------------------------
+save_file
+; See /save_tag/ for some design choices on format.
+
+;in : hl pointe sur nt name
+;     de sur data custom                     
+;     bc longueur data custom
+;--------------------------------------------------
+
+; NB: We use exception mecanism to simplify error handling.
+    ; If any error in helper's helper routine, we just exit.
+          ASSERT($ == salo_code+2) ; ayane direct call
+
+          ld (v_savesp),sp
+
+          push bc
+          push de
+          push hl
+          call disc_out_abandon
+          call connect_bk_io
+
+          pop hl
+          call get_text_len
+          ld de,disc_buffer
+          call disc_out_open
+          ld a,fail_opening:jp nc,os_error
+
+          pop de
+          pop bc
+          ld hl,io_write_bloc
+          call save
+          call connect_bk_io
+          jp c,disc_out_close ; exit ok
+
+          call disc_out_abandon
+          or a
+          ret
+
+;-------
+load_file
+;in hl: adr filename (nt)
+;   de: dest meta_data
+;   bc: longueur max meta_data
+;out bc: longueur really copied
+
+          ld (v_savesp),sp
+
+          push de
+          push bc
+          push hl
+          call disc_in_abandon
+          call connect_bk_io
+          pop hl
+          call get_text_len
+          ld de,disc_buffer
+          call disc_in_open
+          ld a,fail_opening
+          jp nc,ol_error
+
+          pop bc
+          pop de
+          ld hl,io_read_bloc
+          call load
+;!!! cannot jump ol_error or ol_dos_error:
+;!!! (v_savesp) has been updated to load level: dangling sp.
+          push af
+          call disc_in_close
+          pop af
+          ret
 
       IF 0
 lcp_setphrase
@@ -279,7 +386,7 @@ lcp_setins
           jp row_set_instr
 lcp_setvol
           call load_a
-          jp row_set_vol
+          jp row_set_vol_encoded
 lcp_setnote
           call load_a
           jp row_set_note
@@ -299,26 +406,29 @@ load_bloc_c
 ;Like load_bloc, but size in C > 0
           ld b,0
 load_bloc
-;in: de=dest
-   ; bc=size
+;in: de = dest
+   ; bc = size. 0 means 0 (e.g. for empty field text)
 ;out: de+=bc
     ; hl = buffer'
           ld de,buffer'
           push de
-          call io_load_bloc
+          call _load_bloc
           pop hl
           ret
-io_load_bloc
-;in: de=dest
-   ; bc=size
-;out: de+=bc
-    ; hl = buffer'
-          push bc
- ;          ld b,0:dec c:inc bc
-          call jp_ix
+
+_load_bloc
+;in: de = dest
+   ; bc = size. 0 means 0 (e.g. for empty field text)
+;out: de+=bc   
+          ld a,c:or b
+          scf
+          ret z         ; shortcut since we might ldir
+
+          push bc       ; needed?
+          call _do_load
           pop bc
           ret c
-ol_dos_err
+;ol_dos_err
           ld a,fail_doserror
 ol_error
           push af       ; Just for A. NC & Z will be set anyway
@@ -334,80 +444,80 @@ exit_err
           or a
           ret
 
+_do_load
+      IF dev_checks
+;We don't load more than 255 bytes at a time
+          inc b:dec b:call nz,fail
+      END
+          ld a,d:cp &80:jr nc,.load_to_de
+;must use tmp buf    
+          push bc
+          push de
+          ld de,buffer'
+          push de
+          call .load_to_de
+          pop hl
+          pop de
+          pop bc
+          ldir          ; even if error. Nevermind
+          ret
+
+.load_to_de
+          call get_bk_connected
+          push af
+          call connect_bk_io
+jp_io_load call &BE00
+          pop bc        ; preserve carry
+          jp connect_b
+
 programming_error = &BE00
 fail  = &BE00
 mess  = &BE00
 
 version = 0
 
-;-------
-load_file
-;in hl: adr filename (nt)
-;   de: dest meta_data
-;   bc: longueur max meta_data
-;out bc: longueur really copied
-
-          ld (v_savesp),sp
-   ;       call check_save_sp
-
-          push de
-          push bc
-          push hl
-          call disc_in_abandon
-
-   ;       ld hl,tmp_checksums:ld (vt_checksum_pnt),hl
-
-          pop hl
-          call get_text_len
-          ld de,disc_buffer
-          call disc_in_open
-   ;       call check_save_sp
-          ld a,fail_opening
-          jp nc,ol_error
-
-          pop bc
-          call load
-          call c,disc_in_close
-          jp nc,ol_dos_err
-          ret           ; ! Ok 
-
 
 ;----------------------------
 load
 ;IN: BC: meta data to read
    ; DE: dest meta data
-   ; IX: Actual io_load_bloc routine (file or mem)
+   ; HL: Actual io_load_bloc routine (file or mem)
 ;----------------------------
 
           ld (v_savesp),sp
-
-; Note: not bufferized like save: legacy code. Slower, nevermind
-         ; call init_buffer_r
+          ld (jp_io_load+1),hl
 
           push bc
+          push de
           ld hl,tag_ayane:call check_tag
-          call song_reset
+          call Reset_tracks_and_subsongs
+          call phrase_reset
 
 ; ----- Description -----
           LOAD_TEXT()   ; author
           LOAD_TEXT()   ; album/title/description
-
+; ----- General Delai_ui --------
+      IF need_room
+; Group values by module and bloc load
+      END
+          call load_a:call set_delai_ui
+; ----- Diapason ---
+          call load_hl:call set_diapason
 ; ----- Custom -----
           call load_bc
-          pop hl        ;len meta_data
+          pop de        ;dest
+          pop hl        ;len
           or a
           sbc hl,bc
           add hl,bc
           jr nc,.ol_wantge
 
 ;copy len indicated by caller (hl here), skip the rest.
-
-          pop de
           push bc
           ld c,l
           ld b,h
           push bc
-          call io_load_bloc
+          call _load_bloc
 
           pop bc
           pop hl
@@ -421,8 +531,7 @@ load
 
 .ol_wantge
 ;copy len indicated by file (bc) <= wanted len
-          pop de
-          call io_load_bloc
+          call _load_bloc
 
 .ol_com
 ;From now : every error is fatal.
@@ -448,79 +557,73 @@ load
 ; -- Id    
           call load_a
           IS_END_OF_LIST():jp z,instr_end
+          ld (cur_instr),a ; for dbg
           push af
 ; -- Alternative # 
           LOAD_ALT#()
+; --- instr replay freq.
+          call load_hl
+          ld bc,replay_50_08Hz
+          or a:sbc hl,bc:call nz,programming_error
+; -- Type
+          call load_a   ; Type (default, chip_down_arp ...)
+          push af
 ; -- Meta flags 
   ; Bit 0: built-in instr?
          ;  For now, not such thing -> 0
-         ;  When 
+      ;21: 12bits vs 16bits
           call load_a:or a:call nz,unexpected
-; -- Type
-          call load_b   ; Type (default, chip_down_arp ...)
-; -- Params     
-          call load_bloc_with_size
+; -- Params        
+          call load_bloc_with_size ; get c=size
           pop af
+          ld b,a
+          pop af        ; id
           call New_instr
-          push af
 ; -- Name
           LOAD_TEXT()
-; -- Table
-          pop af        ; row size 
-          ld c,a
-          or a:jr z,.ok_table ; No table
-          inc a:jr z,.variable_row
-;Fixed row size 
+; -- Table (by columns)
   ; ---- rows#       
           call load_b
-  ; ---- rows
-.rowlp
-          push bc
-          call load_bloc_c
-          ld a,c
-          call instr_append_rows
-          pop bc
-          djnz .rowlp
-          jr .finalize_table
-
-.variable_row
-  ; ---- rows#       
-          call load_b
+;for some reason 0 rows is accepted
+;(note: instr_set_rows# currently set 256 rows for b=0)
+          ld a,b:or a
+          jr z,.col_end ; no col if no rows
           call instr_set_rows#
 ; -- work by column (not necessarily same order than in-memory)
-; Each column has a header (its type) -> future proof.
-          ld c,b        ; nb rows#
-      MACRO LOAD_COL field
+; Some column might be missing, so we rely on type. Plus, future-proof
+.col_lp
+col_end_mark = 0
+col_flag = 1
+col_vol = 2
+col_arp = 3
+col_pitch = 4
+col_noise = 5
+col_hard_type = 6       ; +trigger flag
+col_hard_arp = 7
+col_hard_pitch = 8
+col_fx0_type = 9
+col_fx0_param = 10
+col_fx0_arp = 11
+col_fx0_pitch = 12
+col_fx1_type = 13
+col_fx1_param = 14
+col_fx1_arp = 15
+col_fx1_pitch = 16
+
           call load_a
-          cp column_type_custom:call nz,unexpected
-          call load_bloc_c_if_not_null
-;Not: no-op if no field
-          call field
-      ENDM
-  ; --- flag   
-          LOAD_COL(set_flags)
-  ; --- vol / env type
-          LOAD_COL(set_vols)
-  ; --- arp
-          LOAD_COL(set_arps)
-  ; --- pitch
-          LOAD_COL(set_pitchs)
-  ; --- noise
-          LOAD_COL(set_noises)
-  ; --- hard env
-          LOAD_COL(set_hard_envs)
-  ; --- special fx. None for now
-          call load_a
-      IF column_type_default
-   !! review test
-      END
-          or a:call nz,unexpected
-;enchaine
-.finalize_table
+          ASSERT(col_end_mark == 0)
+          or a
+          jr z,.col_end
+          call load_col
+          jr .col_lp
+.col_end
   ; ---- row loop (even if no rows)
           call load_b
-          call instr_set_loop
-.ok_table
+no_loop_tag = -1
+          ASSERT(no_loop_tag == -1)
+          ld a,b:inc a
+          call nz,instr_set_loop
+;.ok_table
 
 ;enchaine     
 .instr_finalize
@@ -529,16 +632,12 @@ load
 .instr_end
 ;--Select
           LOAD_SELECTED()
-          or a
-          call nz,Song_select_instr
+          call Song_select_instr
 
 ; -------------------
 ; ----- Phrases -----
 ; -------------------
           ld hl,tag_phras:call check_tag
-
-; ---- param#
-          call load_a:ld (phrase_param#_infile),a
 
 phrases_lp
 ; -- Id (or sentinelle end)
@@ -546,34 +645,32 @@ phrases_lp
           IS_END_OF_LIST_INT()
           jr z,.phrases_end
 
-          ld a,b:or a:call nz,to_be_implemented ; no id > &100 for now
-          ld a,c
-          push af
-          ld bc,(phrase_param#_infile) ; for c
-          call load_bloc_c
-          pop af
-          call song_select_new_phrase
-
 ; -- Alternative #
           LOAD_ALT#()
-; -- Type. For now, just one type
+; -- Type . For now, just one type
    ; In the future: group (nested phrase)
-          call load_a:call nz,unexpected
+          call load_a:cp type_phrase:call nz,unexpected
+
+          ld a,b:or a:call nz,to_be_implemented ; no id > &100 for now
+          ld a,c
+          call song_select_new_phrase
+
+; -- delai_ui  
+; !! not yet plugged in phrase header (need some room?)
+; 0 for now
+          call load_a:or a:call nz,unexpected
 ; -- Name
           LOAD_TEXT()
 ; -- Color and meta infos 
-          ld a,(phrase_param#_infile)
-          ld c,a
-          call load_bloc_c
+          call load_bloc_with_size
           call phrase_set_params
   ; ---- rows# 
           call load_b
-      BRK
-; Check what happens if 0 rows
+          inc b:dec b:jr z,.finalize_phrase
   ; ---- rows
 .rowlp
           push bc
-          call phrase_select_new_row
+          xor a:call phrase_select_new_row
 ; -- duration
           call load_a
 ; Explicit duration rather than using phrase_select_row_at:
@@ -586,16 +683,15 @@ phrases_lp
 ;fx load
           ld b,4
 .lcp_fxlp
-; !! copypasted
+; !! copypasted from compile 
           rr c:jr nc,lcp_fxok ; flag FX 0, 1, 2, 3
 
       BRK
 ; must check / reactivate APIs for fx
-
-      IF 0
           push bc
           ld a,4:sub b:ld c,a ; Fx #
           call load_a   ; Fx id
+      IF 0
           call row_set_fx
 
           ld c,a
@@ -642,24 +738,22 @@ phrases_lp
           rr c:call c,unexpected ; eoc link should have been followed
       END
           rr c:call c,lcp_setins
-          rr c:call c,lcp_setvol
           rr c:call c,lcp_setnote
+          rr c:call c,lcp_setvol
 
           pop bc
           djnz .rowlp
-
+.finalize_phrase
 ; Needed to populate phrase.va_row_pnt
-; Otherwise, prase.connect_current_row would create a ghost row.
+; Otherwise, phrase.connect_current_row would create a ghost row.
       IF todo
 ; should it be done at phrase creation instead?
       END
-          ld de,0
-      BRK
-          call phrase_select_row_at
-
+ ;         ld de,0
+  ;        call phrase_select_row_at   ; actually creates an empty row?
           LOAD_ALT_SELECTED()
+          jp phrases_lp
 
-          jr phrases_lp
 .phrases_end
           LOAD_SELECTED_INT()
           call song_select_phrase
@@ -671,82 +765,69 @@ phrases_lp
   ;        ex de,hl
   ;        call phrase_select_row_at
 
-      IF use_nest
-!! no. Actually use "type" field from phrase.
-; --------------------------
-; ----- Nested phrases -----
-; --------------------------
-          ld hl,tag_group:call check_tag
-; Nothing for now, but at least we have the chunk (future proof)
-          call load_int
-          IS_END_OF_LIST_INT()
-          call nz,unexpected
-
-          SAVE_SELECTED_INT()
-      END
 
 ; ------------------
 ; ----- Tracks -----
 ; ------------------
           ld hl,tag_track:call check_tag
-
-
-; --- Shared struct size      
-      IF todo
-; If < as current struct size: load < and reset the reset
-; If > ": warn that tool is out of date
-; For now, just assert (done here because Song_select_new_track
-; doesn't have a generic API. It expect B and C as params)
-; Might be refactored anyway when introducing alternatives.
-      END
-          call load_a
-          cp track_param#:call nz,unexpected
+          call txt_get_cursor
+          dec l         ; compensate NL
+          dec l         ; logical to physical row
+          ld h,5
+          call src_char_position
+          ld (progress_adr),hl
 
 track_lp
+          call progress_bar
           call load_a   ; id
-          IS_END_OF_LIST():jr z,track_end
-;--alt
+          IS_END_OF_LIST():jp z,track_end
+;--alt            
+          ld (dbg_current_track),a
           push af
           LOAD_ALT#()
+;--Params 
+;None for now                        
+      IF track_param#
+          call load_bloc_with_size
+          ld a,c:cp track_param#:call nz,unexpected
           pop af
-;--Params
-          call load_b   ; output
-          call load_c   ; mix mode
+!! todo: pass params
+      ELSE
+          call load_a:or a:call nz,unexpected
+          pop af
+      END
           call Song_select_new_track
+;-- Not: no name associated, annotations will be more versatile
+
 ;--Get all events
           ld hl,timestamp
           xor a
           ld (hl),a:inc hl
           ld (hl),a:inc hl
           ld (hl),a
-          call get_current_track_pnt
+          call get_current_track_header
 .hooklp
 .evtlp
+          ld hl,timestamp ; current timestamp before update
 ; -- Type
           call load_a
-; -- Check if end of track
+          IS_END_OF_LIST():jr z,.evtend
           cp type_evt_stop:jr z,.track_stop
           cp type_evt_loop:jr z,.track_loop
 ; Evt null = intermediate hook, just to handle duration > &1000
 ; No actual event to encode, just update timestamp,
 ; subsequent setters (e.g. Set_phrase_at_t) will create hook as needed.
           cp type_evt_null:jr z,.evtend
-      IF type_evt_change_phrase - 1
- !! review
-      END
-          or a:jr z,.set_phrase
-      IF type_evt_transpose - 2
- !! review
-      END
+          ASSERT(type_evt_change_phrase == 1)
+          dec a:jr z,.set_phrase
+          ASSERT(type_evt_transpose == 2)
           dec a:jr z,.set_transpose
           call unexpected
 
 .set_phrase
-          call load_a
-          ld hl,timestamp
+          call load_a_as_int
           call Set_phrase_at_t
-; set_phrase is last event
-          jr .evtend
+          jr .evtlp
 
 .set_transpose
           call load_a
@@ -755,19 +836,28 @@ track_lp
 .evtend
           call load_bc  ; duration
           ld hl,timestamp
-          ld a,c:add (hl):ld (hl),a
-          ld a,b:adc (hl):ld (hl),a
+          ld a,c:add (hl):ld (hl),a:inc hl
+          ld a,b:adc (hl):ld (hl),a:inc hl
           jr nc,$+3:inc (hl)
           jr .hooklp
 
 .track_loop
-          call to_be_implemented
-          jr .track_finalize
+          push bc
+          ld de,timeloop
+          push de
+          ld c,3
+          call load_bloc_c
+          pop hl
+          call Set_track_loop
+          pop bc
+;enchaine 
 .track_stop
-;Nothing to do 
-.track_finalize
+; here bc= last duration met
+          ld e,c:ld d,b
+          call Set_last_hook_duration ; see there for rationale
+
           LOAD_ALT_SELECTED()
-          jr track_lp
+          jp track_lp
 
 track_end
           LOAD_SELECTED()
@@ -790,15 +880,17 @@ track_end
           call Subsong_add
 ; -- Alternative #
           LOAD_ALT#()
-; Name 
+; -- Name 
           LOAD_TEXT()
-; Tracks used
-.songtracks
+; -- Tracks used
+.song_track_lp
           call load_a
-          IS_END_OF_LIST():jr z,.songtracks_end
+          IS_END_OF_LIST():jr z,.song_track_end
+          ld c,a
+          call load_bloc_c_if_not_null
           call Subsong_add_track
-          jr .songtracks
-.songtracks_end
+          jr .song_track_lp
+.song_track_end
 
           LOAD_ALT_SELECTED()
           jr .song_lp
@@ -810,29 +902,26 @@ track_end
 ; ----------------
 ; sample
 ; ----------------
-          ld hl,tag_smpl:call check_tag
 ; No samples for now
-          call load_a:cp SENTINELLE:call nz,unexpected
+          ld hl,tag_smpl:call _tag_and_sentinelle
 
 ; ----------------
 ; Bookmarks
 ; ----------------
-          ld hl,tag_book:call check_tag
 ; 0 items for now
-          call load_a:cp SENTINELLE:call nz,unexpected
+          ld hl,tag_book:call _tag_and_sentinelle
 
 ; ----------------
 ; Extra data
 ; ----------------
-          ld hl,tag_xtra:call check_tag
 ; 0 items for now
-          call load_a:cp SENTINELLE:call nz,unexpected
+          ld hl,tag_xtra:call _tag_and_sentinelle
 
 ; ----------------
 ; History
 ; ----------------
-          ld hl,tag_hist:call check_tag
-          call load_a:or a:call nz,unexpected
+; 0 items for now
+          ld hl,tag_hist:call _tag_and_sentinelle
 
 ; ----------------
 ; Finito
@@ -840,19 +929,20 @@ track_end
           ld hl,tag_end
 ;enchaine
 check_tag
+;In: hl = tag
 ;Exit in case of error
-          call peek_tag
+          call check_tag4
+          scf           ; For final success exit
           ret z
           jp ol_error
 
-peek_tag
+check_tag4
+;check 4-bytes tag 
 ; Return Z if ok, NZ otherwise (A=error)
           call print_tag
 
-;check 6-bytes tag
-          call check_tag_:ret nz
-          call check_tag_:ret nz
-          call check_tag_:ret nz
+          call check_tag_
+          call z,check_tag_
           ld a,fail_badversion
           ret           ; Z if ok
 
@@ -871,6 +961,51 @@ _ct_
           pop bc
           ret           ; Z if ok
 
+_tag_and_sentinelle
+          call check_tag
+          call load_a:cp SENTINELLE:call nz,unexpected
+          ret
+
+load_col
+; In: A= col id
+    ; C= rows#
+          push af
+          call load_a
+; How each instr column (flags, arp, ...) is encoded
+; Will allow:
+   ; - indirection (table) like in 
+   ; - mix-in special handling (like chipnsfx's 
+; For now all cols have the same type (saved: future-proof) 
+column_type_default = 0 ; reserved
+column_type_const = 1   ; not used
+column_type_table = 2   ; not used
+column_type_table' = 3  ; table with special modulo
+column_type_custom = 4  ; only type used (for serialization)
+column_type_ramp = 5    ; not used (future: mimick chipnsfx)
+          cp column_type_custom:call nz,unexpected ;custom = row data
+
+          call load_bloc_with_size
+
+          pop af
+          ASSERT(col_flag == 1)
+          dec a:jp z,set_flags
+          dec a:jp z,set_vols
+          dec a:jp z,set_arps
+          dec a:jp z,set_pitchs
+          dec a:jp z,set_noises
+          dec a:jp z,set_hard_types
+          dec a:jp z,set_hard_arps
+          dec a:jp z,set_hard_pitchs
+          dec a:jp z,set_fx0_types
+          dec a:jp z,set_fx0_params
+          dec a:jp z,set_fx0_arps
+          dec a:jp z,set_fx0_pitchs
+          dec a:jp z,set_fx1_types
+          dec a:jp z,set_fx1_params
+          dec a:jp z,set_fx1_arps
+          dec a:jp z,set_fx1_pitchs
+          call unexpected
+
 load_b
           call load_a
           ld b,a
@@ -886,7 +1021,7 @@ load_a
           push bc
           ld de,v_temp_word
           ld bc,1
-          call io_load_bloc
+          call _load_bloc
           dec de
           ld a,(de)
           pop bc
@@ -902,7 +1037,7 @@ load_a'
           ret nz
           push af:push bc:push de:push hl
           ld bc,&0100
-          call io_load_bloc
+          call _load_bloc
                         ; for some reason DE<>buffer+&100
           pop hl:pop de:pop bc:pop af
           ret
@@ -920,7 +1055,7 @@ load_bc
           push de
           ld de,v_temp_word
           ld bc,2
-          call io_load_bloc
+          call _load_bloc
           ld bc,(v_temp_word)
           pop de
           pop hl
@@ -942,7 +1077,6 @@ tag_ayane BYTE "AYA!",0
 tag_table BYTE "Tabl",0
 tag_instr BYTE "Inst",0
 tag_phras BYTE "Phrs",0
-tag_group BYTE "Nest",0
 tag_track BYTE "Trck",0
 tag_song BYTE "Song",0
 tag_smpl BYTE "Smpl",0
@@ -952,41 +1086,6 @@ tag_hist BYTE "Hist",0
 tag_end BYTE "End!",0
 faketag_ok BYTE "Ok!",0
 
-;--------------------------------------------------
-save_file
-; See /save_tag/ for some design choices on format.
-
-;in : hl pointe sur nt name
-;     de sur data custom                     
-;     bc longueur data custom
-;--------------------------------------------------
-
-; NB: We use exception mecanism to simplify error handling.
-    ; If any error in helper's helper routine, we just exit.
-
-          ld (v_savesp),sp
-
-          push bc
-          push de
-          push hl
-          call disc_out_abandon
-
-          pop hl
-          call get_text_len
-          ld de,disc_buffer
-          call disc_out_open
-          ld a,fail_opening:jp nc,os_error
-
-          pop de
-          pop bc
-      BRK
-;          ld ix,flush_file ;  todo
-          call save
-          jp c,disc_out_close ; exit ok
-
-          call disc_out_abandon
-          or a
-          ret
 
 ;--------------------------------------------------
 save
@@ -996,6 +1095,8 @@ save
 ;     bc longueur data custom
 ;--------------------------------------------------
           ld (v_savesp),sp
+          ld (jp_io_save+1),hl
+
           call init_buffer_w
 
 ; -- Save state 
@@ -1005,7 +1106,7 @@ save
           call Song_get_instr:push af
 ;           call phrase_get_row_position:push hl
           call song_get_current_phrase:push af
-          call get_current_track_pnt:push af ; also gives ID
+          call get_current_track_header:push af ; also gives ID
           call Song_get_current_subsong:push af
 
 ; ----- Signature
@@ -1013,12 +1114,21 @@ save
 ; ----- Description -----
           SAVE_TEXT()   ; author
           SAVE_TEXT()   ; album/title/description
+; ----- General Delai_ui --------
+      IF need_room
+; Group values by module and bloc save
+      END
+          call get_delai_ui:call save_a
+; ----- Diapason ---
+          call get_diapason:call save_hl
 ; ----- Custom -----
 ; Aka metadata (peut etre de longueur 0)
 ;-> Info relative to editor itself, but not to the song.
+; (<>0 for nrt)
           call save_bc
           ex de,hl
-          call save_bloc
+          inc b:dec b:call nz,to_be_implemented ; save_bloc: 256 max
+          inc c:dec c:call nz,save_bloc
 ; ----- Tables -----
 .tables
           ld hl,tag_table:call save_tag
@@ -1042,26 +1152,35 @@ save
           push af
           call Song_select_instr
           jp z,.instr_next
+; -- Id    
 ;Here: A= type instr (default, chip_down_arp ...)
      ; H= params#
-     ; L= row size  
-; -- Id    
+     ; L= row size 
+          inc l:call nz,unexpected ; Only variable rows 
+          dec l
           pop bc:push bc ; b = ID (was a)
           push hl
           push af       ; type
           call save_b
-
-; -- Alternative #
+; -- Alternative #        
           SAVE_ALT#()
-; -- Flags 
-  ; Bit 0: built-in instr?
-         ;  For now, not such thing -> 0
-          xor a:call save_a
-
+; -- Instr replay frequence
+; Futur: faster than player (e.g. 300 hz) or slower
+; Note: "same as player" wouldn't make much sense, we want those
+      ; decoupled.     
+; call instr_get_replay_period
+          ld hl,replay_50_08Hz:call save_hl
 ; -- Type
           pop af
           ld (cur_instr_type),a
+; For now, only type 2 "default"
+          cp 2:call nz,unexpected
           call save_a
+; -- Flags 
+  ; Bit 0: built-in instr?
+         ;  For now, not such thing -> 0
+  ; Bit 1: (todo): 12bits vs 16bits vs ????  (issue #1)
+          xor a:call save_a
 ; -- Params   
 ; Storing number of params allows future extension.
 ; Number of params only depends on type (and version!),
@@ -1074,69 +1193,65 @@ save
           push hl
           instr_head_ext - instr_head_rows ** inc hl
           ld c,b
-          call save_bloc_with_size
+          call save_bloc_with_size0
 ; -- Name
           call save_str_pnt
-; -- Table
+; -- "Table"
           pop hl
           pop bc        ; c = row size (was L)
-          ld a,c:or a:jp z,.ok_table ; No TABLE if row_size = 0
-          inc a:jr z,.variable_row
-  ; ---- rows# 
-; We save number of rows: 
-   ; + table can use same routine
-   ; + less space on disc (no slot before each row for sentinelle)
-   ; + simpler
-          push bc
-          call instr_get_rows#
-          call save_c
-  ; ---- rows
-          pop bc        ; c = row size
-      BRK
-.rowlp
-; Here point to link to next row to store
-          call is_last_row:jr z,.finalize_table
-          call Next_node:call z,mess
-          push hl
-          idsz ** inc hl ; skip link
-          call save_bloc
-          pop hl
-          jr .rowlp
+          ld a,c
+          inc a:call nz,unexpected ; only dynamic (needed and suffisient)
 
-.variable_row
           call instr_get_rows#
           call save_c
+ ; 0 rows allowed (for chipnsfx? more generic?)
+ ; if 0 rows, no col
+          inc c:dec c:jp z,.finalize_instr
 ; -- work by column (not necessarily same order than in-memory)
-; Each column has a header (its type) -> future proof.
-      MACRO SAVE_COL field
+; Each column has a header (its type)
+   ; -> future proof for table indirection
+   ; custom= raw data (discriminate 8 vs 16 bits
+      MACRO SAVE_COL type,get_field
+          ld a,type:call save_a
           ld a,column_type_custom:call save_a
           ld hl,buffer'
-          call field
-          call save_bloc_a_if_not_null
+          call get_field
+          ld c,a
+          call save_bloc_with_size0
       ENDM
   ; --- flag        
-          SAVE_COL(get_flags)
+          SAVE_COL(col_flag,get_flags)
   ; --- vol / env type
-          SAVE_COL(get_vols)
+          SAVE_COL(col_vol,get_vols)
   ; --- arp
-          SAVE_COL(get_arps)
+          SAVE_COL(col_arp,get_arps)
   ; --- pitch
-          SAVE_COL(get_pitchs)
+          SAVE_COL(col_pitch,get_pitchs)
   ; --- noise
-          SAVE_COL(get_noises)
+          SAVE_COL(col_noise,get_noises)
   ; --- hard env
-          SAVE_COL(get_hard_envs)
-  ; --- special fx. None for now
-          ld a,column_type_default:call save_a
+          SAVE_COL(col_hard_type,get_hard_types)
+          SAVE_COL(col_hard_arp,get_hard_arps)
+          SAVE_COL(col_hard_pitch,get_hard_pitchs)
+  ; --- special fx0.
+          SAVE_COL(col_fx0_type,get_fx0_types)
+          SAVE_COL(col_fx0_param,get_fx0_params)
+          SAVE_COL(col_fx0_arp,get_fx0_arps)
+          SAVE_COL(col_fx0_pitch,get_fx0_pitchs)
+  ; --- special fx1.
+          SAVE_COL(col_fx1_type,get_fx1_types)
+          SAVE_COL(col_fx1_param,get_fx1_params)
+          SAVE_COL(col_fx1_arp,get_fx1_arps)
+          SAVE_COL(col_fx1_pitch,get_fx1_pitchs)
 
-.finalize_table
+          ld a,col_end_mark:call save_a
+
+.finalize_instr
   ; ---- row loop (even if no rows. nevermind, KISS)
           call instr_get_loop
+          jr c,$+4:ld b,no_loop_tag
           call save_b
-.ok_table
-
 ;enchaine                         
-.instr_finalize
           SAVE_ALT_SELECTED()
 .instr_next
           pop af
@@ -1149,6 +1264,7 @@ save
           pop af
 ; selected instr
           SAVE_SELECTED()
+          call Song_select_instr
 
 ; -------------------
 ; ----- Phrases -----
@@ -1158,9 +1274,7 @@ save
           call song_get_current_phrase
           push af
 
-; --- Shared for all phrases: # of params (serve as version indicator)
 phrase_param# = clip_header_size-fc_color
-          ld a,phrase_param#:call save_a
 
 ; --- Each phrase
           xor a         ; a = phrase #
@@ -1182,18 +1296,24 @@ phrase_param# = clip_header_size-fc_color
           ld a,(hl):inc hl
           cp type_phrase:call nz,unexpected
           call save_a
+; -- delai_ui  
+; !! not yet plugged in phrase header (need some room?)
+          xor a:call save_a ; 0 means: use global setting
 ; -- Name 
           CHECK_EQUAL(fc_name,2)
           call save_str_pnt
 ; -- Color and meta infos
           CHECK_EQUAL(fc_color,4)
           ld c,phrase_param#
-          call save_bloc
-  ; ---- rows# 
+          ASSERT(phrase_param# > 0) ; At least color
+          ASSERT(phrase_param# < 256)
+          call save_bloc_with_size
+; -- rows# 
 ; We save number of row, sentinelle would be cumbersome
           call phrase_get_rows#
           call save_a
-  ; ---- rows
+          or a:jr z,.row_end
+; -- rows
           call connect_phrase_begin
 .row_lp
       IF dev_checks
@@ -1241,14 +1361,14 @@ phrase_param# = clip_header_size-fc_color
           bit bit_instr,b:jr z,.ok_instr
           call save_ldi
 .ok_instr
-; -- Vol
-          bit bit_vol,b:jr z,.ok_vol
-          call save_ldi
-.ok_vol
 ; -- Note
           bit bit_note,b:jr z,.ok_note
           call save_ldi
 .ok_note
+; -- Vol
+          bit bit_vol,b:jr z,.ok_vol
+          call save_ldi
+.ok_vol
 ; Note: we don't store "reserved byte",
       ; as it is meant to be housekeeping 
           inc hl
@@ -1269,14 +1389,6 @@ phrase_param# = clip_header_size-fc_color
      ;     call phrase_get_row_position
      ;     call save_hl
 
-      IF use_nest
-; --------------------------
-; ----- Nested phrases -----
-; --------------------------
-          ld hl,tag_group:call save_tag
-; Nothing for now, but at least we have the chunk (future proof)
-          SAVE_END_OF_LIST_INT()
-      END
 
 ; ------------------
 ; ----- Tracks -----
@@ -1284,19 +1396,16 @@ phrase_param# = clip_header_size-fc_color
 
           ld hl,tag_track:call save_tag
 
-          call get_current_track_pnt ; also gives ID
+          call get_current_track_header ; also gives ID
           push af
 
-; --- Params size serve as versionning.
-      IF track_param# - 2
-!! review save below and load
-      END
-          ld a,track_param#:call save_a
 ; --- Each track
           xor a         ; track id
 .track_lp
           push af
-          call get_track_pnt
+          ld (dbg_current_track),a
+          call Song_select_track ; needed to get loop
+          call get_current_track_header
           ld e,(hl):inc hl
           ld d,(hl):inc hl
           ld a,e:or d:jp z,.track_next ; don't store empty track!
@@ -1304,10 +1413,16 @@ phrase_param# = clip_header_size-fc_color
           pop af
           push af
           call save_a
+; -- Alternative #
+          SAVE_ALT#()
 
-;-- Params
-          ld c,track_param#
-          call save_bloc
+;-- Params (none for no)
+      IF track_param#
+          ASSERT(track_param# < 256)
+          call save_bloc_with_size0
+      ELSE
+          xor a:call save_a
+      END
 
 ;-- Events (flatten them)
           ex de,hl      ; head of list of hooks
@@ -1318,6 +1433,7 @@ phrase_param# = clip_header_size-fc_color
           cp track_events_/&0100:call nc,mess
       END
           push hl
+          ld (dbg_current_hook),hl
           idsz ** inc hl
 ; -- Duration 
 ;will be stored after events,
@@ -1326,65 +1442,55 @@ phrase_param# = clip_header_size-fc_color
           ld c,(hl):inc hl
           ld b,(hl):inc hl
           push bc
-          xor a:ld (has_phrase_event),a
 ; -- Follow list of event 
           call Next_node
 ; Might be empty (intermediate hook or empty track)
           jr z,.evtend
 .evtlp
           push hl
+          ld (dbg_current_evt),hl
           idsz ** inc hl
-          ld e,(hl)
+          ld e,(hl):inc hl
           ld d,events/&0100
           dec de
           ld a,(de)     ; type
           call save_a
-      IF type_evt_comment
- !! review
-      END
+          ASSERT(type_evt_comment == 0)
           or a:call z,to_be_implemented ; 0: comment
-
-      IF type_evt_change_phrase - 1
- !! review
-      END
+          ASSERT(type_evt_change_phrase == 1)
           dec a:jr z,.set_phrase
-
-      IF type_evt_transpose - 2
- !! review
-      END
+          ASSERT(type_evt_transpose == 2)
           dec a:jr z,.set_transpose
 ;Note: events null/stop/loop are for serialization 
 ;but shouldn't exist in ram (null link or link+&8000 used instead)
           call unexpected
 
 .set_phrase
-          ld a,1:ld (has_phrase_event),a
-
+;Note: internally phrase is always last event,
+     ; but in .aya we store sentinelle anyway (future-proof)
           call Next_node ; phrase start in chunk
           call connect_bk_phrase
           ld l,chunk_start+fc_index
           ld a,(hl)
           call save_a_as_int
           call connect_bk_track
-          pop hl
-          call Next_node
-; set_phrase must be last event
-          call nz,unexpected
-          jr .evtend
+          jr .evtnxt
 
 .set_transpose
-          call save_ldi
+          ld a,(hl)
+;remove encoding x2
+          sra a:call c,unexpected
+          call save_a
+.evtnxt
           pop hl
           call Next_node
           jr nz,.evtlp
 .evtend
-          ld a,(has_phrase_event)
-          or a:jr nz,.okevt
-; -- marker end of list
-          xor a:call save_a
-.okevt
+; -- marker end of list   
+          SAVE_END_OF_LIST()
 ; -- store duration
-          pop bc:call save_bc
+          pop bc
+          call save_bc
 ; -- end of track?
           pop hl
           call connect_bk_track
@@ -1394,10 +1500,17 @@ phrase_param# = clip_header_size-fc_color
           ld a,l:or h:jr z,.track_stop
           bit 7,h
           jr z,.hooklp
-;.track_loop
-          call to_be_implemented
-; Must convert in-ram pointer to some index
+
+;.track_loop    
+          ld a,type_evt_loop:call save_a
+          res 7,h
+          call get_timestamp_from_hook
+          call nc,mess
+          ld l,c:ld h,b
+          ld c,3
+          call save_bloc
           jr .track_finalize
+
 .track_stop
           ld a,type_evt_stop:call save_a
 ;enchaine
@@ -1417,7 +1530,6 @@ phrase_param# = clip_header_size-fc_color
 ; ----- Songs -------
 ; -------------------
           ld hl,tag_song:call save_tag
-
           call Song_get_current_subsong
           push af
 
@@ -1430,13 +1542,17 @@ phrase_param# = clip_header_size-fc_color
           SAVE_TEXT()
 ; Tracks used 
           call Song_get_first_track
-.snglp
-          jr z,.sngend
-          call save_a
+          jr z,.song_track_end
+.song_track_lp
+          push hl
+          ss_trackid ** inc l
+          ASSERT(ss_size > 0)
+          ld c,ss_size:call save_bloc_with_size
+          pop hl
           call Song_get_next_track
-          jr .snglp
-.sngend
-          SAVE_END_OF_LIST() ; no more tracks
+          jr nz,.song_track_lp
+.song_track_end
+          SAVE_END_OF_LIST() ; no more 
 ; -- Selected alt
           SAVE_ALT_SELECTED()
 ;
@@ -1471,7 +1587,7 @@ phrase_param# = clip_header_size-fc_color
 ; ----------------
           ld hl,tag_hist:call save_tag
 ; 0 items for now
-          xor a:call save_a_as_int
+          SAVE_END_OF_LIST()
 
 ; ----------------
 ; FINITO
@@ -1484,41 +1600,39 @@ phrase_param# = clip_header_size-fc_color
           pop af:call Song_select_track
           pop af:call song_select_phrase
 ;          pop de:call phrase_select_row_at
-          pop af:or a:call nz,Song_select_instr
+          pop af:call Song_select_instr
 
 ;enchaine
 print_ok
           ld hl,faketag_ok
 ;enchaine
 print_tag
+          push af:push bc:push hl
+          ld b,4
+          call print_sized_str
+          call print_nl
+          pop hl:pop bc:pop af
+          scf           ; For final exit (success)
+          ret
+
+print_sized_str
+          ld a,(hl):inc hl
+          call &BB5A
+          djnz print_sized_str
+          ret
+
+print_nl
+          ld a,10:call &BB5A
+          ld a,13:jp &BB5A
           ret
       IF 0
           push ix:push iy
           push af:push bc:push de
 
-      BRK
-;FIX this mess
-      IF 0
-          ld a,i:ld b,a
-          ld a,(vo_thisbk)
-          cp b:call nz,exit_mess ; Sanity: must be in base bk
-
-          push hl
-          call far_call_bric:WORD disp_nl
-          pop hl
-          push hl
-          ld b,3        ;"ORG" "SRC" "LBL" "ChC"
-ptlp      ld a,(hl):inc hl
-          push hl
-          call far_call_bric:WORD disp_chr
-          pop hl
-          djnz ptlp
-
 ; -- reset progress bar --
           ld hl,(vdisp_scrpos)
           inc hl:ld (progress_adr),hl
           xor a:ld (progress_pix),a
-      END
           pop hl:pop de:pop bc:pop af
           pop iy:pop ix
           ret
@@ -1597,7 +1711,8 @@ load_a_as_int
 ;If assert, caller must use load_int instead
 ; (require new api to pass id then)
           call load_int
-          ld a,b:or a:call nz,to_be_implemented
+          inc b:dec b:call nz,to_be_implemented
+          ld a,c
           ret
 
 load_int
@@ -1620,6 +1735,17 @@ save_b    ld a,b
 save_a
       IF need_room
 ; Factorize with compile.poke_* 
+      END
+; debug
+      IF 0
+          push af
+          call get_bk_connected
+          push af
+          call connect_bk_track
+          ld a,(&466B):cp &4C:call nz,&BE00
+          pop af
+          call connect_a
+          pop af
       END
           push hl
 buf_pnt_w ld hl,buffer
@@ -1653,10 +1779,10 @@ flush
           ret
 
 _flush
-;Version with c=0 means 256
+;c=0 means 256
           push hl
           ld hl,buffer
-          call io_save_bloc
+          call _save_bloc
           pop hl
 ;enchaine
 init_buffer_w
@@ -1666,14 +1792,13 @@ init_buffer_w
           pop hl
           ret
 
-save_bloc_a_if_not_null
+save_bloc_with_size0
 ; In :hl = source
-     ; a = size (0 means 0)
-          or a
+     ; c = size (0 for 0)
+          call save_c
+          inc c:dec c
           ret z
-          ld c,a
           jr save_bloc
-
 save_bloc_with_size
 ; In :hl = source
      ; c = size (0 for 256)
@@ -1691,12 +1816,12 @@ save_bloc
      ;bc preserved
           call flush    ; must flush data already there
 ; Enchaine
-io_save_bloc
+_save_bloc
 ;In: hl = source
-   ;  c = size  (0= &100)
+   ;  c = size. 0 means 256 (for flush)
           push bc:push de
           ld b,0:dec c:inc bc
-          call jp_ix
+          call _do_save
           pop de:pop bc
           ret c
 ; Enchaine
@@ -1706,7 +1831,26 @@ os_err_dos
 os_error
           jp exit_err
 
-jp_ix     jp ix
+_do_save
+          ld a,h:cp &80:jr nc,.save_from_hl
+;Must copy out of bank
+          ld de,buffer
+          push de
+          push bc
+          ldir
+          pop bc
+          ex (sp),hl    ; hl=buffer
+          call .save_from_hl
+          pop hl        ; source+size
+          ret
+
+.save_from_hl
+          call get_bk_connected
+          push af
+          call connect_bk_io
+jp_io_save call &BE00
+          pop bc        ; preserve carry
+          jp connect_b
 
 
 get_text_len
@@ -1720,13 +1864,41 @@ gtl_lp    inc b
           pop hl
           ret
 
+progress_bar
+; NB: progress_adr set by org.
+          push hl
+          ld hl,(progress_adr)
+          ld a,h:or &E0:ld h,a ; +4 lines + sanity
+          ld a,(progress_pix)
+          scf:rra:jr nc,pbar_ok
+          inc hl:ld a,&80
+pbar_ok
+          ld (progress_adr),hl
+          ld (progress_pix),a
+          and &77:ld (hl),a
+          pop hl
+          ret
+
+
+; Stable next import for small changes
+; Also easier debugging, as vars locations are stable.
+      FILL -$ AND &0F,&F7
+
 ; -------- Local vars -----------------
 
 v_savesp WORD           ; Ease error handling / exit
 v_temp_word WORD 
-cur_instr_type BYTE 
-has_phrase_event BYTE 
-phrase_param#_infile BYTE 
-; track_param#_infile BYTE  !! not used, as we only support 2 for now
+cur_instr BYTE          ; for dbg
+cur_instr_type BYTE     ; idem
+dbg_current_track BYTE  ; idem
+dbg_current_hook WORD 
+dbg_current_evt WORD 
 timestamp SKIP 3
+timeloop SKIP 3
+progress_adr WORD 
+progress_pix BYTE 
+
+salo_end
+          LIMIT(ged)
+
 

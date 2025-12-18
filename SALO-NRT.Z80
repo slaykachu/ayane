@@ -287,7 +287,7 @@ test_big
 ;-------
 ;Full file 
           call nrt_init
-          ld hl,.name
+          ld hl,vampire_name
           ld bc,0
           call load_file:call nc,fail
           ld de,destnrt:call nrt_save_no_meta
@@ -297,8 +297,6 @@ test_big
           ld bc,vampire_size
           call compare_sized
           ret
-
-.name BYTE "testdata/vampire1.aya",0
 
 check_save_load_save
 ; --- Check idempotence ----
@@ -477,7 +475,9 @@ empty_phrase_ = $ - empty_phrase
 
 nrt_save
 ;In: de=dest
-          ld a,d:add destsize/&0100 ; max size
+          ld a,d
+          add vampire_size+&FF /&0100 ; max size
+          cp &80:jr c,$+4:ld a,&80 ; clip to &8000
           call memdisk_init_write
           ld hl,memdisk_write_bloc
           ld de,dummy_meta
@@ -523,12 +523,14 @@ nrt_load
 
 dest_meta SKIP dummy_
 
-destsize = &1100        ; test_big.vampire1.aya
+destsize = &1100        ; max fitting in page c0:4000
 
 ;Since IO buf is in c0, that's safe to put them here
 destnrt = &5E00
 destnrt2 = destnrt + destsize
           ASSERT(destnrt2 + destsize <= &8000)
+
+vampire_name BYTE "testdata/vampire1.aya",0
 
 hi
       SKIP &A400 - $    ; poor man's limit
@@ -536,10 +538,11 @@ hi
       ORG &4C00
 vampire
 ;Created with chipconv.o
-      LOAD "testdata/vampire1.aya"
+      LOAD "testdata/vampire1.aya" ; Ref file
 ; vampire_size = $ - vampire   Doesn't work: unidos copy rounded to b00
-vampire_size = &0ABD
+vampire_size = &1110
 
+      IF 0
 ; Sanity checks
           ASSERT(memcpc_code == memcpc)
           ASSERT(scankey_code == scankey)
@@ -556,3 +559,4 @@ vampire_size = &0ABD
       SAVE "ayalib2.bin",rgb256_code,init_end - rgb256_code
       SAVE "ayaio.bin",io_code,io_end - io_code
       SAVE "ayasalo.bin",salo_code,salo_end - salo_code
+      END
