@@ -1,28 +1,24 @@
 ; ---- Init all modules ------
+; v0.0at  6 Nov 25 Use import.i for consistency
 ; v0.0ao  7 Sep 25 full_init: Call Init_periods
                  ; 
 ; v0.0ac  5 Mar 25
 todo  = 1
 
-; This middle-man module avoid unnecessary imports.
-; They are replaced by transitive imports, which are more efficient.
-; (well for now it's not exact sadly).
-; It also avoid cyclic dependency between chunk and ply.
-
-      IMPORT "const.i"  ; diapason_default, 
+      IMPORT "const.i"  ; diapason_default
       IMPORT "macro.i"
+      IMPORT "import.i"
+      IMPORT "memmap.i" ; uiloop
 
-      IMPORT "track.o"
-      IMPORT "phrase.o" ; for song_reset
-      IMPORT "chung.o"
-      IMPORT "ply.o"    ; for set_diapason, set_
-      IMPORT "instr.o"
-      IMPORT "chunk.o"
+          IMPORT_SHARED_DEPS()
+hu
+          IMPORT_SALO_DEPS(1)
+ho
+      IMPORT "periods.o" ; for set_diapason, init_periods
       IMPORT "widget.o" ; for init_widget
-      IMPORT "shortcut.o"
-      IMPORT "memcpc.o"
-; used by dummy_instr_sync
-      IMPORT "timer.o"
+      IMPORT "shortcut.o" ; setup_keys
+      IMPORT "timer.o"  ; fx_null
+
 
 bk_ayane = &C7
 
@@ -36,7 +32,7 @@ full_init
 ; in:  N/A     
           call Init_chunk_module
           call Init_chung
-          call Init_periods
+          call init_periods
           call phrase_reset
           call Init_track_module
           call setup_keys
@@ -136,3 +132,5 @@ _row2_ui
  !!! incomplete
       END
 
+init_end
+          LIMIT(uiloop)
