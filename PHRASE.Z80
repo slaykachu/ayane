@@ -75,8 +75,6 @@ makeroom = 1
       IMPORT "memcpc.o"
       IMPORT "chunk.o"
 
-connect_bk_base = &BE00 ; use connect_bk_phrase instead
-
 pos_flags = 1           ; Duration: 1 byte only
 flags_sz = 1
 ; Hack to avoid ambiguous label?
