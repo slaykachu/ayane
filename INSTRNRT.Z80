@@ -150,5 +150,3 @@ check_fx
       ORG free_ram_for_nrt
       IMPORT ":orgrel/prof.o"
 
-       or a:sbc hl,de:add hl,de:call nz,fail
-          ld de,.ref2code

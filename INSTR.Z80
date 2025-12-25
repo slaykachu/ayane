@@ -61,8 +61,10 @@ r14   = psg_regs+14     ; Reset by ply before iteration
       END
 
 ; \\\\\ 2025 ///  
-; -- alpha 1.5 --
+; -- alpha 1.7 --
 ; Dec
+ ; 19 deactivate instr_state
+; -- alpha 1.5 --
  ;  2 instr_setup: Don't assert if instr doesn't exists (for dev mode)
 ; ---- v0at ----
 ;Oct
@@ -91,14 +93,6 @@ r14   = psg_regs+14     ; Reset by ply before iteration
 
 loop_bit = 7
 fail  = &BE00
-
-      MACRO SUB_TM_CALL n
-; Update and call HL' when CPT < 0 
-          SUB_TM(n+9)
-; Cannot use call m,jp_hl', as it must take the same time in both case
-          call jp_m_hl'
-      ENDM
-
 
       MACRO CHECK_CONFINE
 ; For now constraint also in-tool
@@ -884,13 +878,12 @@ instr_param WORD
       END
 
 ; ---------------------------------
-
-instr_state_pnt WORD instr_state
       IF sfx
 trash WORD 
       END
 
-hi
+      IF use_instr_chip
+instr_state_pnt WORD instr_state
       IF ayane
       FILL -$ AND &FF,&F7
 instr_state
@@ -898,5 +891,6 @@ instr_state
       ELSE
 instr_state = compiled_instr_buf
       END
-
+      END
+hi
 

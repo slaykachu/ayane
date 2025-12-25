@@ -4,6 +4,8 @@ todo  = 1
 is_minimala = 1         ; hack
 
 ; 2025
+  ; Dec
+    ; 19 Add use_instr_chip
   ; Mar               
     ; 29 Add /is_pattern_indexed/ 
     ; 24 Add /pattern_size/ for kima  (N/A on kimb)
@@ -74,10 +76,11 @@ default_use_hard_env = 1 ; "
 
 ; deactivate them for now,
 ; as we don't want to support in ayane first version 
-use_instr_chip_down_arp = 0
-use_instr_chip_down_arp_noise = 0
-use_instr_chip_down_vib = 0
-use_instr_chip_down_vib_noise = 0
+use_instr_chip = 0
+use_instr_chip_down_arp = use_instr_chip
+use_instr_chip_down_arp_noise = use_instr_chip
+use_instr_chip_down_vib = use_instr_chip
+use_instr_chip_down_vib_noise = use_instr_chip
 
       ELSE
 ; Special fx (interleave player with routine in IY)
