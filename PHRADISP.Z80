@@ -13,8 +13,6 @@ dev_checks' = 1
       IMPORT "memmap.i" ; BK_DISP
       IMPORT "macro.i"
       IMPORT "import.i"
-          ASSERT($ AND &0F == 0) ; must pad
-;Otherwise IMPORT_CORE() add padding, which defeats ref_pc test
 ref_pc
           IMPORT_CORE()
       IMPORT "phrase.o"
@@ -302,6 +300,7 @@ ph_write_char
           ret
 
 ;---------------------------------
+          PAD()         ; for confine
 phradisp_buf FILL 8," ":BYTE 0 ; C-4 11 F
           CHECK_CONFINE(phradisp_buf)
 empty_row

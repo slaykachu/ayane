@@ -6,7 +6,7 @@ short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 
 ; 2025
   ; -- Alpha 1 --
-  ; Dec     
+  ; Dec
       ;17: Move phrasui in BK_DISP
       ;16: Add test_fuzz
       ;13: Add test_refresh_page 
@@ -30,20 +30,12 @@ nrtfail = &BE00
       END
 
 ;to do first    
-          IMPORT_CORE()
-          IMPORT_GED()
-;pre-import for phrasui
-      IMPORT "bitset.o"
-      IMPORT "song.o"   ; Song_get_instr
-      IMPORT "phrase.o"
-      IMPORT "piano.o"
-      IMPORT "track.o"
+          IMPORT_PHRASUI_DEPS()
+      ORG shortcut
+      IMPORT "shortcut.o" ; setup_keys
 
-      IMPORT "shortcut.o" ; for setup_keys
       IF use_testlib
       IMPORT "testlib.o" ; for dev test
-      ELSE
-      IMPORT "chunk.o"  ; Init_chunk_module
       END
       BANK BK_DISP
     ;      LOAD_FONTS()  ; no need all fonts RN
@@ -163,9 +155,6 @@ sentinelle = 0
           call check_cursor
       ENDM
 
-          ld hl,(iotest_cursor)
-          or a:sbc hl,de:add hl,de:call nz,nrtfail
-          ret
 ; -----------------------------
 
 tests
@@ -217,6 +206,7 @@ test_row_dwn_to_repeated_phrase
 ;Prerequisite: test_time_at_top_updated
           call dev_setup
           TEST_RUN(.seq)
+          CHECK_CURSOR(4,nrt_phrase0_dur + 1)
 ;goto 2nd row 
           TEST_RUN(.seq')
           CHECK_CURSOR(4,nrt_phrase0_dur + delai_ui_default + 1)
@@ -434,7 +424,7 @@ nrt_cls
           push hl
           ld hl,iotest_screen
           ld de,iotest_screen+1
-          ld bc,&07FF
+          ld bc,nrt_screen_ - 1
           ld (hl),mockspace
           ldir
           pop hl
@@ -493,6 +483,17 @@ nrt_get_cursor
           ld hl,(iotest_cursor)
           ret
 
+nrt_wrapped_cursor
+; We lack room in RAM, so wrap.
+; We only check the first few lines anyway
+          ld hl,(iotest_cursor)
+          push af
+          ld a,l
+          dec a:and nrt_height' - 1:inc a
+          ld l,a
+          pop af
+          ret
+
 iotest_get_char_pnt
 ;Mimic a screen nrt_width x nrt_height
 ;in:  hl:as in txt_set_cursor
@@ -502,7 +503,8 @@ iotest_get_char_pnt
           ld e,h:ld d,0 ;col
 nrt_width = 16
 nrt_height = 200
-nrt_screen_ = nrt_width * nrt_height
+nrt_height' = 64
+nrt_screen_ = nrt_width * nrt_height'
       IF nrt_width - 16
          !! fixme
       END
@@ -528,7 +530,7 @@ iotest_check_cursor_pos
 
 nrt_place_cursor
           push hl
-          ld hl,(iotest_cursor)
+          call nrt_wrapped_cursor
           call iotest_get_char_pnt
 ;      BRK
       IF 1
@@ -543,8 +545,7 @@ nrt_place_cursor
 nrt_write_char
 ; API: cf write_char
           push hl
-          ld hl,(iotest_cursor)
-          push hl
+          call nrt_wrapped_cursor
           call iotest_get_char_pnt
       IF 0
 ;for debug
@@ -555,9 +556,8 @@ nrt_write_char
       END
           ld (hl),a
 
-          pop hl
-          inc h:call z,&BE00 ; TODO: new line
-          ld (iotest_cursor),hl
+          ld hl,iotest_cursor+1
+          inc (hl):call z,&BE00 ; TODO: new line
           pop hl
           scf
           ret
@@ -605,7 +605,6 @@ check_cursor
           or a:sbc hl,de:add hl,de:call nz,nrtfail
           ret
 
-
 mockspace = 0           ; Make it easier to analyze iotest_screen
 nrtend = &FF
 nrt_nl = 13
@@ -623,4 +622,21 @@ time6     TIME(6)
 
 ho
           LIMIT(ramlimit)
+
+; Ensure sync with ayalib
+          ASSERT(memcpc_code == memcpc)
+          ASSERT(scankey_code == scankey)
+          ASSERT(conv_code == conv)
+          ASSERT(chunk_code == chunk_module)
+          ASSERT(instr_code == instr_module)
+          ASSERT(piano_code == piano)
+          ASSERT(phrase_code == phrase)
+; Ensure sync with ayane
+          ASSERT(field_editor == field_module)
+          ASSERT(phrasui_code == phrasui)
+; Ensure sync with salo
+          ASSERT(track_code == track_module)
+
+      BANK BK_DISP
+      SAVE "ayaphras",phrasui,phrasui_end-phrasui
 

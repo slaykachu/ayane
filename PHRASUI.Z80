@@ -26,20 +26,15 @@ dev_checks' = 1
       IMPORT "memmap.i" ; BK_DISP
       IMPORT "macro.i"
       IMPORT "import.i"
-ref_pc
-          IMPORT_CORE() ; conv.put_note
-          IMPORT_GED()
-      IF todo
-;use shared imports
-      END
-      IMPORT "bitset.o"
-      IMPORT "song.o"   ; Song_get_instr
-      IMPORT "phrase.o"
-      IMPORT "piano.o"
-      IMPORT "ged.o"
-      IMPORT "track.o"
-          ASSERT($ == ref_pc) ; deps must have been imported by client
+.savepc                 ; needed since "ORG" used for IMPORT_PIANO
+          IMPORT_PHRASUI_DEPS() ; other deps below
+      ORG .savepc
 
+phrasui_code
+          jp phrase_cold_refresh
+          jp phrase_ui_process
+
+      IMPORT "bitset.o" ; for now only used here
       IMPORT "phradisp.o"
 
 ;------------------
@@ -65,6 +60,7 @@ phrase_cold_refresh
           jp gedeihen_enter
 
 phrase_ui_process
+;----------------
           ld b,a
           xor a:ld (is_modified),a
           ld a,b
@@ -365,7 +361,7 @@ _rr_entered ld a,0
 get_time_row
 ;-----------
 ; Out: DE = relative time in phrase
-     ;  Z if 0  
+     ;  Z if 0  (!! cannot use sub_ade_ibc_ihl as is)
 ; Assume offset <= &ffff
           ld hl,(time_cur)
           ld de,(fetched_t0)
@@ -705,10 +701,11 @@ pre_modif
           call is_empty
           ld a,b
           ret nz
+          push af
           ld a,1:ld (row_exists),a
           call get_time_row
           call phrase_select_row_at
-          ld a,b
+          pop af
           ret
 ; ----------------------
 get_page_shift
@@ -738,7 +735,7 @@ setup_phrase_ui
 ; ----------------------
 
 note_empty BYTE "---",0
-buf_note_text SKIP 3:BYTE 0
+buf_note_text FILL 4,0
 
 ;------
 ; vars
@@ -754,9 +751,9 @@ _savepc
 ; Time passed to track.o must be out of bank
 state
 ; All vars needed to recover when switching screen
-time_at_top SKIP 3      ; absolute time (determines "page")
-time_cur SKIP 3         ; absolute time (determine pos in page)
-track_cur BYTE          ; not shared 
+time_at_top TIME(0)     ; absolute time (determines "page")
+time_cur  TIME(0)       ; absolute time (determine pos in page)
+track_cur BYTE 0        ; not shared 
 state_ = $ - state
 
 time_end SKIP 3         ; bottom of slice
@@ -788,4 +785,6 @@ dfs   = $ - state
 
 phrase_met DECLARE_BITSET(MAX_PHRASES)
 phrase_dup DECLARE_BITSET(MAX_PHRASES)
+
 phrasui_end
+          LIMIT(disp_ayane)
