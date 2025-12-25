@@ -343,13 +343,6 @@ update_note_tm = 15
       END
       ENDM
 
-      MACRO SUB_TM_CALL n
-; Update and call HL' when CPT < 0 
-          SUB_TM(n+9)
-; Cannot use call m,jp_hl', as it must take the same time in both case
-          call jp_m_hl'
-      ENDM
-
 
 fail  = &BE00           ; TODO: replace by guru meditation.
 mess  = &BE00
@@ -1108,16 +1101,18 @@ USED_TRACKS = 3
       END
 
       USED_TRACKS ** [
-      SKIP track_stack_size0
+;note: use FILL for overlap detection
+     ; and quiet "not covered" messages when saving
+      FILL track_stack_size0,0
       nb_fx + 1 ** [
  ; for fx and instrument we use LDI:inc e:LDI:LDI
-.fx   WORD 
+.fx   WORD 0
       IF $/&0100 - .fx/&0100
    !!! error confine    
       END
-      WORD 
+      WORD 0
           ]
-      SKIP track_stack_size2
+      FILL track_stack_size2,0
           ]
 
 track_stack_
@@ -1127,5 +1122,3 @@ track_stack_
       END
 
 
-10
-      EN

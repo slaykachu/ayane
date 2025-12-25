@@ -450,7 +450,3 @@ timer_nop
       IMPORT ":orgrel/prof.o"
 
 
-r_nono
-
-      5 ** [inc hl:inc de] ;6 to 11      
-       
