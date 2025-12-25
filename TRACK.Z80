@@ -8,7 +8,8 @@ do_set_loop = 1
 
 ; 2025 
 ; -- alpha 1.07 --
- ; Dec         
+ ; Dec     
+    ; 24: Add Song_attach_empty_phrases
     ; 17: s/connect_bk_track/scope_bk_track to reconnect caller bank 
         ; (only for externally used routines)
 ; -- alpha 1.05 --
@@ -41,8 +42,8 @@ use_widget = 0
 ; Track selection and queries --------
 ; ------------------------------------
     ; Song_select_track             
-    ; track_get_event_hook_at
-    ; track_get_phrase_at
+    ; track_get_event_at
+    ; track_select_phrase_at
 
 ; Track update -------
 ; --------------------
@@ -90,12 +91,11 @@ use_widget = 0
       END
 
       IMPORT "phrase.o" ; song_get_phrase_id, phrase_start
-                        ; + all needed by Song_add_map
+        ; + all needed by Song_attach_empty_phrases/Song_add_map
       IMPORT "chunk.o"  ; for chunk_start
       IF use_widget
       IMPORT "widget.o"
       END
-      IMPORT "shortcut.o"
       IMPORT "memcpc.o" ; for check get_bk_connected
       IMPORT "song.o"   ; New_subsong still lives here for now
       IMPORT "tracknub.o" ; get_track_header
@@ -489,9 +489,9 @@ out3  = 11
 
 track_code
           jp Reset_tracks_and_subsongs
+          jp New_module
+          jp Song_attach_empty_phrases
           3 ** BRK
-          3 ** BRK
-          jp get_track_header ; "
 
 ; -----------------------------
 ;      AUM Virtual Machine
@@ -1127,7 +1127,7 @@ _ld
           OPCODE_ALIGN(break)
           push hl
           ld bc,&0601:call scr_set_border
-          call km_wait_char
+          call km_wait_key
           pop hl
       BRK
 ; BREAK triggered from AUM bytecode itself.
@@ -2301,6 +2301,10 @@ setup_track_t
  !! review that
       END
           ld (aum_regs + in0*4),hl
+      IF dev_checks
+;Track must exist
+          inc hl:ld a,(hl):and &C0:cp &40:call nz,mess
+      END
           ld a,BK_TRACK
           ld (aum_regs + in0*4 + 2),a
           pop de:pop af
@@ -2397,7 +2401,8 @@ Reset_tracks_and_subsongs
 
 New_module
 ;---------
-; Create 3 track (one for each channel). Good default.
+; Create 3 track (one for each channel), with a phrase for each.
+; User-friendly, and i don't want to handle empty tracks for now ui-wise
           call Reset_tracks_and_subsongs
 ;enchaine
           xor a
@@ -2428,6 +2433,30 @@ New_subsong
           pop hl:pop bc
           ret
 
+Song_attach_empty_phrases
+; For UI: init each track with empty phrase of 64 rows
+          ; - more user friendly
+          ; - i don't want to handle display of empty tracks for now!
+          ld a,1
+.lp
+          call Song_select_track
+;-- phrase with 64 rows of delai
+          push af
+          call song_select_new_phrase
+;-- hack for 2: two blanks rows to have desired duration
+          ld a,delai_ui_default*64/2:call phrase_select_new_row
+          ld a,delai_ui_default*64/2:call phrase_select_new_row
+          pop af
+;-- pin at 0
+          push af
+          ld hl,time_zero
+          call Set_phrase_at_t
+
+          pop af
+          inc a
+          cp 4
+          jr nz,.lp
+          ret
 
 Song_add_map
 ;-----------

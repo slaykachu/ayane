@@ -3,8 +3,11 @@ todo  = 1
 do_brittle = 0
 
 ; ----- 2025 ----------
-; -- alpha 1.06 --
+; -- alpha 1.07 --
  ; Dec  
+     ; 25 Add test_Song_attach_empty_phrases
+
+; -- alpha 1.06 --
      ; 17 phrase_select_new_row doesn't return Carry anymore
      ; 12 Add test_t0_when_repeat
      ;  9 Add test_track_select_phrase_far
@@ -65,23 +68,23 @@ chunk0 = track_events_/&0100 - 1
       IMPORT "import.i"
 
 ; Ensure proper alignement (and consistent addresses for easier dbg)
-          IMPORT_SHARED_DEPS()
-     ;  IMPORT "memcpc.o" ; for connect_a, bk_connected
-     ;  IMPORT "song.o"   ; Subsong_add, Song_get_first_track ...
+          IMPORT_SHARED_DEPS_ALL()
+      IMPORT "song.o"   ; Subsong_add, Song_get_first_track ...
      ;  IMPORT "tracknub.o" ; get_track_header
-     ;  IMPORT "chung.o"  ; For creating clips via public API
-     ;  IMPORT "ply.o"    ; for evt_* (evt_set_transpose & co)
-
+      IMPORT "chung.o"  ; before ply/testlib to leave some room
+      IMPORT "timer.o"
+      IMPORT "heap.o"   ; "
       IMPORT "track.o"
-      IMPORT "widget.o" ; for init_widget
       IMPORT "phrase.o" ; song_select_new_phrase
+      ORG fx_module
+      IMPORT "ply.o"    ; for evt_* (evt_set_transpose & co)
       IMPORT "testlib.o"
 
 tests
           call nrt_init
 
 ; ---- Recent
-          call test_t0_when_repeat
+          call test_Song_attach_empty_phrases
 
 ; ---- UI (manual)
       IF enable
@@ -144,6 +147,9 @@ tests
           call test_subsong_add_track
           call test_default_loop
           call test_get_timestamp_from_hook
+
+; --- Misc ---
+          call test_Song_attach_empty_phrases
           ret
 
 nrt_init
@@ -1653,6 +1659,27 @@ test_get_timestamp_from_hook
           pop hl
           ret
 
+test_Song_attach_empty_phrases
+          call nrt_init
+          call Song_attach_empty_phrases
+          ld a,1
+.lp
+          push af
+          call Song_select_track
+          ld hl,time0
+          call track_select_phrase_at
+          call z,fail
+          call nc,fail  ; 1st iter
+          ld a,l:or h:call nz,fail
+          pop bc
+          call song_get_current_phrase
+          cp b:call nz,fail
+          ld a,b
+          inc a
+          cp 4
+          jr c,.lp
+          ret
+
       IF enable
 test_ui
 ;------
@@ -1777,3 +1804,4 @@ evt_1     TRACK_EVENT(0,evt_set_transpose,&F7FF)
 
 hi
       SKIP ramlimit' - $
+
