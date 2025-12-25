@@ -37,14 +37,6 @@ fail  = &BE00
       ENDM
 
 ;---------------------------------------
-      MACRO SUB_TM_CALL n
-; Update and call HL' when CPT < 0 
-; !! A (A' here) isn't preserved
-          SUB_TM(n+9)
-; Cannot use call m,jp_hl', as it must take the same time in both case
-          call jp_m_hl'
-      ENDM
-
       MACRO DBG_RAST n
       IF tmp_rast
           SUB_TM(17)

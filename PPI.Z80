@@ -9,7 +9,7 @@
 ;---------------------------------------
       IMPORT "macro.i"
 ;---------------------------------------
-
+ppi_code
 vsync_start
 ; anti vsync to make sure we catch start of vsync
           call anti_vsync

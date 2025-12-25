@@ -2,12 +2,13 @@
 
       IMPORT "memmap.i"
       IMPORT "macro.i"
-          ASSERT($ == piano) ; called from ayane.o
-          jp play_song
 
+.refpc
+      IMPORT "ppi.o"
       IMPORT "piano.o"  ; reuse code
       IMPORT "ply.o"
       IMPORT "timer.o"
+          ASSERT($ == .refpc) ; deps must have been imported beforehand
 
 play_song
 ;--------

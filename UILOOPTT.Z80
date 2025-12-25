@@ -1,30 +1,28 @@
 ; <<<< Manual test of uiloop >>>>
+; +++++ Generated some libs +++++
+
+; 2025
+   ; sep 4: Load fonts ourselves
 
       IMPORT "memmap.i"
+      IMPORT "import.i"
+      IMPORT "const.i"
+      IMPORT "macro.i"
 
-;Do it first so other sources will use this instance
-      ORG code_start'
-      IMPORT "ged.o"
-      FILL bandaya-$,&F7
-      IMPORT "bandaya.o"
-      FILL ramlimit'-$,&F7
-
-      ORG &0100
+      ORG code_start
       ENT start
-      IMPORT "uiloop.o"
-      IMPORT "shortcut.o" ; kesc
-      IMPORT "testlib.o"
-      IMPORT "instrui.o" ; to test CTRL-f3 enter instr editor
+
+          IMPORT_CORE()
+post_core
+      IMPORT "uiloop.o" ; before other imports for proper order
+; Just pull names, imported by uiloop
+      IMPORT "instrui.o" ; instr_cold_refresh (CTRL-f3)
+      IMPORT "memcpc.o" ; connect_bk_base
+          IMPORT_BANDAYA() ; firm2status
+          IMPORT_GED()  ; ged_end
+; Testlib at the end (doesn't fit below &4000)
 
 ; ----------------------------
-      MACRO ASSERT pred
-      IF pred:ELSE
-  !! fail
-      END
-      ENDM
-; ----------------------------
-
-
 start
 ;----   
 ; catch improper disp calls
@@ -41,13 +39,19 @@ start
           call init_for_test
           call dummy_instr_ui
 
+          ld bc,&7F00+BK_DISP:out (c),c
+          ld hl,fake_name
+          ld de,name_module
+          ld bc,fake_name_
+          ldir
+          call connect_bk_base
+
+          call ui_init_ged_null
           call ui_init_band
-          call gedeihen_init
-          ld hl,ui_null
-          call setup_widget
 
           call firm2status
 .loop
+          call km_wait_key
           call ui_process_key
           cp kcf+3:jr z,.instr_ed
           cp kesc:jr nz,.loop
@@ -57,20 +61,30 @@ start
           call instr_cold_refresh
           jr .loop
 
-ui_null
-; Only empty /h_null/ field should be called
-      BYTE w_brk
+fake_name BYTE "Cucu",0
+fake_name_ = $ - fake_name
 
 hi
-          ASSERT($ <= &4000)
-
+          LIMIT(ramlimit)
+; -----------------------------------     
       BANK &C7
-      ORG disp_start'
-      ORG $ + &8000,$$  ; &c1
-      IMPORT "pianoui.o"
-      IF $-&8000 - $$
- !! out of sync
-      END
+          LOAD_FONTS()
+          IMPORT_PIANOUI()
 
+      ORG bandaya_end
+      IMPORT "testlib.o"
+          ASSERT($ <= &A650) ; my himem without protext!
+
+; -----------------------------------     
+          ASSERT(uiloop_code == uiloop)
+
+      IF dev_checks
+      SAVE "set const.dev_checks=0",0,0
+      ELSE
+      SAVE "ayalib0.bin",post_core,uiloop_end-post_core
+      SAVE "ayalib1.bin",ged,ged_end-ged
+      BANK BK_DISP
+      SAVE "ayapianu.bin",pianoui,pianoui_end-&8000-pianoui
+      END
 ; -----------------------------------
 

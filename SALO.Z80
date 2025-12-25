@@ -53,7 +53,7 @@ memmap
       IMPORT "macro.i"
       IMPORT "memmap.i"
       IMPORT "import.i"
-          IMPORT_SALO_DEPS(1)
+          IMPORT_SALO_DEPS()
 
       ORG io
       IMPORT "io.o"
@@ -1451,7 +1451,7 @@ phrase_param# = clip_header_size-fc_color
           ld (dbg_current_evt),hl
           idsz ** inc hl
           ld e,(hl):inc hl
-          ld d,events/&0100
+          ld d,events / &0100
           dec de
           ld a,(de)     ; type
           call save_a

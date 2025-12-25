@@ -2,8 +2,28 @@
 ; Ayane main entry point / ui
 ; ---------------------------
 
-; 2025 Jun 6  Use disp-jp instead of disp
+; 2025
+ ;--- alpha 1 ---
+  ; Dec
+   ;25: plug phrase editor 
+ ;--- v0au ---
+  ; Nov             
+   ;15: save_command: edit name
+   ;11: save_command: proper cls and return
+   ; 7: Load ayalib2 (track+init no more available via ayalib)
+ ;--- v0at ---
+  ; Oct
+   ;16: + IMPORT_STRINGS()
+ ;--- v0aq ---
+  ; Sep
+   ;28: CTRL-SPACE, CTRL-S, clear_status_last_line
+ ;--- v0ak ---
+  ; Aug
+   ; 9: Migrate uientry.o here
+ ;--- 
+     ; Jun 18  Plug instr-sel
 
+dev   = 1
 dev_checks = 1
 todo  = 1
 need_room = 1
@@ -12,55 +32,106 @@ client_ayane = 1
 r2    = 46              ; defaut
 r2'   = 50              ; sequence
 
+      IMPORT "const.i"  ; kesc
+      IMPORT "memmap.i" ; bk_disp, code_main, ...
+      IMPORT "import.i"
+      IMPORT "macro.i"
+
+      ORG code_start
       ENT start
 
-CRTC_R1 = 48            ; Setup BYTE widget
-      IF CRTC_R1 - 48
+      IF 1
+          IMPORT_CORE()
+      LOAD "ayalib0.bin"
+      ORG phrase
+      LOAD "ayalib2.bin"
+      ELSE
+;for debug: import sources
+          IMPORT_SHARED_DEPS_ALL()
+          ASSERT(instr_code == instr_module)
+       ;   IMPORT_SHARED_DEPS()
+          IMPORT_SHARED_DEPS''()
+          ASSERT(track_code == track_module)
+ !! todo: load uiloop bin
+      ORG fx_module
+      LOAD "ayalib2'.bin" ; ply and init
+      END
+
+; All text/fonte/disp routines in dedicated bank
+; Imported now to avoid forward ref in CALL_DISP/CALL_DISP_BK
+      BANK BK_DISP
+          LOAD_FONTS()
+          IMPORT_DISP()
+          LOAD_PIANOUI()
+          IMPORT_STRINGS()
+; See /disp_ext/ for other routines in /DISP_BK/
+; GED and BANDAYA imported at the end
+
+; We don't use the address directly, that's just a sanity check.
+          ASSERT(memcpc_code == memcpc)
+
+      SKIP code_main - $
+
+; ---------------------------------------------
+CRTC_R1_STATUS = 48     ; Setup BYTE widget
+      IF CRTC_R1_STATUS - 48
    !! must update widget.CRTC=R1 *and* widget.y_to_offset
   ; Note: 48 is too big for some monitors.
         ; nevermind for now
       END
-CRTC_R1_IO = 40
+CRTC_R1_IO = 40         ; todo: check if used by disp
 CRTC_R2_IO = 46
+MAX_FILENAME_SIZE = 90  ; room for open: and cursor
 
-      IMPORT "memmap.i" ; bk_disp, code_start, ...
+km_reset = &BB03
+km_read_key = &BB09
+km_test_key = &BB1E
 
-      BANK &C0
-      ORG code_start
+full_init = init_module
+dummy_instr_ui = init_module+2
+New_module = track_module+3
+Song_attach_empty_phrases = track_module+6
 
-      IMPORT "init.o"
-      IMPORT "track.o"
- ;     IMPORT "st128.o"
-; --- More imports at /disp_import/
+ui_init_ged_null = uiloop
+ui_init_band = uiloop+2
+ui_process_key = uiloop+4
 
-      IF need_room
-; Some code could me moved in disp bank
-      END
-;!! todo: move that in aya
-      IMPORT "field.o"
-      IMPORT "scan-key.o"
-      IMPORT "shortcut.o"
-      IMPORT "memcpc.o"
-disp_jp_start
-      IMPORT "disp-jp.o"
-disp_jp_end
-;      IMPORT "scr-lo.o"    !! not meant for r1=48 (use firmware)
+instr_selector_init = instrsel
+
+instr_cold_refresh = instrui
+update_instr_in_status = instrui+2
+
+phrase_cold_refresh = phrasui
+phrase_process_key = phrasui+3
+
+load_file = salo
+save_file = salo+2
+
+Amorce_song = ply
+;play  = ply+3
+piano_play_song = playsong_module
+field_editor = field_module
 
 ; ---------------------------------------------
 
       MACRO CALL_DISP adr
-;Just informative. BK Selection done in disp-jp.jp_disp
-      IF dev_checks
-          push af
-          ld a,adr/&0100
-          call _check_disp_call
-          pop af
-      END
+; When caller already in bank
+          ASSERT($ AND &C000 == &4000)
+          ASSERT(adr AND &C000 == &4000)
           call adr
       ENDM
 
       MACRO CALL_DISP_BK adr
+; When caller out of bank
+          ASSERT($ AND &C000 != &4000)
+   ;       ASSERT(adr AND &C000 == &4000) (cannot check: forward ref)
           call call_disp:WORD adr
+      ENDM
+
+      MACRO CALL_STATUS adr
+          ASSERT(adr AND &C000 == &C000) ; page c1        
+;Connect C1 and current bk back at return
+          call call_status:WORD adr
       ENDM
 
       MACRO SET_CRTC reg,val
@@ -68,21 +139,31 @@ disp_jp_end
           call set_crtc:BYTE reg,val,-1
       ENDM
 
+      MACRO ENTER ui_screen
+;Remember last entered screen 
+;(for ESC in instr_selector_entry and incoming other selectors)
+          ld hl,ui_screen
+          ld (last_screen),hl
+;unwind stack (i.e. ui_process)
+          call reset_sp
+      ENDM
+
+
 ;-----------------------------------------------
 ; Firmware routines
 ;-----------------------------------------------
 
-disc_in_open = &BC77
-disc_in_close = &BC7A
-disc_in_abandon = &BC7D
-disc_test_eof = &BC89   ; NC if eof
-disc_in_direct = &BC83  ; In: hl=destination
+;disc_in_open = &BC77
+;disc_in_close = &BC7A
+;disc_in_abandon = &BC7D
+;disc_test_eof = &BC89   ; NC if eof
+;disc_in_direct = &BC83  ; In: hl=destination
 
-disc_out_open = &BC8C
-disc_out_close = &BC8F
-disc_out_abandon = &BC92
+;disc_out_open = &BC8C
+;disc_out_close = &BC8F
+;disc_out_abandon = &BC92
 
-scr_mode_set = &BC0E
+scr_set_mode = &BC0E
 scr_ink_set = &BC32
 
 mc_set_mode = &BD1C
@@ -91,53 +172,115 @@ mess  = &BE00
 
 err_io = 1
 err_too_big = 2
-
 ; -------------------------------
-
 
 ;---------
 start
-;---------
+;---------          
+          call set_sp_backup
+          ASSERT(BK_IO == &C0)
           call full_init
           CALL_DISP_BK(start_disp_bk)
-;---------
-ui_loop
-;---------
-; Invariant: bk base is connected 
 
-          call km_wait_key ; use km_read_key for no wait
-          cp kesc
-          ret z
-
-          ld hl,shortcuts
-          ld c,a
-          call scan_key
-          jr nc,.nokey
-
-; Erase previous status (e.g. 'DOS ERROR') 
-          push hl
-clear_status = ClearQuestion
-      BRK
-          CALL_DISP_BK(clear_status)
+      IF 1
+; Empty module, but with phrases so tracks aren't empty
+          call New_module ; wasn't done by full init!? maybe for salo
+          call Song_attach_empty_phrases
+;          call dummy_instr_ui ; TMP test
+      ELSE
+; load module 
+          call io_prelude
+          ld hl,name_module
+          ld de,tmp_buf
+          push de
+;routine is not in DISK_BK, but name_module is
+          CALL_DISP_BK(copy_nt)
           pop hl
-          call jp_hl
+          ld bc,0
+          call load_file
+      END
+          ENTER(ayane_entry) ; entry point after io_postlude
+          jp io_postlude
 
-.nokey
-          jr ui_loop
+;----------
+ayane_entry
+;----------
+          call ui_init_ged_null
+          call clear_status_last_line
+          CALL_DISP_BK(help)
 
+ui_loop_no_exit
+;Common loop for all screens. Well, except phrase editor below
+          call ui_process
+          jr ui_loop_no_exit
 
-jp_hl     jp hl
+ui_process
+          call km_wait_key
+_ui_process_com
+          call ui_process_key
+          ret c
+;_fallback
+          ld c,a
+          ld hl,shortcuts
+          call scan_key
+          ret nc
+          jp hl
+
+phrase_ed_entry
+;--------------
+          ENTER(phrase_ed_entry)
+          ld a,2:call scr_set_mode
+          CALL_DISP_BK(phrase_cold_refresh)
+;enchaine
+.phrase_loop_no_exit
+          CALL_DISP_BK(.ui_process_phrase)
+          jr .phrase_loop_no_exit
+
+.ui_process_phrase
+; First, call this:
+  ; - Must catch piano key for modif
+  ; - There is post-process after gedeihen action
+          call km_wait_key
+          call phrase_process_key
+          ret c
+; second chance for f5/f8 etc...
+          jr _ui_process_com
+
+      IF dev
+exit
+;Exit if control+esc to e.g. test ESC when CTRL-S
+          ld a,23       ; CTRL
+          call km_test_key
+          ret z
+          call reset_sp
+          ret
+      END
+
+play_song
+; No ENTER: must return to screen
+          call Song_get_first_track
+          call get_track_header
+          ld a,3
+          call Amorce_song
+;play_song does DI. So it automatically turn off status.
+;But then when putting back EI, INTs might be out of sync.
+;So we explicitly turn off/on.
+;!!copy-pasted from uiloop.o (can't put in macro.i: status_o* undefined)
+          call status_off
+          call piano_play_song ; ret when ESC or space pressed
+          ei
+          call km_reset ; Eat ESC
+          call km_read_key ; km_reset not enough
+          call status_on
+          scf
+          ret
+
 
 ;-----------------------------------------------
 ; Commands
 ;-----------------------------------------------
 
-;---------------------
-instr
-;---------------------
-          call screen_instrument
-          ret
-
+      IF 0
 ;---------------------
 open
 ;---------------------
@@ -150,175 +293,199 @@ open
           call io_prelude
 
 ; ---- Load file  
-          ld hl,TMP_BUF
-          CALL_DISP_BK(get_len)
-          ld b,a
-          ld de,disc_buffer
-          CALL_DISP_BK(disc_in_open) ; since file_name in c7
-          jr nc,_error
-      IF todo
-; Check file type (ayane vs starkos vs...)
-; For now not necessary since we only support .128 modules
-      END
-
-; For now we don't accept bigger than 16k.
-          ld a,b:cp &40
-          ld a,err_too_big
-          jr nc,io_error
       BRK
- ; !! todo 
 
-      IF 0
-
-          call connect_bk_st
-          ld hl,st_module ; &4000
-          call disc_in_direct
-
-          jr nc,io_error
-          call disc_in_close
-
-          call connect_bk_base ; needed?
-          call st_convert
           call io_postlude
 ;Warning: errors message shouldn't be displayed on bandeau then
+          ret
+
+;-----------------------------------------------
+; Screens (sequencer, instr ed/sel)
+;-----------------------------------------------
+; <<< UI for each screen >>>
 
  ; Make senses 
 sequencer
 ; Do screen setup here, as we don't want to add bandaya dep to track.o
 ; (might be moved in a newly introduced trackui.o, though)
+          ENTER(.sequencer_)
+.sequencer_
           ld hl,mode_sequencer:ld (hook_top),hl
           ld hl,no_op:ld (hook_int2),hl
           ld hl,mode_help:ld (hook_int3),hl
           jp ui_sequencer
+
       END
+
+cls'
+; For now disp.cls disable interruption
+; Todo: reactivate them in the loop.
+      ; better: leave them always ei, erase the last &40 by hand
+          ld a,2:jp scr_set_mode
+
+instr_selector_entry
+;!!! No /ENTER/ here: it's a selector. 
+          call reset_sp ; in case called from itself
+          call cls'
+          call clear_status_last_line
+          call instr_selector_init
+.lp
+          call ui_process
+          push af
+
+          pop af
+          cp 13:jr z,instr_ed_entry_
+          cp kesc
+          jr nz,.lp
+;enchaine
+return_to_screen
+          call reset_sp
+          ld hl,(last_screen)
+      IF dev_checks
+          ld a,end_of_screens/&0100:cp $/&0100 +1:call nc,mess
+      END
+;enchaine
+jp_hl     jp hl
+
+instr_ed_entry_
+          call update_instr_in_status
+instr_ed_entry
+;-------------
+          ENTER(instr_ed_entry)
+end_of_screens          ; After last /ENTER/ for static check
+          ld a,2:call scr_set_mode
+          ld bc,text_instred
+          ld de,screen + CRTC_R1_IO*2*9
+          CALL_DISP_BK(display_page)
+          call instr_cold_refresh
+          jp ui_loop_no_exit
+
+; ---------------------------------------------
+io_prelude
+;---------  
+; !!! Client out of bank (we connect C1)
+; Switch to classical display for proper display of amsdos messages
+; Also, allow to use page C0:4000
+          call status_off ; first so that cls is faster!
+       ;   CALL_DISP_BK(cls)
+          ld a,2:call &BC0E ; For amsdos error message
+       ;   call set_crtc:BYTE 1,CRTC_R1_IO,2,CRTC_R2_IO,-1
+          ld bc,&7FC1:out (c),c
+          ld hl,io0+&8000
+          ld de,io
+          ld bc,io0_
+          ldir
+          ret
+
 _error
           ld a,err_io
 io_error
 ;-------      
-      IF need_room
-; move that in disp bk, so no need to use CALL_DISP for each call
-      END
           CALL_DISP_BK(disp_err_message)
           call &BB06
-;enchaine
+;enchaine      
 io_postlude
 ;----------
 ; Switch back to ayane display
 ; CRTC done by bandaya
-         ; SET_CRTC(1,CRTC_R1)
-          ld a,CRTC_R1
-          CALL_DISP(init_disp)
+      IF 0
+; no, handled by bandaya
           call flyback
           ld de,r2*&0100 + r2'
           call r2_transition
-          call screen_sequencer
-          jp status_on
-
-display_init
-;-----------
-          call firm2status ; Bandeau ON from basic 
-          jr io_postlude ; status_on again, nevermind
-
-io_prelude
-;---------  
-; Switch to classical display for proper display of amsdos messages
-          call status_off ; first so that cls is faster!
-          ld a,CRTC_R1_IO
-          CALL_DISP(init_disp)
-          CALL_DISP(cls) ; For amsdos error message
-          call set_crtc:BYTE 1,CRTC_R1_IO,2,CRTC_R2_IO,-1
-          ret
-
-_txt_open BYTE "Open:",0
-
-start_disp_bk
-          call init_disp_bk
-          ld hl,text_welcome
-          push hl
-          ld de,text_welcome
-          call conv_protext
-;Must be done after conversion!
-          pop hl
-          call help_init ; Move in full_init? Doesn't matter!
-          call display_init
-;Welcome message / help: same thing for now 
-;enchaine
-;---------------------
-help
-;---------------------
-          CALL_DISP_BK(.help_)
-          ret
-.help_
-          ld a,2:call mc_set_mode
-          xor a:ld b,a:ld c,a:call scr_ink_set
-          ld a,1:ld bc,&1A1A:call scr_ink_set
-          call cls
-;Welcome message / help: same thing
-          ld bc,text_welcome
-          call display_page
-          ret
-
-      IF dev_checks
-_check_disp_call
-; check adr in disp_jp  
-          cp disp_jp_start/&0100:call c,mess
-          cp disp_jp_end/&0100 + 1:call nc,mess
-          ret
       END
+          call connect_bk_io
+          call clearstatus ; while c0 connected
+          call connect_bk_base
+          call ui_init_band ; !! also set instr 1 
+          ei
+          call status_on
+          jp return_to_screen
 
 
+save_command
+;-----------                        
+          CALL_DISP_BK(save_command')
+          ret nc
+;Out of bank: save_file doesn't reconnect bk. 
+; AND: io_prelude must connect C1 to install io0
+          call io_prelude
+          ld hl,tmp_buf
+          ld bc,0
+          call save_file
+          jp io_postlude
+
+
+clear_status_last_line
+          LOCATION(0,y_pos_last_line)
+          CALL_STATUS(status_clear_from)
+          ret
 ;-----------------------------------------------
-; Tables, buffer and co 
+; Tables, variables and co 
 ;-----------------------------------------------
 
 shortcuts
-      BYTE "I"-&40:WORD instr
-      BYTE "o":WORD open
-      BYTE "h":WORD help
+;"screens" -> no return
+      BYTE "H"-&40:WORD ayane_entry
+      BYTE kcf+2:WORD phrase_ed_entry
+      BYTE kcf+3:WORD instr_ed_entry
+;commands
+      BYTE "I"-&40:WORD instr_selector_entry
+      BYTE kcspc:WORD play_song
+      BYTE "S"-&40:WORD save_command
+;misc
+      IF dev
+      BYTE kesc:WORD exit
+      END
+;      BYTE "o":WORD open
       BYTE 0
 
-name_file_dbg BYTE ":music/shap/pcrb3.128",0
+last_screen WORD &BE00
 
-      SKIP &4000-$      ; limit
+hi
+          LIMIT(ramlimit)
 
 ;-----------------------------------------------
-; Text management
+; Display management
 ;-----------------------------------------------
 
-; All text/fonte/disp routines in dedicated bank
+disp_ext
       BANK BK_DISP
-      ORG &4000
+      ORG phrasui       ; after disp/pianoui
+      LOAD "ayaphras.bin"
 
-; Variable to be display must be in same bank than disp.o
-
-      IF $ - &4000
- !! must be imported first for fonte alignement
-      END
-
-disp_import
-      LOAD "disp.bin"
-
-; 'status' is calling disp directly, putting it here ensure 
+      ORG disp_ayane
+          IMPORT_DISP()
+; 'status' and 'help' are calling disp directly, putting it here ensure 
 ;  proper bank is connected
+disp_ext_start
+      ORG $ + &8000,$$  ; Bank c1
       IMPORT "status.o"
-
+      ORG $ - &8000
       IMPORT "help.o"
+io0
+      LOAD "ayaio.bin"
+io0_  = $ - io0
 
 init_disp_bk
 ;-----------
-      IF 1
+      IF 0
 ;for quick tests
           ld hl,name_file_dbg
           ld de,name_file
 ;copy_nt not in bank, but must connect for name_file
           call copy_nt
       ELSE
-          xor a:ld (name_file),a
+     ;      xor a:ld (name_file),a
       END
+          ld a,CRTC_R1_IO
+          CALL_DISP(init_disp)
           ret
 
-text_welcome LOAD "txthelp.doc"
-
+text_welcome LOAD "doc-in/welcome.txt"
+      BYTE 0
+text_instred LOAD "doc-in/instred.txt"
+      BYTE 0
 
 disp_err_message
 ;---------------
@@ -344,6 +511,40 @@ messages_error
       BYTE "message 1",0
       BYTE "message 2",0
 
+
+
+_txt_open BYTE "Open:",0
+
+start_disp_bk
+          call init_disp_bk
+          ld hl,text_welcome
+          ld de,text_welcome
+          call conv_protext
+          ld hl,text_instred
+          ld de,text_instred
+          call conv_protext
+    ;       call help_init ; Move in full_init? Doesn't matter!
+          ld hl,vampsync
+          ld de,name_module
+          call copy_nt
+          jp firm2shift ; from BASIC 
+
+;vampire BYTE "testdata/vampire1.aya",0
+vampsync BYTE "vampsync.aya",0
+
+;---------------------
+help
+;---------------------
+;Welcome message / help: same thing for now  
+          ld a,2:call mc_set_mode
+          xor a:ld b,a:ld c,a:call scr_ink_set
+          ld a,1:ld bc,&1A1A:call scr_ink_set
+          call cls
+          ld bc,text_welcome
+          ld de,screen
+          call display_page
+          ret
+
 ;-----------------------------------------------
 ; Common helpers
 ;-----------------------------------------------
@@ -354,7 +555,7 @@ messages_error
          ;under modification is in DISP BK)
   ; - No need to use CALL_DISP once we're here.
   ; - Central RAM is more precious.
-
+      IF 0
 question
 ;-------
 ;In: HL: Text to display
@@ -380,6 +581,8 @@ question
           ld bc,MAX_FILENAME_SIZE
           ldir
           ret
+
+      END
 
 saisie_champ
 ;-----------
@@ -423,8 +626,10 @@ field_refresh_wait_key
 
           push de
           ld a,e
-          ld e,status_line_question
-          call field_refresh ; in status.o
+          ld e,y_pos_last_line
+          set 7,h       ; +&8000 (c1)
+          CALL_STATUS(field_refresh)
+          res 7,h
           pop de
 
           call km_wait_key
@@ -432,21 +637,49 @@ field_refresh_wait_key
           cp kreturn:ccf ; C & Z: Return
           ret           ; NZ if otherkeys
 
-      SKIP -$ AND &FF
 
-name_file SKIP &0100    ; Don't need this much. Nevermind.
+; ----------------------------------
+save_command'
+;in bk disp for name handling
+          ld hl,name_module
+          ld d,5
+          call saisie_champ
+          push af
+          call clear_status_last_line
+          pop af
+          ret nc
+
+          ld hl,name_module
+          ld de,tmp_buf
+          call copy_nt
+          scf
+          ret
+
+; ----------------------------------
+          LIMIT(strings)
+
+disp_ext_end = name_module ; after strings imported in IMPORT_STRINGS
+
 
 ;!!! Still in bank C7
 ; -------------------------------
-      SKIP &7CC0-$      ; poor's man limit
-; Note: private disp vars here, but can (and should) be moved for ayane
 
-      SKIP bandaya-$    ; xx00 for confining ints at same MSB
-; Ints must be out of page 0000, since still called when rom connected
-      IMPORT "bandaya.o"
+      ORG salo
+      LOAD "ayasalo.bin"
 
-      SKIP psg_regs-$   ; poor's man limit
+      SKIP ged-$
+      LOAD "ayalib1.bin"
+          ASSERT($ <= bandaya)
+          IMPORT_BANDAYA() ; firm2status, status_on
+      SKIP bandaya_end - $
 
-MAX_FILENAME_SIZE = 90  ; room for open: and cursor
+          ASSERT($ <= ramlimit')
 
-TMP_BUF = &9E00
+      IF dev
+      SAVE "!!! set dev = 0",0,0
+      ELSE
+      SAVE "ayane0.bin",code_start,hi-code_start,start
+      BANK BK_DISP
+      SAVE "ayane1.bin",fonte_gris,disp_ext_end-fonte_gris
+      SAVE "ayane2.bin",salo,bandaya_end-salo
+      END

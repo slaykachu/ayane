@@ -2,6 +2,11 @@
 ; -> Ensure same location order used by all
 todo  = 1
 
+; 2025
+   ; -- Alpha 1 --
+   ; Dec 24: track.o must skip instrsel.o
+       ; 19: Remove uiloopt -> ply dependency
+
       IMPORT "memmap.i"
       IMPORT "macro.i"
 
@@ -32,17 +37,41 @@ todo  = 1
 ;!!! needed at the end, otherwise out of sync 
 ;!!! when IMPORT_CORE is used twice (ayalib: directly and transitively)
 ;!!! vs once (salo-nrt)
-          PAD()
+;          PAD()
       ENDM
 
 ;-----------------------------
-      MACRO IMPORT_SHARED_DEPS
-; Used by both uiloop and salo
+      MACRO IMPORT_SHARED_DEPS_ALL
+; Used by uiloop, salo and phrasui
           IMPORT_CORE()
       IMPORT "chunk.o"  ; salo:Next_node
-      IMPORT "chung.o"  ; salo:instr
-      IMPORT "ply.o"    ; salo:/events/ mapping (todo: use memmamp)
-   ;   IMPORT "disp-jp.o" ; salo: future (no: use disp directly)
+      IMPORT "instr.o"  ; salo:because of ply
+      ENDM
+
+      MACRO IMPORT_PIANO
+; Used by uiloop, phrasui, salo (via play_song)
+      ORG ppi           ; phrasui: skip chung
+      IMPORT "piano.o"
+      ENDM
+
+      MACRO IMPORT_SHARED_DEPS
+; Used by uiloop and salo      
+      IMPORT "chung.o"  ; salo:instr api
+      ENDM
+
+      MACRO IMPORT_SHARED_DEPS'
+          IMPORT_PIANO()
+          IMPORT_GED()
+      ENDM
+
+      MACRO IMPORT_SHARED_DEPS''
+; Used by salo, phrasui 
+.savepc
+      ORG phrase        ; needed to skip instrui, piano...
+      IMPORT "phrase.o"
+      ORG track_module  ; skip instrsel
+      IMPORT "track.o"
+      ORG .savepc
       ENDM
 
 ;-----------------------------
@@ -60,32 +89,34 @@ todo  = 1
 ;-----------------------------
       MACRO IMPORT_UILOOP_DEPS
 ; Used by both uiloop and ayalib
+          IMPORT_SHARED_DEPS_ALL()
           IMPORT_SHARED_DEPS()
-          IMPORT_GED()
+          IMPORT_SHARED_DEPS'()
+;post piano
       IMPORT "instrui.o" ; for instr_down/instr_ui/instr_change
-      IMPORT "piano.o"  ; for /play_piano/
+      IMPORT "instrsel.o" ; not plugged directly, but part of lib
       ENDM
 
 ;-----------------------------
-      MACRO IMPORT_SALO_DEPS with_track
-; Used by both salo and ayalib
+      MACRO IMPORT_PHRASUI_DEPS
+          IMPORT_SHARED_DEPS_ALL()
+          IMPORT_SHARED_DEPS'()
+          IMPORT_SHARED_DEPS''()
+      ENDM
+
+;-----------------------------
+      MACRO IMPORT_SALO_DEPS
+.savepc
+          IMPORT_SHARED_DEPS_ALL()
           IMPORT_SHARED_DEPS()
-; doesn't work, don't know why
-; When imported from salo.o for the 2nd time (after salo-nrt),
-; we should have $ == .pc, but that's not the case, and SKIP fails
-;      IF $ != .pc
-      IF $ < phrase
-; When imported second time, $ is already past track.o
-      SKIP phrase-$     ; needed to skip instrui, piano...
-      END
-      IMPORT "phrase.o"
+          IMPORT_PIANO() ; needed by playsong below
+          IMPORT_SHARED_DEPS''()
       IMPORT "periods.o" ; set_diapason
-      IF with_track     ; doesn't fit in ayalib
-      IF $ < rgb256     ; untrue 2nd time imported from salo
-      SKIP rgb256 - $   ; room for instrsel
-      END
-      IMPORT "track.o"
-      END
+      ORG fx_module     ; fx.o imported by ply
+      IMPORT "ply.o"    ; needed for events signature
+      IMPORT "playsong.o" ; not used by salo, but needed for ayalib2
+;put here since we import ply anyway
+      ORG .savepc
       ENDM
 
 ;-----------------------------
@@ -141,7 +172,7 @@ status_off = bandaya +8
       IF $ - &8000 != $$
  !! out of sync
       END
-          ASSERT($$ <= phradisp)
+          ASSERT($$ <= phrasui)
       ORG .save
       ENDM
 

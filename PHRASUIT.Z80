@@ -1,5 +1,5 @@
 ; ----- Manual test of phrase editor -----
-do_nrt = 1              ; 0: manual test
+do_nrt = 0              ; 0: manual test
 dev_checks' = 1
 use_testlib = 0         ; 1: with instr, but mem full with track
 short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
@@ -638,5 +638,5 @@ ho
           ASSERT(track_code == track_module)
 
       BANK BK_DISP
-      SAVE "ayaphras",phrasui,phrasui_end-phrasui
+      SAVE "ayaphras.bin",phrasui,phrasui_end-phrasui
 

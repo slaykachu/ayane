@@ -1,5 +1,10 @@
 ; ========= Shared buffers and variables ==========
-; 2025 Dec  3 ply: 1004 -> 1604
+; 2025 Dec
+         ; 24 Reorder to get rid of ayalib.o
+         ; 23 phrase -> 1d09 (ayalib)
+         ; 18 instrui 1900 -> 19B0
+            ; ply: 1604 -> 1404 (removed instr.instr_state)
+         ;  3 ply: 1004 -> 1604
      ; Nov 10 instrui @ 1900 (shift subsequent modules as well)
      ; Oct 16  tracks in bank
      ; Aug  8  Cleanup unused buffers
@@ -25,26 +30,40 @@ bk_connected = &3C
 ;!!! 3e: vo_thisbk for ayane. See rationale in memcpc.o
 code_start = &40
 ; Expected addresses, for sanity checks
+; -- All
 memcpc = &40
-scankey = &01F7
-conv  = &0208
-chunk_module = &0410
+scankey = &01F6
+conv  = &0207
+chunk_module = &0414
 ;dispjp = &1900   ; not a dep anymore
 ;periods_module = &057F
-ply   = &1604
+;timer = &0A61
+instr_module = &0DD4
+;chung f19 - &13b0
+;13b0 "AYA!  " what's that
+;then free?
+; -- uiloop, phrasui, salo (via playsong.o)
+ppi   = &1400
+piano = &145F
+; --  uiloop
+instrui = &157A
+instrsel = &1959
+uiloop = &19E0
+; ---- uiloop end ----
+; -- phrasui, salo
+;padding
+phrase = &1A70
+track_module = &2190
+; -- salo
+fx_module = &2F00
+ply   = &2F04           ;needed for events signatures
 fx_set_phrase_jp = ply+5
-evt_set_transpose_lsb = &6C ; track (todo:salo)
-evt_change_phrase_lsb = &7D ; track (todo:salo)
-instrui = &1900
-piano = &1D48
-phrase = &1EB0
-instrsel = &2580
-;via salo-nrt   
-rgb256 = &2620
-track_module = &2A91
-init_module = &3760
-;via uilooptt
-uiloop = &3B90
+evt_set_transpose_lsb = ply+&68 AND &FF ; track 
+evt_change_phrase_lsb = ply+&79 AND &FF ; track 
+
+playsong_module = &32A2
+shortcut = &3300
+init_module = &3391
 
 code_main = &3C20       ; ayane.o
 
@@ -154,7 +173,7 @@ fonte_small = &4800
 disp  = &48C8           ; start of code after fonts
 pianoui = &4F00
 phrasui = &5620
-disp_ayane = &57C0      ; other modules imported by ayane.o
+disp_ayane = &5C60      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
 
@@ -164,7 +183,6 @@ psg_regs                ;  Room for pseudo registers and ???
 workzone SKIP &0200     ; salo, &8100:pianoui (tmp for display)
 tmp_buf = workzone      ; ayane
 salo_buf1 = workzone
-phradisp_buf = workzone
 track_tmp = workzone + &80
 salo_buf2 = workzone + &0100
 fx_by_track = workzone + &0100 ; MAX_TRACKS*track_fx_size 
@@ -175,7 +193,7 @@ fx_by_track = workzone + &0100 ; MAX_TRACKS*track_fx_size
 salo
 ged   = &8BA0
 field_module = ged
-free_ram_for_nrt = ged  ; used by salo-nrt!
+free_ram_for_nrt = ged  ; used by salo-nrt, tracknrt
 ;free room &9e70-&9eff
 bandaya = &9F00
 

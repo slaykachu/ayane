@@ -1,4 +1,5 @@
 ; ---- Init all modules ------
+; alpha1 25 Dec 25 Select instr1 for ui purpose
 ; v0.0at  6 Nov 25 Use import.i for consistency
 ; v0.0ao  7 Sep 25 full_init: Call Init_periods
                  ; 
@@ -12,10 +13,11 @@ todo  = 1
 
           IMPORT_SHARED_DEPS()
 hu
-          IMPORT_SALO_DEPS(1)
+          IMPORT_SALO_DEPS()
 ho
-      IMPORT "periods.o" ; for set_diapason, init_periods
+      IF use_widget
       IMPORT "widget.o" ; for init_widget
+      END
       IMPORT "shortcut.o" ; setup_keys
       IMPORT "timer.o"  ; fx_null
 
@@ -36,10 +38,16 @@ full_init
           call phrase_reset
           call Init_track_module
           call setup_keys
+      IF use_widget
           call init_widget ; compute RGB so we see the boxes
+      END
 
           ld hl,diapason_default
           call set_diapason
+;0 is reserved and triggers asserts, so select instr 1
+          ld a,1:call Song_select_instr
+
+
 ; replay_period init in Init_track_module
           ret
 
@@ -133,4 +141,3 @@ _row2_ui
       END
 
 init_end
-          LIMIT(uiloop)

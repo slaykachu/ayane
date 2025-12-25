@@ -7,7 +7,7 @@
    ; Oct 
         ;28 Test saving syncbuzzer
             ; -> NOPE, already here (dummy /raw_row3/)
-                     ; (hum, it sets fx_null apparently) 
+                      ; (hum, it sets fx_null apparently) 
 ; -- v0.0ao -- 
         ;17 Reorder so it fits in RAM
    ; Aug  9 Exercise file > &100 
@@ -25,13 +25,16 @@
       IMPORT "import.i"
       IMPORT "macro.i"
 
-          IMPORT_SALO_DEPS(1)
+          IMPORT_SALO_DEPS()
 hu
-      SKIP init_module-$
-      IMPORT "init.o"
-          LIMIT(uiloop)
+      ORG shortcut
+      IMPORT "shortcut.o" ; init.o dep
+      ORG init_module
+      IMPORT "init.o"   ; for test and ayalib2.bin
       IMPORT "instr.o"
+      IF use_widget
       IMPORT ":lib/rgb256.o" ; for rgb256_code
+      END
 
 ho    SKIP ramlimit - $ ; poor man's limit
 
@@ -542,21 +545,28 @@ vampire
 ; vampire_size = $ - vampire   Doesn't work: unidos copy rounded to b00
 vampire_size = &1110
 
-      IF 0
 ; Sanity checks
           ASSERT(memcpc_code == memcpc)
           ASSERT(scankey_code == scankey)
           ASSERT(conv_code == conv)
           ASSERT(chunk_code == chunk_module)
-; Sync with ayalib
+; Sync with phrasui
           ASSERT(phrase_code == phrase)
-; Sync with ayane             
           ASSERT(track_code == track_module)
+; Sync with ayane             
+          ASSERT(play_song == playsong_module)
           ASSERT(init_code == init_module)
-; Not used directly, but check that ayalib2 picks right code
-          ASSERT(rgb256_code == rgb256)
 
+      IF 0              ; dev_checks 
+      SAVE "set const.dev_checks=0",0,0
+      ELSE
+      IF use_widget
+!! review
       SAVE "ayalib2.bin",rgb256_code,init_end - rgb256_code
+      ELSE
+      SAVE "ayalib2.bin",phrase,init_end - phrase
+      SAVE "ayalib2'.bin",fx_module,init_end - fx_module ;for debug
+      END
       SAVE "ayaio.bin",io_code,io_end - io_code
       SAVE "ayasalo.bin",salo_code,salo_end - salo_code
       END

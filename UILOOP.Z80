@@ -1,43 +1,51 @@
 ; <<< Common process and *some* global keys (piano) >>>
 todo  = 1
-; Note: NO LOOP HERE, we actually loop in uientry
+; Note: NO LOOP HERE, we actually loop in ayane.o
       IF todo
 ; TODO: rename source then?
       END
 
-; 2025 
-      ;Aug 03: Display bandaya text
-      ;Jul 15: Move instr_ed_entry in uientry.o
-             ; Add piano handling
+; 2025    
+; -- alpha 1 --
+  ; Dec
+    ;18 adjust for phrasui integration
+; -- v0au --
+  ; Nov
+    ;ui_init_band: don't change instr! 
+; -- v0at --
+  ; Oct
+    ;15: Move bandtext to doc-in/strings.o
 
       IMPORT "memmap.i"
       IMPORT "const.i"
-      IMPORT "assert.o"
-      IMPORT "ged.o"
-      IMPORT "piano.o"  ; for /check_note/ (playing key)
-      IMPORT "instrui.o" ; for instr_down/instr_ui/instr_change
-      IMPORT "disp-jp.o"
-      IMPORT "scan-key.o"
-      IMPORT "shortcut.o" ; km_wait_key, kesc
-; pianoui (octave change) at the end
+      IMPORT "macro.i"
+      IMPORT "import.i"
 
+ho
+          IMPORT_UILOOP_DEPS()
+; Fixed dest, not imported by ayalib
+          IMPORT_BANDAYA()
+;          BANDAYA_JP()
+      BANK BK_DISP
+          IMPORT_DISP() ; already imported by instrui and ???
+          IMPORT_PIANOUI()
+          IMPORT_STRINGS()
+hu
+          ASSERT($ <= uiloop) ;from ayalib: deps already imported
+      ORG uiloop
 ;---------------------------------------------
 uiloop_code
+          jr ui_init_ged_null
           jr ui_init_band
           jr ui_process_key
 
 ;---------------------------------------------
-      MACRO LOCATION x,y
-          ld de,x*&0100 + y
-      ENDM
-
       MACRO CALL_DS adr
  ; ds="disp status" status_* in disp.o
- ; disp-jp does the connection
       IF BK_DISP - &C7
  !!!! review
       END
-          call adr
+          call call_status:WORD adr
       ENDM
 
       MACRO CHECK_UNHANDLED
@@ -48,61 +56,55 @@ uiloop_code
       ENDM
 
       MACRO CALL_PIANO adr
-; tst version         
-      IF $ AND &4000
- !! mustn't be in bank  
-      END
-          ld bc,&7FC1:out (c),c
-          call adr
-;Doesn't need to connect back
+; Cannot ASSERT as labels are forward defined
+;  (pianoui imported at the end for some reason. Which one??)
+      ;    ASSERT(adr AND &C000 == &C000) ; page c1        
+;Needs to connect bk back, otherwise note not played after octave change
+          call call_status:WORD adr
       ENDM
+
 ;---------------------------------------------
+ui_init_ged_null
+;---------------
+; Needed before we can call ui_process_key
+          call gedeihen_init
+          ld hl,ui_null
+          jp setup_widget
 
 ui_init_band
-;-----------
-          CALL_PIANO(disp_piano)
-; Bandaya fields 
-          ld bc,_fields
-          ld de,0       ; top left
-.flp
-          push de
-          CALL_DS(status_str_at)
-          pop de
-          inc e
-          ld a,(bc):or a
-          jr nz,.flp
+;-----------          
+; Disp piano, set octave and instr.
 
-          LOCATION(x_pos_instr#,y_pos_instr#)
-          ld a,1:CALL_DS(status_deci_a_pad0_at)
-          ld a,1:jp instr_change ; update display 
+          CALL_PIANO(disp_piano)
+          call octave_sync
+; Bandaya fields 
+          ld bc,bandfields+&8000
+          ld de,0       ; top left
+          CALL_DS(status_paragraph_at)
+; Name                         
+          ld bc,name_module+&8000
+          LOCATION(x_pos_name,y_pos_name)
+          CALL_DS(status_str_at)
+; Instr
+          jp update_instr_in_status
 
 ;-------------
 ui_process_key
 ;-------------
-; Wait for key and process it
+; Pass key through gedeihen/fallthrough/piano
+; In: A = key code
 ;Out: Carry if key handled
     ; NC if not, A = key/event code 
-    ;      ld a,(&4000):cp &C5:call nz,&BE00
-          call km_wait_key
-     ;     push af
-     ;     ld a,(&4000):cp &C5:call nz,&BE00
-     ;     pop af
           call gedeihen_process
-     ;     push af
-     ;     ld a,(&4000):cp &C5:call nz,&BE00
-     ;     pop af
           ret c
 
-;--- Unhandled key
-          CHECK_UNHANDLED()
+;--- Unhandled 
+        ;  CHECK_UNHANDLED()
           ld c,a        ; needed by scan_key
-          ld a,kesc
-          cp c
-          ret z         ; for uientry to process
-
           ld hl,shortcuts
           call scan_key
-;--- Try piano if no shortcuts found (none for no)
+;--- Try piano if no shortcuts found 
+          ld a,c
           jr nc,.go_check_note
 ;--- Otherwise go to shortcut and flag as handled
           call jp_hl
@@ -110,31 +112,50 @@ ui_process_key
           ret
 
 .go_check_note          ; Play note if pressed. Return NC otherwise
-          push bc
-          call check_note
-          pop bc:ld a,c ; pop a without touching Carry
+          push af
+          call is_piano_key_pressed ; tmp DI
+          jr nc,.nonote
+
+          CALL_PIANO(disp_note)
+          pop af        ; discard
+;play_note does DI. So it automatically turn off status.
+;But then when putting back EI, INTs might be out of sync.
+;So we explicitly turn off/on.
+;!! copy-pasted in ayane.o (cannot put in macro.i: status_off undefined)
+          call status_off
+          call play_piano ; will re-read note from keyboard
+          ei
+          call status_on
+          scf
+          ret
+
+.nonote
+          pop af        ; Return NC + key_code
           ret
 
 jp_hl     jp hl
 
 
 octave_down
-;TODO: pass octave instead
           CALL_PIANO(octave_lft)
-          scf
-          ret
- ;todo
+          jr octave_sync
 octave_up
-;TODO: pass octave instead
           CALL_PIANO(octave_rgt)
-          scf
+octave_sync
+ ; copy ui to octave in piano 
+ ; done here since both piano and pianoui are deps
+    ; but neither are deps of each other
+; In: A = octave (sent by ui)
+;*12 for shift
+          ld c,a
+          add a:add c
+          add a:add a
+      IF octave_shift AND &C000 == &4000
+ !! ensure to connect right bank   ; For now, out of bank, so ok
+      END
+          ld (octave_shift),a
+          scf           ; needed for ged
           ret
-
-_fields
-      BYTE "   '\   / \   |/'>  \__   /''\    --5 Aug 2025-- For Bun",0
-      BYTE "  /'''  |__>  /  /  <  |  ,,,/    (f6/f9)  Octave",0
-      BYTE "  \,,/     \  <,/|   \ /   \,     (CTRL-I) Instr   :",0
-      BYTE 0
 
 shortcuts
       BYTE kf+5:WORD instr_down ; f5
@@ -144,15 +165,21 @@ shortcuts
 ; Fallback in caller (ayane.o)
       BYTE 0
 
-savepc = $
+ui_null
+      BYTE w_brk        ; todo: rename to w_null
 
-      BANK &C7
-      ORG disp_start'
-      ORG $ + &8000,$$  ; &c1
-      IMPORT "pianoui.o"
-      IF $-&8000 - $$
- !! out of sync
+uiloop_end
+          LIMIT(code_main)
+      IF 1
+; Ensure sync with ayane
+          ASSERT(memcpc_code == memcpc)
+          ASSERT(scankey_code == scankey)
+          ASSERT(conv_code == conv)
+          ASSERT(chunk_code == chunk_module)
+          ASSERT(instrui_code == instrui)
+          ASSERT(field_editor == field_module)
+; Ensure sync with phrasui
+          ASSERT(instr_code == instr_module)
+ ;          ASSERT(ppi_code == ppi)   ; not imported directly
+          ASSERT(piano_code == piano)
       END
-
-      ORG savepc
-
