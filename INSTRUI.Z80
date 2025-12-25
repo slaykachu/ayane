@@ -14,7 +14,7 @@
          ; Already imported by uiloop and ??
    ; 15 Move instr_fields to doc-in/strings.o
 
-to_be_implemented = &BE00
+hack_refresh = 1
 dev_checks' = 1
 
       IMPORT "const.i"
@@ -26,6 +26,7 @@ dev_checks' = 1
       IMPORT "chung.o"  ; Model (instr get/set row)
       IMPORT "ged.o"
       IMPORT "timer.o"  ; for fx_null/sync_buzzer_register
+      IMPORT "song.o"   ; Song_get_instr
 ;      IMPORT "disp-jp.o"
       BANK BK_DISP
           IMPORT_DISP()
