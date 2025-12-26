@@ -22,27 +22,20 @@ do_profile = 1
       ORG code_start
       ENT tests
 
-          IMPORT_SHARED_DEPS() ; ensure same location than ayalib
+ ; ensure same location than in ayane.o 
+          IMPORT_SHARED_DEPS_ALL()
+ ; For Init_track_module, phrase_select_new_row
+          IMPORT_SHARED_DEPS''()
+      ORG fx_module     ; fx.o imported by ply
+      IMPORT "ply.o"    ; needed for events signature
 
-      IMPORT "track.o"  ; for Init_track_module and tracks
-      IMPORT "phrase.o"
-      IMPORT "timer.o"  ; for fx_end
-      IMPORT "fx-api.o" ; for instr_set_vol_table and co
+      IMPORT "timer.o"  ; for fx_end, SUB_TM_CALL
       IMPORT "testlib.o"
-      IMPORT "ppi.o"
 
 track1 = tracks+4       ; track 0 empty (reserved)
 
 
 ; ------------------------------------------------
-      MACRO SUB_TM_CALL n
-; Update and call HL' when CPT < 0 
-          SUB_TM(n+9)
-; Cannot use call m,jp_hl', as it must take the same time in both case
-          call jp_m_hl'
-      ENDM
-
-
 fail  = &BE00
 
 tests
