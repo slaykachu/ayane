@@ -2,7 +2,9 @@
 
 ; 2025
 ; -- alpha1 --
-; Dec    
+; Dec  
+  ; 25: Add test_phrase_get_row_mid_64
+      ; Add test_unpack_row_mid_64
   ; 17: phrase_select_new_row doesn't return Carry anymore
   ; 15: Add test_remove_note
       ; Add test_remove_instr
@@ -45,6 +47,7 @@ tests
           call test_phrase_get_row_at
           call test_phrase_get_row_at'
           call test_phrase_get_row_at_inf
+          call test_phrase_get_row_mid_64
           call test_phrase_get_row_crosschunk
           call test_phrase_set_blank_row_at
           call test_phrase_set_blank_row_at'
@@ -64,6 +67,7 @@ tests
           call test_unpack_row_at
           call test_unpack_row_at'
           call test_unpack_row_at_inf
+          call test_unpack_row_mid_64
           call test_clone_phrase
           call test_remove_note
           call test_remove_instr
@@ -125,6 +129,21 @@ dur1  = 11
           call nz,fail
           ld a,(hl):cp dur1:call nz,fail
           ret
+
+test_phrase_get_row_mid_64
+;-------------------------
+          call nrt_init
+          call dummy_phrase_64_rows
+
+;Sanity check
+          ld de,0:call phrase_select_row_at
+          call row_get_note:call z,fail
+          cp 4:call nz,fail
+;Check at blank row
+          ld de,nrt_delai*32:call phrase_select_row_at
+          call row_get_note:call nz,fail
+          ret
+
 
 test_phrase_get_row_at_inf
 ;-------------------------
@@ -629,7 +648,30 @@ test_unpack_row_at_inf
           ld a,c:cp &FF:call nz,fail
           ret
 
+test_unpack_row_mid_64
+;---------------------
+; These when "infinite duration" (last row with duration 0)
+; Prerequisite: test_phrase_get_row_at_inf
+          call nrt_init
+          call dummy_phrase_64_rows
+
+          ld hl,0       ; time
+          ld de,nrt_buf
+          call unpack_row_at
+          call nc,fail
+          call z,fail   ; non empty
+          ld a,(nrt_buf):cp note4:call nz,fail
+
+;empty intermediate row 
+          ld de,nrt_buf
+          call unpack_next_row
+          call nc,fail
+          call z,fail
+          ld a,(nrt_buf):cp -1:call nz,fail
+          ret
+
 test_clone_phrase
+;----------------
           ld b,3
           call .check_clone_phrase
           ld b,200      ; now spanning on several chunks
@@ -704,7 +746,17 @@ check_phrase
           djnz .lp
           ret
 
-
+dummy_phrase_64_rows
+; 64 rows * 6 
+; row  0: note 4
+; row 32: intermedate blank row
+          xor a:call song_select_new_phrase
+          ld a,nrt_delai*32:call phrase_select_new_row
+          ld a,nrt_delai*32:call phrase_select_new_row
+          ld de,0:call phrase_select_row_at
+note4 = 4
+          ld a,note4:call row_set_note
+          ret
 
       SKIP -$ AND &FF
 nrt_buf SKIP &0100

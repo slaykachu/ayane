@@ -1,5 +1,5 @@
 ; ----- Manual test of phrase editor -----
-do_nrt = 0              ; 0: manual test
+do_nrt = 1              ; 0: manual test
 dev_checks' = 1
 use_testlib = 0         ; 1: with instr, but mem full with track
 short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
@@ -68,6 +68,10 @@ start
 
 
 dev_setup
+;--------
+nrt_phrase0_dur = delai_ui_default*4
+nrt_phrase1_dur = delai_ui_default*8
+
       IF use_testlib
           call init_for_test
           call dummy_instr_ui
@@ -77,12 +81,13 @@ dev_setup
           call Init_track_module
       END
           call phrase_reset
+      IF 1 AND [1-do_nrt]
+          call dummy_phrase_64_rows
+      ELSE
           xor a:call song_select_new_phrase
 note1 = &14             ; G#1
 note2 = &26             ; D-2
       IF short_phrase
-nrt_phrase0_dur = delai_ui_default*4
-nrt_phrase1_dur = delai_ui_default*8
           ld a,nrt_phrase0_dur
       ELSE
           ld a,0
@@ -99,6 +104,7 @@ nrt_phrase1_dur = delai_ui_default*8
       ELSE
           ld de,delai_ui_default*16+2:call phrase_select_row_at
           ld a,note2:call row_set_note
+      END
       END
           ld a,1:call Song_select_new_track
           xor a:ld hl,time0:call Set_phrase_at_t
@@ -122,6 +128,20 @@ note4 = &43
           ld a,BK_DISP:call connect_a ; for checks against phrasui's var
           CALL_DISP_BK(phrase_cold_refresh)
           ret
+
+dummy_phrase_64_rows
+; 64 rows * 6 
+; row  0: note 4
+; row 32: intermedate blank row
+          xor a:call song_select_new_phrase
+          ld a,delai_ui_default*32:call phrase_select_new_row
+          ld a,delai_ui_default*32:call phrase_select_new_row
+          ld de,0:call phrase_select_row_at
+note5 = 5
+          ld a,note5:call row_set_note
+          ret
+
+
 
       IF do_nrt
 ; -----------------------------

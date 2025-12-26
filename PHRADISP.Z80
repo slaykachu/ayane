@@ -3,7 +3,8 @@ dev_checks' = 1
 
 ; 2025
 ; -- Alpha1 --
-  ; Dec        
+  ; Dec
+    ; 25 disp_rows: fix buffer not reloaded
     ; 17 row_buf: out of bank   
     ; 16 ticks_per_page: round to 32 rows
        ; disp_rows: fix returned pos y when size not multiple of delai
@@ -48,18 +49,21 @@ disp_rows
           ld de,row_buf
           call unpack_row_at
           jr nc,.pastphrase
-          jr nz,.entry
+          jr z,.rowlp   ; will display empty row
+
+          ld a,l:sub iyl ; pos_y = time - time at top
+          call disp_row
+          jr .next
+
 .rowlp
 ; Vars:
 ; iyl = lsb time at top
 ; hl = current time, delai-aligned
 ; bc = time next row     
-
           or a:sbc hl,bc:add hl,bc:jr c,.empty
 ; HL reached next row (z) or past it (nz)
-          jr z,.entry
-; Unaligned to delay (row at BC < HL) -> adapt pos_y
-          ld a,c:sub iyl:ld iyh,a
+          push af
+          ld a,c:sub iyl:ld iyh,a ; compute pos_y before BC is updated
           ld de,row_buf
           call unpack_next_row
           jr nc,.pastphrase
@@ -69,13 +73,11 @@ disp_rows
       END
           ld a,iyh
           call disp_row
+          pop af
+          jr z,.next
+; Unaligned to delay (row at BC < HL) 
 ;Mustn't advance HL to next delai, as there might be another row before
           jr .rowlp
-
-.entry
-          ld a,l:sub iyl ; pos_y = time - time at top
-          call disp_row
-          jr .next
 
 .empty
           ld a,l:sub iyl
