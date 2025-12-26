@@ -1,6 +1,8 @@
 ; <<<<< chung: gestion chunk? + instr >>>>>
 ; 2025     
  ; -- alpha 1 --
+  ; Dec 26. Init all instrs by 'instr_null' (so no assert in UI for
+                                            ;undefined instr)
   ; Nov 26. Move Song_get_instr to song
       ; 16. Move new_chunk_ext to phrase (remove dep)
           ; Remove dependency on ply
@@ -240,13 +242,16 @@ song_reset_chung
           ex de,hl
           ld b,zero_size:xor a:call fillb
 
-; instr_head_type = 0 marks absence of instr
+; instr_head_type = instr_null marks absence of instr
 ; Needed to be able to pick non-contiguous instruments.
+; Also needed to avoid assert if non-defined instrument played in phrase
           ld hl,instr_idx
-          ld de,instr_idx+1
-          ld bc,instr_head_size*&0100 - 1
-          ld (hl),0
-          ldir
+          ld de,instr_head_size
+          ASSERT(instr_idx AND &FF == 0)
+          ld b,l
+.raz      ld (hl),instr_null AND &FF
+          add hl,de
+          djnz .raz
 
       IF todo
 ;TODO: free stored_table_start before hand
@@ -288,7 +293,7 @@ Song_select_instr
 _select_instr
           ld (va_current_instr),a
           call get_instr_pnt
-          ld a,(hl):or a ; Instr type <> 0? 
+          ld a,(hl):cp instr_null ; Z if empty 
           ld l,a
           ld h,instr_code/&0100
           dec hl:ld a,(hl)

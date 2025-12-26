@@ -189,7 +189,8 @@ VARIABLE_SIZE = -1      ; For rows
 instr_null
 ;Required in both in-tool and compiled,
 ; as ply inconditionaly jump to instr routine.
-;When no current instr, come here
+;When no current instr, come here.
+;Always safe fallback for undefined instr.
           pop hl        ; consume param
       IF use_flag_channel
           pop hl
@@ -800,12 +801,9 @@ instr_setup
 ; IN: L = instr number > 0
 ;OUT: Carry if ok (instr exist)
     ; NC otherwise
-      IF instr_head_size-8
- !! review this
-      END
-      IF instr_idx AND &07FF
- !! review this
-      END
+          ASSERT(instr_head_size == 8)
+          ASSERT(instr_idx AND &07FF == 0)
+
           ld h,instr_idx / &0800
           3 ** add hl,hl
 
@@ -813,10 +811,9 @@ instr_setup
 
           ld a,(hl)
           cp instr_default AND &FF
-          jr z,.ok
-          or a
-          ret
-.ok
+      IF dev_checks'
+          call nz,mess  ; only one instrument for new
+      END
           ld de,instr_code_pnt
           ldi
           ex de,hl

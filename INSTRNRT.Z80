@@ -1,5 +1,7 @@
 ; ------------- Tests for instr.o ----------------
 
+; --- alpha1 ---
+   ; Dec 26 Add test_non_existing_instr
 ; --- v0.0at ---
    ; Oct 16 Move "prof.o" at the end to fit in ram.
           ; Use nrt_msb_tm instead of d' (consistent with timernrt & co)
@@ -27,6 +29,7 @@ tests
           call nrt_init
           call test_instr_null
           call test_instr
+          call test_non_existing_instr
           ret
 
 nrt_init
@@ -54,7 +57,7 @@ test_instr
 ; Exercise instr_default 
           call dummy_instr
 
-          ld l,1:call instr_setup:call nc,fail
+          ld l,1:call instr_setup
 ;row0  
           ld hl,.ref0
           call check_from_channel_b
@@ -75,26 +78,38 @@ test_instr
 
 ;Past instr: mustn't touch anything (Future-proof: easy mixing)
 ; Well, R7 is reset. 
-          ld hl,.ref3
+          ld hl,_untouched
           call check_from_channel_b
           ld de,.ref2code
           ld bc,ref2code_
           call check_fx
           ret
 
-.ref0 WORD &EEE4,0:BYTE 0,&3D,0,15
-.ref1 WORD &7772,0:BYTE 0,&3D,0,13
-.ref2 WORD &EEE4,0:BYTE 3,&2D,0,&10,0
+      MACRO NRT_CHANB_REF r2_3,r6,r7,r9
+      WORD r2_3:FILL 2,nrt_mark:BYTE r6,r7,nrt_mark,r9
+      ENDM
+.ref0     NRT_CHANB_REF(&EEE4,nrt_mark,&3D,15)
+.ref1     NRT_CHANB_REF(&7772,nrt_mark,&3D,13)
+.ref2     NRT_CHANB_REF(&EEE4,3,&2D,&10)
 .ref2code
           ex af,af
           ld a,sync_env_type
           ld de,&7772+sync_pitch ; c1
           jp set_reg13_insert_and_program
 ref2code_ = $ - .ref2code
-      WORD &9F71+hard_pitch /256 + 1 ; +1: rounding closest
-.ref3 WORD &EEE4,0:BYTE 3,&3F,0,&10,0 ; same than ref2 except r7=&3f
-      WORD &7772+sync_pitch
 
+_untouched              ; only r7 reset (pre_playing)
+          NRT_CHANB_REF(nrt_mark*&0101,nrt_mark,&3F,nrt_mark)
+
+test_non_existing_instr
+;----------------------             
+          ld hl,&BE00:ld (instr_code_pnt),hl
+          ld l,2:call instr_setup
+          ld hl,_untouched
+          call check_from_channel_b
+          ret
+
+;-------------------------
 nrt_instr_play
           di
           xor a:ld (nrt_msb_tm),a
@@ -117,6 +132,12 @@ nrt_instr_play
 check_from_channel_b
 ;in: hl = ref
           push hl
+; -- clear psg regs for ref check
+          ld hl,psg_regs
+          ld b,14
+nrt_mark = &F7
+.raz      ld (hl),nrt_mark:inc l:djnz .raz
+
           ld a,0        ; c0
           call nrt_instr_play ; on channel B
           pop hl
