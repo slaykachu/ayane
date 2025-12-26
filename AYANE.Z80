@@ -5,7 +5,8 @@
 ; 2025
  ;--- alpha 1 ---
   ; Dec
-   ;25: plug phrase editor 
+   ;25: CTRL-O to open .aya
+      ; plug phrase editor 
  ;--- v0au ---
   ; Nov             
    ;15: save_command: edit name
@@ -276,35 +277,13 @@ play_song
           ret
 
 
-;-----------------------------------------------
-; Commands
-;-----------------------------------------------
-
-      IF 0
-;---------------------
-open
-;---------------------
-          ld hl,_txt_open
-          ld de,name_file
-          CALL_DISP_BK(question)
-          ret nc
-
-;Sync   
-          call io_prelude
-
-; ---- Load file  
-      BRK
-
-          call io_postlude
-;Warning: errors message shouldn't be displayed on bandeau then
-          ret
 
 ;-----------------------------------------------
 ; Screens (sequencer, instr ed/sel)
 ;-----------------------------------------------
 ; <<< UI for each screen >>>
 
- ; Make senses 
+      IF 0
 sequencer
 ; Do screen setup here, as we don't want to add bandaya dep to track.o
 ; (might be moved in a newly introduced trackui.o, though)
@@ -365,7 +344,9 @@ io_prelude
 ;---------  
 ; !!! Client out of bank (we connect C1)
 ; Switch to classical display for proper display of amsdos messages
-; Also, allow to use page C0:4000
+; Also, allow to use page C0:4000       
+;Out: HL= tmp_buf
+    ; BC= 0 (meta size)
           call status_off ; first so that cls is faster!
        ;   CALL_DISP_BK(cls)
           ld a,2:call &BC0E ; For amsdos error message
@@ -375,6 +356,8 @@ io_prelude
           ld de,io
           ld bc,io0_
           ldir
+          ld hl,tmp_buf
+;          ld bc,0   ; already at 0
           ret
 
 _error
@@ -402,16 +385,27 @@ io_postlude
           call status_on
           jp return_to_screen
 
+;-----------------------------------------------
+; Commands
+;-----------------------------------------------
 
-save_command
+open_command
 ;-----------                        
-          CALL_DISP_BK(save_command')
+          CALL_DISP_BK(edit_filename)
           ret nc
 ;Out of bank: save_file doesn't reconnect bk. 
 ; AND: io_prelude must connect C1 to install io0
           call io_prelude
-          ld hl,tmp_buf
-          ld bc,0
+          call load_file
+          jp io_postlude
+
+save_command
+;-----------                        
+          CALL_DISP_BK(edit_filename)
+          ret nc
+;Out of bank: save_file doesn't reconnect bk. 
+; AND: io_prelude must connect C1 to install io0
+          call io_prelude
           call save_file
           jp io_postlude
 
@@ -432,6 +426,7 @@ shortcuts
 ;commands
       BYTE "I"-&40:WORD instr_selector_entry
       BYTE kcspc:WORD play_song
+      BYTE "O"-&40:WORD open_command
       BYTE "S"-&40:WORD save_command
 ;misc
       IF dev
@@ -639,8 +634,8 @@ field_refresh_wait_key
 
 
 ; ----------------------------------
-save_command'
-;in bk disp for name handling
+edit_filename
+;in bk disp for name handling    
           ld hl,name_module
           ld d,5
           call saisie_champ
@@ -654,6 +649,7 @@ save_command'
           call copy_nt
           scf
           ret
+
 
 ; ----------------------------------
           LIMIT(strings)
