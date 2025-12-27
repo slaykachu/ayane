@@ -47,13 +47,6 @@ nrtfail = &BE00
 ;      ORG bandaya_end
 
 ;---------------------------
-      MACRO CALL_DISP_BK adr
-; When caller out of bank
-          ASSERT($ AND &C000 != &4000)
-   ;       ASSERT(adr AND &C000 == &4000) (cannot check: forward ref)
-          call call_disp:WORD adr
-      ENDM
-;---------------------------
 
 start
           ld a,2:call &BC0E

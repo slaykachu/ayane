@@ -32,6 +32,13 @@ bk_connected = &3C
 
 
 ; ---------------------------------
+      MACRO CALL_DISP_BK adr
+; When caller out of bank
+          ASSERT($ AND &C000 != &4000)
+   ;       ASSERT(adr AND &C000 == &4000) (cannot check: forward ref)
+          call call_disp:WORD adr
+      ENDM
+
       MACRO CALL_STATUS adr
           ASSERT(adr AND &C000 == &C000) ; page c1        
 ;Connect C1 and current bk back at return
