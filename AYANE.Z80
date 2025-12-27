@@ -129,22 +129,17 @@ field_editor = field_module
           call call_disp:WORD adr
       ENDM
 
-      MACRO CALL_STATUS adr
-          ASSERT(adr AND &C000 == &C000) ; page c1        
-;Connect C1 and current bk back at return
-          call call_status:WORD adr
-      ENDM
-
       MACRO SET_CRTC reg,val
 !! use bandaya to set crtc (cheaper to do it there)
           call set_crtc:BYTE reg,val,-1
       ENDM
 
       MACRO ENTER ui_screen
-;Remember last entered screen 
-;(for ESC in instr_selector_entry and incoming other selectors)
+;Remember last entered screen, for: 
+  ; ESC in instr_selector_entry and incoming other selectors
+  ; Post fatal error (assert.o)
           ld hl,ui_screen
-          ld (last_screen),hl
+          ld (reenter_jp),hl
 ;unwind stack (i.e. ui_process)
           call reset_sp
       ENDM
@@ -179,7 +174,10 @@ err_too_big = 2
 start
 ;---------          
           call set_sp_backup
-          ASSERT(BK_IO == &C0)
+; Entry point after io_postlude
+; do it first in case of assert error
+          ENTER(ayane_entry)
+
           call full_init
           CALL_DISP_BK(start_disp_bk)
 
@@ -200,7 +198,6 @@ start
           ld bc,0
           call load_file
       END
-          ENTER(ayane_entry) ; entry point after io_postlude
           jp io_postlude
 
 ;----------
@@ -316,15 +313,7 @@ instr_selector_entry
           cp 13:jr z,instr_ed_entry_
           cp kesc
           jr nz,.lp
-;enchaine
-return_to_screen
-          call reset_sp
-          ld hl,(last_screen)
-      IF dev_checks
-          ld a,end_of_screens/&0100:cp $/&0100 +1:call nc,mess
-      END
-;enchaine
-jp_hl     jp hl
+          jp reenter_last
 
 instr_ed_entry_
           call update_instr_in_status
@@ -435,7 +424,6 @@ shortcuts
 ;      BYTE "o":WORD open
       BYTE 0
 
-last_screen WORD &BE00
 
 hi
           LIMIT(ramlimit)

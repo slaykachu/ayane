@@ -4,7 +4,8 @@ todo  = 1
 
 ; 2025
    ; -- Alpha 1 --
-   ; Dec 24: track.o must skip instrsel.o
+   ; Dec 26: Import assert.o
+       ; 24: track.o must skip instrsel.o
        ; 19: Remove uiloopt -> ply dependency
 
       IMPORT "memmap.i"
@@ -19,8 +20,8 @@ todo  = 1
 ;-----------------------------
       MACRO IMPORT_CORE
 ; Also imported by ayane.o
+      IMPORT "assert.o"
       IMPORT "memcpc.o"
-     ; IMPORT "assert.o"
       IMPORT "scan-key.o"
       IMPORT "conv.o"   ; out of bank for disp
       IMPORT "tracknub.o" ; get_track_header 
@@ -99,9 +100,11 @@ todo  = 1
 
 ;-----------------------------
       MACRO IMPORT_PHRASUI_DEPS
+.save
           IMPORT_SHARED_DEPS_ALL()
           IMPORT_SHARED_DEPS'()
           IMPORT_SHARED_DEPS''()
+      ORG save
       ENDM
 
 ;-----------------------------

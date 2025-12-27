@@ -2,6 +2,7 @@
 ; CPC specific PAGING (out &7fxx,&cX)
 ; 2025
  ; --alpha 1-- 
+     ; Dev 25: Use assert.o
      ; Nov 16: call_disp: update checks (no more jp table)
  ; --v0.a?--
      ; Aug 25: Remove jump table. Short module: neater to import
@@ -12,18 +13,16 @@ todo  = 1
       IMPORT "memmap.i"
       IMPORT "macro.i"  ; ASSERT
      ; IMPORT "const.i"  ; dev_checks
+      IMPORT "assert.o"
 
 dev_checks' = 1         ; for now, don't use const.dev_checks
 ; -> allow to detect programming errors even when we deactivate 
    ; dev_checks for ply, timer etc...
 
 ; /// 2025 ///
+   ; -- alpha1 --
    ; -- v0.0an --
        ;25: Adopt JP_DISP / 
-
-
-mess  = &BE00
-fail  = mess
 
 ; Store currently connected bank 
 ; (for interruptions or co-routine to be able to store/restore)
@@ -33,6 +32,12 @@ bk_connected = &3C
 
 
 ; ---------------------------------
+      MACRO CALL_STATUS adr
+          ASSERT(adr AND &C000 == &C000) ; page c1        
+;Connect C1 and current bk back at return
+          call call_status:WORD adr
+      ENDM
+
       MACRO JP_DISP adr
           call jp_disp:WORD adr
 ;note: doesn't return here, but at caller's level
@@ -224,8 +229,8 @@ call_disp
           call connect_a
       IF dev_checks'
 ; verify code has been loaded
-          ld a,(disp):cp "D":call nz,fail
-          ld a,(disp+1):cp "I":call nz,fail
+          ld a,(disp):cp "D":call nz,mess
+          ld a,(disp+1):cp "I":call nz,mess
       END
           pop af
           ex (sp),hl
@@ -262,8 +267,8 @@ call_status
           call connect_a
       IF dev_checks'
 ; verify code has been loaded
-          ld a,(disp+&8000):cp "D":call nz,fail ; jp
-          ld a,(disp+&8001):cp "I":call nz,fail
+          ld a,(disp+&8000):cp "D":call nz,mess ; jp
+          ld a,(disp+&8001):cp "I":call nz,mess
       END
           pop af
           ex (sp),hl
@@ -295,8 +300,8 @@ jp_disp
           call connect_a
       IF dev_checks'
 ; verify code has been loaded
-          ld a,(disp):cp "D":call nz,fail ; jp
-          ld a,(disp+1):cp "I":call nz,fail
+          ld a,(disp):cp "D":call nz,mess ; jp
+          ld a,(disp+1):cp "I":call nz,mess
       END
           pop af
           ex (sp),hl
@@ -330,8 +335,8 @@ jp_status
           call connect_a
       IF dev_checks'
 ; verify code has been loaded
-          ld a,(disp+&8000):cp "D":call nz,fail
-          ld a,(disp+&8001):cp "I":call nz,fail
+          ld a,(disp+&8000):cp "D":call nz,mess
+          ld a,(disp+&8001):cp "I":call nz,mess
       END
           pop af
           ex (sp),hl
@@ -427,6 +432,13 @@ check_bk_base
           call nz,mess
           pop bc:pop af
           ret
+
+reenter_last
+; Go back to last "screen" after error or ESC in selectors
+          call reset_sp
+reenter_jp = $+1
+          jp &BE00      ; set by ENTER_SCREEN
+
       END
 
 

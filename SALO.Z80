@@ -2,7 +2,8 @@
 ; 2025      
  ; Sep
 ;--- Alpha 1 ---
- ; Dec:
+ ; Dec:                           
+  ;26: Use assert, remove dead code
   ;17: WTF? Line 1510 we had ld b,3 instead of ld c,3 to save track loop
 ;--- v0au ---
  ; Nov           
@@ -46,7 +47,6 @@
 dev_checks = 1
 need_room = 1
 todo  = 1
-to_be_implemented = &BE00
 
 memmap
       IMPORT "const.i"
@@ -57,9 +57,6 @@ memmap
 
       ORG io
       IMPORT "io.o"
-
-disp_nl = &BE00         ; TODO: init (+test?)
-disp_chr = &BE00        ; "
 
 buffer = salo_buf1
 buffer' = salo_buf2
@@ -185,10 +182,11 @@ SENTINELLE_16 = &FFFF   ; -1 too, but must save 16 bits!
       END
       ENDM
 
-unexpected = &BE00
+unexpected = mess
+; later: dedicated error message (e.g. wrong version)
 
+;-------------------------------
 ; Maybe useful code snippets when we reactive tables and/or fx.
-
       MACRO LOAD_TABLE
 ; Deserialize tables:
       ; register tables
@@ -231,75 +229,6 @@ lt_lp
 
 lt_end
 
-      ENDM
-
-
-      MACRO LOAD_INSTR
-;---------
-; Deserialize instruments:
-      ; register intruments
-; In: File open for read.
-;!!! 
-
-li_lp
-          ld hl,tag_instr:call check_tag
-
-; Instr # 
-          call load_a
-          IS_END_OF_LIST():jr z,li_end
-          call song_select_new_instr
-          ALT_TOBE()
-
-; /--1: Total # params in words.
-          call load_a
-          ld b,a
-li_inner
-; /--2: id
-; /--3: sign (needed if fx unknown)
-          call load_bc
-          ld a,c
-
-      BRK
-          call instr_set_fx ; in: A=id 
-          call nc,todo  ; Unknown instr or mem full
-
-todo  = &BE00
-; /--3+: params (value or serialized table)
-; /--...
-li_fix                  ; TODO:rename 'fix' by set!
-; 000000-> no more param
-; xxxx01-> --not used here--
-; xxxx10-> word
-; xxxx11-> word (table)
-
-          ld a,b:or a:jr z,li_end
-
-          srl b:jr c,lifix_x1
-; necessarily 10 here
-          srl b
-      IF dev_checks
-          call nc,&BE00 ; 00 unexpected
-      END
-          push bc
-          call load_bc
-          call instr_append_param_word
-          pop bc
-          jr li_fix
-
-lifix_x1
-          srl b
-      IF dev_checks
-          call nc,&BE00 ; 01 unexpected
-      END
-; 11: table
-          push bc
-          call load_a   ; table idx 
-          call instr_append_param_table
-          pop bc
-          call nc,todo  ; gere error
-          jr li_fix
-li_end
-          ALT_TOBE2()
       ENDM
 
 ;-----------------------------------
@@ -439,7 +368,7 @@ exit_err
 ;TODO: how to report error (to user & to calling routine).
           ld sp,(v_savesp)
       IF dev_checks
-          ld a,(v_savesp+1):and &FE:cp &BE:call nz,fail
+          ld a,(v_savesp+1):and &FE:cp &BE:call nz,mess
       END
           or a
           ret
@@ -447,7 +376,7 @@ exit_err
 _do_load
       IF dev_checks
 ;We don't load more than 255 bytes at a time
-          inc b:dec b:call nz,fail
+          inc b:dec b:call nz,mess
       END
           ld a,d:cp &80:jr nc,.load_to_de
 ;must use tmp buf    
@@ -469,10 +398,6 @@ _do_load
 jp_io_load call &BE00
           pop bc        ; preserve carry
           jp connect_b
-
-programming_error = &BE00
-fail  = &BE00
-mess  = &BE00
 
 version = 0
 
@@ -564,7 +489,7 @@ load
 ; --- instr replay freq.
           call load_hl
           ld bc,replay_50_08Hz
-          or a:sbc hl,bc:call nz,programming_error
+          or a:sbc hl,bc:call nz,unexpected
 ; -- Type
           call load_a   ; Type (default, chip_down_arp ...)
           push af

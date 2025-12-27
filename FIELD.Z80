@@ -6,7 +6,6 @@
 
 todo  = 1
 dev_checks' = 1
-fail  = &BE00
 
 ; 2025
  ; Nov 10 s/dev_checks/dev_checks' to avoid ambiguity
@@ -21,6 +20,7 @@ handle_ctrl_cursor = 0
 ; TODO [space optim] Reuse shortcut.o for /scan_key/
      ; Or the other way around: shortcut would reuse this instance.
 
+      IMPORT "assert.o"
       IMPORT "scan-key.o"
 
       IF todo
@@ -113,7 +113,7 @@ field_editor
 
       IF dev_checks'
           cp c
-          call c,fail   ; pos must be <= pos 
+          call c,mess   ; pos must be <= pos 
       END
 
 ; now insert char

@@ -1,10 +1,8 @@
 ; ---- Shared constants and struct def -----
 
-dev_checks = 0
-
-mess  = &BE00
-memory_full = &BE00
-to_be_implemented = &BE00
+release = 1
+dev   = 1-release
+dev_checks = dev
 
 ; Unit is nop, as timer.current_clock 
 ; The slowest replay is then 65535 / 312 / 64 = 3.28 frames
@@ -204,7 +202,7 @@ y_pos_instr_ed = y_pos_last_line
 x_pos_instr_ed = 8
 y_pos_note = y_pos_octave
 x_pos_note = x_pos_octave + 12
-
+x_pos_error = 10
 ;-------------------------
 
 ; --------------------------

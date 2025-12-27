@@ -32,9 +32,9 @@ code_start = &40
 ; Expected addresses, for sanity checks
 ; -- All
 memcpc = &40
-scankey = &01F6
-conv  = &0207
-chunk_module = &0414
+scankey = &0211
+conv  = &0222
+chunk_module = &042F
 ;dispjp = &1900   ; not a dep anymore
 ;periods_module = &057F
 ;timer = &0A61
@@ -95,9 +95,9 @@ phrases_across_banks = 0 ; 1 when allowing several banks
 
 phrases_ = &7600        ; end
 
-;  ---------------------------------------------
-; -- c5: Base BK, instr, tables, persitent var --
-;  ---------------------------------------------
+;  -----------------------------------------------------
+; -- c5: Base BK, instr, tables, tracks, persitent var --
+;  -----------------------------------------------------
       ORG &4000
 
 ; -- tracks  (aka song map)
@@ -176,6 +176,9 @@ phrasui = &5620
 disp_ayane = &5C60      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
+
+;--- jump entry for assert.o
+jp_status_error = disp+2
 
       ORG &8000
 psg_regs                ;  Room for pseudo registers and ??? 

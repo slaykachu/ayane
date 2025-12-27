@@ -22,13 +22,12 @@ tmp_rast = 0
       IMPORT "memmap.i"
       IMPORT "macro.i"
 
+      IMPORT "assert.o"
       IMPORT "memcpc.o" ; scope_bk_instr
       IMPORT "song.o"   ; Song_get_instr
       IMPORT "instr.o"  ; instr_setup
       IMPORT "timer.o"
       IMPORT "ppi.o"
-
-fail  = &BE00
 
       MACRO CHECK_DI
       IF dev_checks

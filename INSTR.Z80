@@ -18,6 +18,7 @@ dev_checks' = 1         ; new checks
       IF ayane
       IMPORT "const.i"  ; instr_head_size
       IMPORT "memmap.i" ; BK_INSTR, instr_idx, psg_regs
+      IMPORT "assert.o"
       IMPORT "periods.o"
 ;!! periods don't pad itself, to get the correct binary size
 ;!! when assembling ply.o with ayane=0
@@ -301,10 +302,10 @@ instr_default
           ld h,(hl):ld l,a
       IF dev_checks
 ; If wrong, typically BK_INSTR wasn't connected
-          ld a,h:cp tables/&0100:call c,fail
-          cp tables_/&0100:call nc,fail
+          ld a,h:cp tables/&0100:call c,mess
+          cp tables_/&0100:call nc,mess
 ; no loop in header.
-          bit loop_bit,h:call nz,fail
+          bit loop_bit,h:call nz,mess
           SUB_TM''(16)
       END
           EX_AF'()
@@ -787,8 +788,6 @@ instr_code_             ; for check by fx.o
   ; we use JP HL' here!
       END
 
-fail  = &BE00
-
       MACRO CHECK_DI
       IF dev_checks
           call _check_di
@@ -799,8 +798,7 @@ instr_setup
 ;----------
 ; For piano and instrnrt
 ; IN: L = instr number > 0
-;OUT: Carry if ok (instr exist)
-    ; NC otherwise
+;OUT: N/A
           ASSERT(instr_head_size == 8)
           ASSERT(instr_idx AND &07FF == 0)
 
@@ -809,10 +807,12 @@ instr_setup
 
           ld bc,&7F00+BK_INSTR:out (c),c
 
-          ld a,(hl)
-          cp instr_default AND &FF
       IF dev_checks'
-          call nz,mess  ; only one instrument for new
+          ld a,(hl)
+          cp instr_default AND &FF:jr z,.ok
+          cp instr_null AND &FF:jr z,.ok
+      BRK
+.ok
       END
           ld de,instr_code_pnt
           ldi
@@ -822,7 +822,6 @@ instr_setup
           ld (hl),instr_code/&0100:inc hl
           ld (hl),e:inc hl
           ld (hl),d
-          scf
           ret
 
 MAX_TM = &80

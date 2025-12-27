@@ -22,6 +22,7 @@ dev_checks' = 1
       IMPORT "macro.i"
       IMPORT "import.i"
 
+      IMPORT "assert.o"
       IMPORT "memcpc.o" ; reset_sp
       IMPORT "chung.o"  ; Model (instr get/set row)
       IMPORT "ged.o"
@@ -422,7 +423,6 @@ _refresh
 
 _get_loop
 ; Return 0 if selected_line = loop point
-;          ld a,(dbg+4):cp &F7:call z,&BE00
           call instr_get_loop
           jr nc,_zero   ; no loop at all
 
@@ -480,7 +480,7 @@ _set_arp  add a         ; expect pre-encoded
 _get_arp  ld a,(row_buffer+instr_arp)
           sra a         ; signed
       IF dev_checks'
-          call c,fail
+          call c,mess
       END
           ret
 
@@ -515,7 +515,6 @@ _toggle_vol
       END
 
 is_volume
-;          ld a,(row_buffer+instr_vol):bit 0,a:call nz,&BE00
           ld a,(row_buffer+instr_vol):cpl:and flags_env_hard:ret
 
 is_pure_env_hard
@@ -602,7 +601,7 @@ _get_env_arp
           ld a,(row_buffer+instr_hard_arp)
           sra a
       IF dev_checks'
-          call c,fail
+          call c,mess
       END
           ret
 
@@ -679,7 +678,7 @@ _set_fx0_arp add a:ld (row_buffer+fx0_arp),a:jp _update_row
 _get_fx0_arp ld a,(row_buffer+fx0_arp)
           sra a
       IF dev_checks'
-          call c,fail
+          call c,mess
       END
           ret
 
@@ -731,7 +730,7 @@ _set_fx1_arp add a:ld (row_buffer+fx1_arp),a:jp _update_row
 _get_fx1_arp ld a,(row_buffer+fx1_arp)
           sra a
       IF dev_checks'
-          call c,fail
+          call c,mess
       END
           ret
 

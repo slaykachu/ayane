@@ -6,13 +6,10 @@ dev_checks = 1
 
 ; Adapted from :lib/bitset (remove tests and auto-burn)
 
-;---------------------------
-mess  = &BE00
-
 ; ========================================
       MACRO DECLARE_BITSET n
 ; Reserve space for bitset of size n
-      SKIP [n+7]/8 + 1
+      FILL [n+7]/8 + 1,0
       ENDM
 
       MACRO SIZE_IN_BYTES

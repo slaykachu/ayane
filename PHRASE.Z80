@@ -72,6 +72,7 @@ makeroom = 1
       IMPORT "memmap.i"
       IMPORT "macro.i"
 
+      IMPORT "assert.o"
       IMPORT "memcpc.o"
       IMPORT "chunk.o"
 
@@ -125,15 +126,6 @@ phrases_rows = &7800    ; nb rows for each phrase
           reserved_byte ** inc l
       ENDM
 
-;==============================================
-fatal = &BE00           ; TODO: replace by warning mecanism.
-memory_full = fatal
-mess  = &BE00
-fail  = &BE00           ; synonymous
-unexpected = &BE00
-programming_error = &BE00
-not_supported = &BE00
-to_be_implemented = &BE00
 ;==============================================
 phrase_code
 
@@ -193,7 +185,7 @@ song_select_new_phrase
 ; !! Right now we assume it's a brand new phrase.
 ; When it's not the case anymore (e.g. user input), either
 ; return current as is (no new_phrase_chunk) or free it (TBD).
-          ld a,(hl):or a:call nz,unexpected
+          ld a,(hl):or a:call nz,mess
       END
           ld (hl),d
 ; Here and below: mustn't change flag Z!
@@ -353,7 +345,7 @@ phrase_set_params
 ;In: hl: params (out of bank)
    ;  c: size params
           ld a,c:or a:ret z
-          dec a:call nz,unexpected ; just 1 param for now (fc_color)
+          dec a:call nz,mess ; just 1 param for now (fc_color)
           call scope_bk_phrase
           ex de,hl
           call connect_phrase_begin
@@ -1133,7 +1125,7 @@ fx_append_byte
           call connect_current_row
           ex de,hl      ; de=start for shift_in_row
           ld hl,(va_instr_pnt)
-          ld a,l:or h:call z,programming_error
+          ld a,l:or h:call z,mess
 ;insert     
           ld c,1:call shift_in_row
           pop af:ld (hl),a
@@ -1168,7 +1160,7 @@ skip_fx_ins
           call skip_fx
           rra           ; discard bit 4
       IF dev_checks'
-          call c,&BE00
+          call c,mess
       END
 ;ins
 _skip_byte
@@ -1377,9 +1369,9 @@ Get_phrase
           inc l
       IF dev_checks'
           ld a,(hl):or a:jr z,.ok0
-          and &C0:cp &40:call nz,fatal
+          and &C0:cp &40:call nz,mess
           dec l
-          ld a,(hl):cp BK_PHRASE:call nz,fatal
+          ld a,(hl):cp BK_PHRASE:call nz,mess
           inc l
 .ok0
       END
@@ -1461,7 +1453,7 @@ shift_in_phrase_chunk
 ; TODO? factorize with orgams? No merge and some other differences tho
 
       IF dev_checks'
-          ld a,c:or a:call z,fatal
+          ld a,c:or a:call z,mess
       END
           call try_shift_in_chunk
           ret c
@@ -1495,7 +1487,7 @@ sicc_second
 sicc_com
 ; Must fit now that room was made.
           call try_shift_in_chunk
-          call nc,programming_error
+          call nc,mess
           ret
 
 
@@ -1531,8 +1523,8 @@ copy_from_chunk_to_next
           ld c,a
       IF dev_checks'
 ; 'next' field must be valid and non 0
-          and &C4:cp &C4:call nz,fail
-          ld a,d:and &C0:cp &40:call nz,fail
+          and &C4:cp &C4:call nz,mess
+          ld a,d:and &C0:cp &40:call nz,mess
       END
           ld b,&7F
 .ctbk_lp
@@ -1609,8 +1601,8 @@ hook_new_chunk
 
 ; !! for now: only new_phrase_chunk_used
           push af
-          ld a,ixl:cp new_chunk_ext AND &FF:call nz,programming_error
-          ld a,ixh:cp new_chunk_ext/&0100:call nz,programming_error
+          ld a,ixl:cp new_chunk_ext AND &FF:call nz,mess
+          ld a,ixh:cp new_chunk_ext/&0100:call nz,mess
           pop af
           jp ix
 
@@ -1782,7 +1774,7 @@ append_raw_in_chunk
 
 ; For now: BRK if size = 0 to detect programmation errors.
          ; Since i cannot think of a scenario were we would pass 0.
-          inc c:dec c:call z,fatal
+          inc c:dec c:call z,mess
 
           push hl
           ld h,d:ld l,b
@@ -1821,7 +1813,7 @@ aric_com
           push hl
           ld h,d:ld l,b
           call insert_new_chunk_from_id
-          call connect_next_chunk:call z,programming_error
+          call connect_next_chunk:call z,mess
           ld e,l:ld d,h
           pop hl
           call _append
@@ -1919,10 +1911,10 @@ shift_in_chunk
 
 ; For now: BRK if size = 0 to detect programmation errors.
          ; Since i cannot think of a scenario were we would pass 0.
-          inc c:dec c:call z,fatal
+          inc c:dec c:call z,mess
 ; For now: Doesn't support bigger than chunk size 
          ; since anyway inserted stuff must remain contiguous.
-          ld a,c:cp chunk_free+1:call nc,not_supported
+          ld a,c:cp chunk_free+1:call nc,to_be_implemented
 
           push hl
           ld l,b
@@ -1957,7 +1949,7 @@ try_shift_in_chunk
           ld a,l
           ld l,chead_last
           neg:add (hl):ld b,a:inc b ; size to copy
-      IF dev_checks':call z,fatal:END
+      IF dev_checks':call z,mess:END
 
           ld a,(hl)
           add c:jr c,_tsic_ret ; -> doesn't fit
@@ -2010,7 +2002,7 @@ move_tail_in_new_chunk'
           ld e,chead_last
           ld d,h
           ld a,(de)
-          sub l:IF dev_checks':call c,&BE00:END
+          sub l:IF dev_checks':call c,mess:END
           inc a
           ld e,c        ; chunk_start
           ld c,a        ; size
@@ -2027,7 +2019,7 @@ move_tail_in_new_chunk'
       IF dev_checks'
 ;For now only one kind: strict sanity check.
           ld bc,sentinel_phrase_eoc
-          or a:sbc hl,bc:add hl,bc:call nz,programming_error
+          or a:sbc hl,bc:add hl,bc:call nz,mess
       END
           ld c,(hl):inc hl
           inc c:dec c:jr z,.put_eoc

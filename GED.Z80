@@ -44,10 +44,9 @@ hack  = 1
 
       IMPORT "const.i"
       IMPORT "macro.i"  ; GED_HANDLED
+      IMPORT "assert.o"
       IMPORT "field.o"
       IMPORT "conv.o"
-
-fail  = &BE00
 
 ; TODO: review that!
 ; widget_iter:   C = no key or key handled by 
@@ -232,7 +231,7 @@ handler_table WORD
           call clean_edit_buffer
           call setup_field_editor
           call call_state_on_enter
-          call nc,fail  ; Case not handled.
+          call nc,mess  ; Case not handled.
       ENDM
 
 widget_virt_size = $-widget_state
@@ -303,8 +302,8 @@ _check_key_table
           ex de,hl
    ; external tables, for now all ui < &8000
           ld hl,&7FFF:or a:sbc hl,de:jr nc,.ok
-          ld hl,keytables:scf:sbc hl,de:call nc,fail
-          ld hl,keytables_:or a:sbc hl,de:call c,fail
+          ld hl,keytables:scf:sbc hl,de:call nc,mess
+          ld hl,keytables_:or a:sbc hl,de:call c,mess
 .ok
           pop de:pop hl
           ret
@@ -548,7 +547,7 @@ _check_in_focus
           push hl:push de:push af
           ld hl,(state_sp)
           ld de,(state_sp_handler)
-          or a:sbc hl,de:add hl,de:call nz,fail
+          or a:sbc hl,de:add hl,de:call nz,mess
           pop af:pop de:pop hl
           ret
       END
@@ -752,8 +751,8 @@ setup_widget
 _setup_widget           ; <- when location copied for parent
           ld a,(hl)
       IF dev_checks'
-          cp w_brk:call c,fail ; w_null / w_frame not used
-          cp widgets_nb:call nc,fail
+          cp w_brk:call c,mess ; w_null / w_frame not used
+          cp widgets_nb:call nc,mess
       END
           inc hl
           push hl
@@ -793,7 +792,7 @@ gedeihen_enter
 ; Check init was done. We don't call init ourselves:
   ; - allow custom init (e.g. gedeihen_init_ext_nrt)
   ; - more efficient
-          ld a,(flag_init):cp &BB:call nz,&BE00
+          ld a,(flag_init):cp &BB:call nz,mess
           push hl
           call set_root_state
           ld hl,noop:ld (validate_hook+1),hl
@@ -812,7 +811,7 @@ gedeihen_process
 
       IF dev_checks'
 ; 0 is used as sentinelle, mustn't be sent as code
-          or a:call z,fail
+          or a:call z,mess
       END
 
           ld e,a
@@ -822,34 +821,15 @@ gedeihen_process
 ;here: hl=state for handler
      ; e= code
           call process_key
-          jr nc,.ti_unhandled
 ; Cf /handler_table/ for flags API
-      IF todo
-;Cleanup
-      IF 1
-          ret
-      ELSE
-; placeholder for considering API:
-; C + Z : handled
-; C + NZ : handled, but pass to parent
-; YAGNI 
-          ret z
-      BRK
-          cp ev_child_exit:call nz,&BE00
-      END
+; !! Z/NZ distinction dropped
+          ret c
 
-; Pass event to parent, avoid infinite loop in case of misconfiguration.
-; Also, self-event can be handled directly.
-          ld e,a
-          jr .ti_parent
-      END
-
-.ti_unhandled
+; Unhandled
 ; Exit. Needed to e.g. validate cell before going down next line.
 ; !!! NOTE: we don't pop state, just go to parent's handler.
 ; !!! It allows to keep current widgets' state (in case key is not 
 ; !!! handled at all, or handled by "piano").
-;          cp 13:call z,&BE00
           push af       ; save a = key/event
 ; Only validate widget in focus.
 ; See rationale in /validate/ routine itself.
@@ -859,7 +839,6 @@ gedeihen_process
           call z,maybe_validate ; validate + refresh without focus
           pop af
 ; Try parent                    
-.ti_parent
           ld e,a        ; save event (push/pop af would affect Z)
           ld hl,(state_sp_handler)
           GET_STATE_CUSTOM(parent)
@@ -894,7 +873,7 @@ process_key_custom
       END
           CHECK_KEY_TABLE()
       IF dev_checks'
-          inc e:dec e:call z,fail
+          inc e:dec e:call z,mess
       END
           ld a,(hl):inc hl
           ld c,(hl):inc hl ; matching or fallback routine
@@ -1049,8 +1028,8 @@ set_state_sp_gen = set_state_sp
       IF dev_checks'
 _check_state_sp
           push de
-          ld de,state_stack:or a:sbc hl,de:add hl,de:call c,fail
-          ld de,state_stack_end:or a:sbc hl,de:add hl,de:call nc,fail
+          ld de,state_stack:or a:sbc hl,de:add hl,de:call c,mess
+          ld de,state_stack_end:or a:sbc hl,de:add hl,de:call nc,mess
           pop de
           ret
 
@@ -1064,9 +1043,9 @@ _check_state_sp_gen
 _check_state_sp_disp
           push de
 _try_disp
-          ld de,state_stack_disp:or a:sbc hl,de:add hl,de:call c,fail
+          ld de,state_stack_disp:or a:sbc hl,de:add hl,de:call c,mess
           ld de,state_stack_disp_end:or a:sbc hl,de:add hl,de
-          call nc,fail
+          call nc,mess
           pop de
           ret
       END
@@ -1076,7 +1055,7 @@ rewind_state
           push hl
           ld hl,(state_sp_handler)
       IF dev_checks'
-          ld a,l:or h:call z,fail
+          ld a,l:or h:call z,mess
       END
           call set_state_sp
           pop hl
@@ -1094,22 +1073,22 @@ push_state
 ;check was setup
           ld hl,(state_sp)
           push hl
-          inc hl:ld a,(hl):dec hl:or a:call z,fail ; 'set_cursor' field
+          inc hl:ld a,(hl):dec hl:or a:call z,mess ; 'set_cursor' field
       END
           ld bc,state_
           add hl,bc
       IF dev_checks'
 ;check stack overflow
           push bc
-          ld bc,state_stack_end:or a:sbc hl,bc:add hl,bc:call z,fail
+          ld bc,state_stack_end:or a:sbc hl,bc:add hl,bc:call z,mess
           ld bc,state_stack_disp_end:or a:sbc hl,bc:add hl,bc
-          call z,fail
+          call z,mess
           pop bc
       END
           ld (state_sp),hl
       IF dev_checks'
 ; check child was setup
-          inc hl:ld a,(hl):or a:call z,fail ; 'set_cursor' field
+          inc hl:ld a,(hl):or a:call z,mess ; 'set_cursor' field
 ;another check proper setup
           GET_STATE(parent)
           pop de
@@ -1123,7 +1102,7 @@ push_state
       END
           ld de,state_stack - state_stack_disp
           or a:sbc hl,de:jr z,.okparent
-          call fail
+          call mess
 .okparent
       END
           pop hl
@@ -1150,9 +1129,9 @@ clone_state
           add hl,bc
       IF dev_checks'
           push bc
-          ld bc,state_stack_end:or a:sbc hl,bc:add hl,bc:call z,fail
+          ld bc,state_stack_end:or a:sbc hl,bc:add hl,bc:call z,mess
           ld bc,state_stack_disp_end:or a:sbc hl,bc:add hl,bc
-          call z,fail
+          call z,mess
           pop bc
       END
           ex de,hl
@@ -1169,7 +1148,7 @@ call_display
           GET_STATE_BYTE(focus)
       IF dev_checks'
           or a:jr z,.ok
-          cp &FF:call nz,fail
+          cp &FF:call nz,mess
 .ok
       END
           JP_STATE(display)
@@ -1446,7 +1425,7 @@ wc_optional
           ld hl,(state_sp)
           ld de,-state_:add hl,de
           pop de
-          or a:sbc hl,de:add hl,de:call nz,fail
+          or a:sbc hl,de:add hl,de:call nz,mess
           scf
           ret
       ELSE
@@ -1491,11 +1470,6 @@ wc_multiline
 ; -------------------------------------
 ; routine dynamically sets     
 ; -------------------------------------
-
-get_0
-          call &BE00
-
-
 struct_on_enter
 ; (re)enter current field (concrete widget that must catch events)
 enter_child
@@ -1518,11 +1492,11 @@ enter_child
 multiline_on_enter
 ; Enter wrapped widget   
           call select_line_in_view'
-          call nc,fail  ; what to do if no line here?
+          call nc,mess  ; what to do if no line here?
       IF dev_checks'
           GET_STATE(embedded_ui)
 ;see /w_key_handler/
-          ld a,(hl):cp w_key_handler:call z,fail
+          ld a,(hl):cp w_key_handler:call z,mess
       END
           jp enter_child
 
@@ -1533,14 +1507,14 @@ refresh_on_enter
 ; Todo at setup time instead?
           GET_STATE(parent)
       IF dev_checks'
-          ld a,l:or h:call z,fail ; only make senses 
+          ld a,l:or h:call z,mess ; only make senses 
       END
           ld (refresh_sp+1),hl
           ld hl,force_refresh
           ld (validate_hook+1),hl
           GET_STATE(embedded_ui)
       IF dev_checks'
-          ld a,h:cp &80:call nc,fail
+          ld a,h:cp &80:call nc,mess
       END
           jp enter_child
 
@@ -1549,7 +1523,7 @@ force_refresh
           push hl
 refresh_sp ld hl,0
       IF dev_checks'
-          ld a,l:or h:call z,fail
+          ld a,l:or h:call z,mess
       END
       IF hack
 ; Otherwise, last edited/selected buffer displayed
@@ -1593,7 +1567,7 @@ force_refresh_custom
 ;; factorize with force_refresh
       END
       IF dev_checks'
-          ld a,l:or h:call z,fail
+          ld a,l:or h:call z,mess
       END
       IF hack
 ; Otherwise, last edited/selected buffer displayed
@@ -1690,7 +1664,7 @@ struct_lft
           dec hl
           call setup_field
       IF dev_checks'
-          call nc,fail
+          call nc,mess
       END
           push af
           call struct_sub_width
@@ -1711,7 +1685,7 @@ struct_stay
 struct_stay_
           call setup_field
       IF dev_checks'
-          call nc,fail
+          call nc,mess
       END
 struct_reenter
 ;'enter' Needed to e.g. setup field editor and regive focus
@@ -1779,7 +1753,7 @@ setup_rw_field
           push hl
           ld l,a:ld h,0
           call setup_field
-          call nc,fail
+          call nc,mess
           ld a,l
           pop hl
           jr z,.ro
@@ -1876,7 +1850,7 @@ _struct_go_rgt
 ;!!! so we just check focus is not on struct itself
           ld hl,(state_sp)
           ld de,(state_sp_handler)
-          or a:sbc hl,de:call z,fail
+          or a:sbc hl,de:call z,mess
       END
 
 ; init d = pos.x+width
@@ -1920,8 +1894,8 @@ _struct_setup_field_cursor
           SET_STATE(struct_col)
           call setup_field
       IF dev_checks'
-          call nc,fail
-          call z,fail
+          call nc,mess
+          call z,mess
       END
           ret
 
@@ -2109,7 +2083,7 @@ _ml_dwn
           jp nz,_ml_update_y
 
       IF dev_checks' AND do_scroll_multiline
-          call nc,fail  ; past scroll threshold
+          call nc,mess  ; past scroll threshold
       END
           scf:sbc a     ; NZ, C
           ret
@@ -2191,7 +2165,7 @@ page_dwn
     ; NZ if must refresh
           call call_state_get_line#
       IF dev_checks'
-          or a:call z,fail ; We don't handle empty structure
+          or a:call z,mess ; We don't handle empty structure
       END
           dec a
           ld c,a
@@ -2351,7 +2325,7 @@ update_nested_pos_y_
           SET_STATE_BYTE(widget_pos_y)
           call pop_state
       IF dev_checks'
-          call z,fail
+          call z,mess
       END
           ret
 
@@ -2550,7 +2524,7 @@ disp_struct
     ; Hardcoded seperators: space.
       IF dev_checks'
           or a:jr z,.ok
-          cp &FF:call nz,fail
+          cp &FF:call nz,mess
 .ok
       END
           SET_STATE_BYTE(focus)
@@ -2757,7 +2731,7 @@ append_to_buffer
           dec hl        ; rewind to 0
       IF dev_checks'
 ;Mustn't be pre-buffer
-          ld a,l:cp wv_tmp_buffer-1 AND &FF:call z,fail
+          ld a,l:cp wv_tmp_buffer-1 AND &FF:call z,mess
       END
           ex de,hl
 ;enchaine
@@ -2888,7 +2862,7 @@ _buffer_to_deci_byte
       IF dev_checks'
 ;Padding mustn't be done in buffer (prevents to insert digits)
 ;but at display time.
-          cp " ":call z,fail
+          cp " ":call z,mess
       END
           jp deci_to_byte ; brk if > 255
 
@@ -2901,7 +2875,7 @@ _buffer_to_deci_word
       IF dev_checks'
 ;Padding mustn't be done in buffer (prevents to insert digits)
 ;but at display time.
-          cp " ":call z,fail
+          cp " ":call z,mess
       END
           call deci_to_int
           ex de,hl
@@ -3025,7 +2999,7 @@ key_handler_custom
           GET_STATE_CUSTOM(embedded_ui)
           ex de,hl
           ld hl,(state_sp)
-          or a:sbc hl,de:add hl,de:call nz,fail
+          or a:sbc hl,de:add hl,de:call nz,mess
       END
       END
 
@@ -3056,7 +3030,7 @@ key_optional_readwrite
           ld e,a
       IF dev_checks'
 ; Check it is setup
-          inc hl:ld a,(hl):dec hl:or a:call z,fail
+          inc hl:ld a,(hl):dec hl:or a:call z,mess
       END
           call process_key_
           pop hl
@@ -3191,16 +3165,13 @@ fe_pos = $+1
           call field_editor
           ld (fe_pos),bc ; just for C. B was preserved, so ok
           ld b,a
-        ;  push af
-        ;  cp k_rgt:call z,&BE00
-        ;  pop af
           ld a,e:ld (fe_selected),a
           jr c,.modified
 ; -- Not handled, lift event
           ld a,b
           or a          ; NC, NZ      
       IF dev_checks'
-          call z,fail   ; 0 unexpected 
+          call z,mess   ; 0 unexpected 
       END
           ret
 
@@ -3214,7 +3185,7 @@ fe_pos = $+1
       IF dev_checks'
 ; HL must still point to edit buffer
           ld bc,wv_edit_buffer
-          or a:sbc hl,bc:add hl,bc:call nz,fail
+          or a:sbc hl,bc:add hl,bc:call nz,mess
       END
 
           call disp_text_hl
@@ -3222,7 +3193,7 @@ fe_pos = $+1
       IF dev_checks'
 ; HL must still point to edit buffer
           ld bc,wv_edit_buffer
-          or a:sbc hl,bc:add hl,bc:call nz,fail
+          or a:sbc hl,bc:add hl,bc:call nz,mess
       END
 ; -- delete rest of the field
           call pad
@@ -3240,7 +3211,7 @@ fe_pos = $+1
           GET_STATE(widget_pos)
           ld a,c:add h:ld h,a
       IF dev_checks'
-          call z,fail
+          call z,mess
       END
           call display_cursor_at
           GED_HANDLED()
@@ -3293,7 +3264,7 @@ get_padding
           call get_width_common
           sub b
       IF dev_checks_display
-          call c,fail
+          call c,mess
       END
           ret
 

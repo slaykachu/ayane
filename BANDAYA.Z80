@@ -2,37 +2,27 @@
         ; Transitions.
 
 ; 2025 
- ;Aug              
-   ;24 Black for piano         
-   ;21 Restore r4 at the end of int1 instead of int2
-         ; -> needed to prevent wrong state when DI or status_off
-   ;20 More robust status_on
-   ; 3 Stabilize int1 (like in orgams)
-         ; - Needed to mitigate DI in disp
-         ; - Will also split rasters/mode
-     ; firm2status: don't call clearstatus, for debugging purpose
-     ; status_on: wait for vsync for int0
-
-   ; 2 Mode 2 before piano
-
- ;Jun 
-   ;25 Remove memmap.o dep, caller must connect C0 before clearstatus
-     ; Fix r2 transition (again?)
-   ;22 Save DE!
-   ; 8 Special ayane: no need r9=0, bandeau 7*8 lignes
-                  ; !!! Not Nop-synchro (so )
+ ;Aug 
+   ;29 jump table update  
 
 raster = 1              ; debug rasters in border
 change_r2 = 1           ; 0 for debug timing
 todo  = 1
 needroom = 1
 
+      IMPORT "const.i"  ;r1'
+      IMPORT "memmap.i"
       IMPORT "macro.i"
+;!!! Normally not ORG in imported file,
+;!!! But here we save as binary lib (since no deps)
+      ORG bandaya
 
 bandaya_code
-          jp status_on
-          jp status_off
-          jp firm2status
+          jr clearstatus
+          jr firm2status
+          jr status2firm
+          jr status_on
+          jr status_off
 
       IF $ AND &8000:ELSE
 !!! Code must be out of page 0 and bank (since under int)
@@ -44,8 +34,7 @@ mc_set_mode = &BD1C
 ;kl_rom_deselect = &B918
 
 ink1  = &46             ; in status bar
-r1    = 40
-r1'   = 48              ; bandeau and sequencer
+;r1 and r1' in const.i
 r2    = 46              ; default
 r2'   = 50              ; value for bandeau
 r3    = &FC
@@ -66,6 +55,63 @@ r12'  = &10             ; Main r12 in /offset/
 ; if it happens, assemble routine at another place
       END
       ENDM
+
+; -------------------------------
+clearstatus
+;Caller must set bank!
+          ld hl,&4000
+          ld de,&4001
+          ld bc,&3FFF
+          ld (hl),l
+          ldir
+          ret
+
+firm2status
+; C0 / C1 must be connected
+; If already installed: no-op.
+; !!! NOT TRUE regarding crtc transition. Todo? fix that? !!!
+          call firm2shift
+;enchaine
+status_on
+;--------
+; Enable status (from shifted pos screen)
+
+; Common for everyone
+          call set_crtc:BYTE 3,r3,-1
+
+          ld b,&F5
+.wait_vsync in a,(c):rra:jr nc,.wait_vsync
+          djnz $        ; skip int0 (might not be generated)
+          halt          ; skip int1 (must be called from int0)
+
+          ld a,&C3:ld (int_firm),a
+          ld hl,int_prelude:ld (int_firm+1),hl
+          ld hl,int2:ld (int_dispatch+1),hl
+          ret
+
+status_off
+;---------
+; Disable status (but keep same shifted pos for main screen)
+; Must preserve BC DE IX IY (was only true of orgams?)
+
+; Restore firmware int
+          di
+          ld a,&F3:ld (int_firm),a
+          ld hl,&3808:ld (int_firm+1),hl
+          ei
+          ret
+
+status2firm
+; Replace firm ints (for cat, ed, ...)
+          call status_off
+;enchaine
+shift2firm
+; Shift screen back.
+          call flyback
+          call set_crtc:BYTE 4,r7'+r4-r7,-1
+          3 ** halt
+          call set_crtc:BYTE 4,r4,7,r7,-1
+          ret
 
 ; -------------------------------
 
@@ -229,24 +275,6 @@ _int_ret_dbg
           jr _int_ret_
 
 
-firm2status
-; If already installed: no-op.
-; !!! NOT TRUE regarding crtc transition. Todo? fix that? !!!
-     ;     call clearstatus ; screen itself
-          call firm2shift
-          jp status_on
-
-status2firm
-; Replace firm ints (for cat, ed, ...)
-          call status_off
-;enchaine
-shift2firm
-; Shift screen back.
-          call flyback
-          call set_crtc:BYTE 4,r7'+r4-r7,-1
-          3 ** halt
-          call set_crtc:BYTE 4,r4,7,r7,-1
-          ret
 
 firm2shift
 ; shift screen (r7 to r7')
@@ -287,44 +315,7 @@ _screen_setup
           inc b:out (c),c
           ret
 
-status_on
-;--------
-; Enable status (from shifted pos screen)
 
-; Common for everyone
-          call set_crtc:BYTE 3,r3,-1
-
-          ld b,&F5
-.wait_vsync in a,(c):rra:jr nc,.wait_vsync
-          djnz $        ; skip int0 (might not be generated)
-          halt          ; skip int1 (must be called from int0)
-
-          ld a,&C3:ld (int_firm),a
-          ld hl,int_prelude:ld (int_firm+1),hl
-          ld hl,int2:ld (int_dispatch+1),hl
-          ret
-
-status_off
-;---------
-; Disable status (but keep same shifted pos for main screen)
-; Must preserve BC DE IX IY (was only true of orgams?)
-
-; Restore firmware int
-          di
-          ld a,&F3:ld (int_firm),a
-          ld hl,&3808:ld (int_firm+1),hl
-          ei
-          ret
-
-; -------------------------------
-clearstatus
-          ld bc,&7FC0:out (c),c
-          ld hl,&4000
-          ld de,&4001
-          ld bc,&3FFF
-          ld (hl),l
-          ldir
-          ret
 
 ; --------------------------------
 ;   Different graphic modes
@@ -423,4 +414,4 @@ int_dispatch jp int0
 
 offset WORD &3000
 
-
+bandaya_end

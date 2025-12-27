@@ -1,12 +1,5 @@
 ; <<<<< Display piano (shading and stuff) >>>>>
 ; 2025 Aug 24 Add disp_note
-         ; 23 Default octave to 3
-         ; 20 Use IMPORT_DISP 
-            ; Each routine retourne octave
-         ;  2 More static checks
-            ; Update status bar
-         ;  1 Lower display
-     ; Jun 23 Move test in pianouit
 
 hei   = 15
 wid   = 95
@@ -17,32 +10,35 @@ r2    = 50
 piano_dest = &4000 + r1*8
 
       IF $ AND &C000 != &C000
-  !! must be imported in bank C1
+  !! will be used bank C1. 
       END
 
       IMPORT "const.i"  ; x_pos_octave
       IMPORT "memmap.i"
       IMPORT "macro.i"
       IMPORT "import.i"
+
+          ASSERT($ AND &C000 == &C000) ; used in bank c1
+          ASSERT($$ AND &C000 == &4000) ; in bank c7 (as we import disp)
+
+.pccheck
       IMPORT "conv.o"   ; put_note put_double_space
       IMPORT "periods.o"
-      IF 0
+; must have been imported out of bank by client
+          ASSERT($ == .pccheck)
+
 ; We import disp since we share the bank
 ;  -> Allow direct call to routines (faster and smaller)
  ; Otherwise disp-jp.call_status would reconnected original bank (c5)
-   ; -> crash           
-pccheck = $
+   ; -> crash   
+savepc = $
+saveobj = $$
           IMPORT_DISP()
-          ASSERT($ == pccheck)
-      END
+      ORG savepc,saveobj ; IMPORT_DISP doesn't save $$ (needs local equ)
 
 tmpbuf = workzone+&0100
 
 ;--------------------------------------
-      MACRO LOCATION x,y
-          ld de,x*&0100 + y
-      ENDM
-
       MACRO CALL_DS adr
  ; ds="disp status" status_* in disp.o
     ; -> direct call
@@ -222,21 +218,10 @@ disp_note
 
 ;------------------------------------------
 
-octave BYTE 7           ;3
+octave BYTE 3
 
 sprite
       LOAD "touches.win"
-hu    = $
-ho    = $$
+pianoui_end
 
-save_pc = $
-save_obj = $$
-
-; We import disp since we share the bank
-;  -> Allow direct call to routines (faster and smaller)
- ; Otherwise disp-jp.call_status would reconnected original bank (c5)
-   ; -> crash
-          IMPORT_DISP()
-
-      ORG save_pc,save_obj
 

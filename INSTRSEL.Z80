@@ -22,7 +22,6 @@
   ; Jul 14: Move manual test in instrstt.o 
 ; v0.0a 6 Mar 25
 
-to_be_implemented = &BE00
 dev_checks' = 1
 need_rom = 1
 
@@ -31,6 +30,7 @@ need_rom = 1
       IMPORT "macro.i"
 
       IMPORT "chung.o"  ; Model (instr get/set row)
+      IMPORT "song.o"   ; Song_get_instr
       IMPORT "ged.o"
 
 instrsel_code

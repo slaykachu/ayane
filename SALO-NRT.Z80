@@ -1,5 +1,7 @@
-; Tests salo
-; 2025
+; <<<< Tests salo and generate libs >>>>
+; 2025      
+; -- Alpha1 --
+   ; Dec 25. Default instrument is now 1 (see by init.full_init)
 ; -- v0.0au --
    ; Nov: test_assets: test New_subsong
 
@@ -406,7 +408,7 @@ dummy_ = $ - dummy_meta
       BYTE "Tabl":BYTE SENTINELLE ; End of list
       BYTE 0            ; Selected (given even if no table exist)
       BYTE "Inst":BYTE SENTINELLE
-      BYTE 0
+      BYTE 1            ; default instr
       BYTE "Phrs"
       WORD SENTINELLE_16 ; More than 256 possible phrases
       BYTE 0
@@ -441,7 +443,7 @@ empty_phrase
       BYTE "Tabl":BYTE SENTINELLE ; End of list
       BYTE 0            ; Selected (given even if no table exist)
       BYTE "Inst":BYTE SENTINELLE
-      BYTE 0
+      BYTE 1
       BYTE "Phrs"
       BYTE 0            ; phrase id
       BYTE 1            ; alt#

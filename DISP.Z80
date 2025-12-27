@@ -3,6 +3,10 @@
 
 ; 2025     
 ; -- alpha 1 --
+ ; Dec
+   ; 26 Add status_error
+      ; Remove check for status_* (cannot "assert"), since those
+        ; routine are use to display assert error
  ; Nov      
    ; 16 dh_* routines for phrases (h: halfsize / highres)    
 ; -- v0au --
@@ -30,11 +34,17 @@ enable = 1
       IMPORT "memmap.i"
       IMPORT "const.i"
       IMPORT "macro.i"
-pccheck = $
+      IMPORT "import.i"
+pccheck
+      IMPORT "assert.o"
       IMPORT "conv.o"
       IF $ != pccheck
   !! must have been imported beforehand
       END
+; Cannot use IMPORT_STRINGS (bug orgams wip)
+      ORG strings
+      IMPORT "doc-in/strings.o" ; txt_mess and co
+      ORG pccheck
 
       IF fonte_gris AND &03FF
  !! error align   ; must be 0 mod &400
@@ -48,99 +58,9 @@ pccheck = $
 
       BYTE "DI"         ; marker for dev_checks
 
-; -------------
-      IF 0
-; Not using disp-jp anymore
-
-; Same order than disp-jp  (roughly follows orgams ROM).
-          jp init_disp
-          jp cls        ;!!To be called before disp_* (not _at)
-          jp disp_locate_scr ;de:pos in screen (e.g.) &c000 
-          jp disp_locate_x ;a:x  Change pos to "line start + x"
-          jp disp_locate_inc
-;5*3
-          jp disp_chr   ;a:chr, de:dest
-          jp disp_chr_at
-          jp disp_chr_shaded
-          jp disp_chr_shaded_at
-;9*3
-          jp disp_text  ;hl:nt string
-          jp disp_text_at ;" de:dest
-          jp disp_text_shaded
-          jp disp_text_shaded_at
-          jp disp_text_inv
-          jp disp_text_inv_at ;" video inversion
-          jp disp_text_nl
-  ;        JP   disp_text_nl_at !! weird behavior, and no more room
-
-          jp str_pad
-          jp str_pad_ei
-
-          jp disp_inline ;call x, "text", 0
-          jp disp_inline_at ;"  de: dest
-          jp disp_inline_nl
-     ;        JP   disp_inline_nl_at ;!! weird behavior
-          3 ** BRK
-          jp disp_nl
-     ;         JP   disp_nl_at !! weird behavior and no more room
-
-          jp str_pad_shaded_ei
-
-;18*3
-          jp disp_deci_a
-          jp disp_deci_a_inv
-          jp disp_deci_a_shaded
-          jp disp_deci_hl
-          jp disp_deci_hl_inv
-          jp disp_deci_hl_shaded
-          jp disp_hexa_a
-          jp disp_hexa_a_inv
-          jp disp_hexa_a_shaded
-          jp disp_hexa_hl
-          jp disp_hexa_hl_inv
-          jp disp_hexa_hl_shaded
-
-          3 ** BRK      ;  jp put_deci_a
-          3 ** BRK      ;jp put_deci_a_pad0
-          3 ** BRK      ;jp put_deci_hl
-          3 ** BRK      ;jp put_hexa_a
-          3 ** BRK      ;jp put_hexa_hl
-
-          3 ** BRK      ;jp dump_ascii
-          3 ** BRK      ; jp dump_ascii_shaded
-          3 ** BRK      ; jp dump_hexa
-          3 ** BRK      ; jp dump_hexa_shaded
-
-          jp str_pad_at
-          jp str_pad_at_ei
-
-m         jp status_set_cursor
-
-          jp status_char_at
-          jp status_str_at
-          jp status_pad_at
-          jp status_deci_a_at
-          jp status_deci_a_pad0_at
-          jp status_deci_hl_at
-          jp status_hexa_a_at
-          jp status_hexa_hl_at
-
-          jp status_char
-          jp status_str
-      IF 0
-;Shall be called directly
-          jp status_pad
-          jp status_deci_a
-          jp status_deci_a_pad0
-          jp status_deci_hl
-          jp status_hexa_a
-          jp status_hexa_hl
-          jp status_inv_cursor_at
-          jp status_clear_from
-          jp status_str_shaded_at
-          jp status_str_shaded
-      END
-      END
+; ------------- 
+; Jump points in memmap.i
+          jp status_error
 
       IF enable
 str_pad
@@ -257,8 +177,6 @@ spae_next
           ld (vo_scrpos),de
           ret
       END
-
-mess  = &BE00
 
 init_disp
 ;in A = Reg1
@@ -892,13 +810,36 @@ dh_cursor_x BYTE
           jp adr + &8000
       ENDM
 
+status_error
+;In: A = id message
+   ; HL = main caller address (failing point)
+          ld bc,txt_to_be_implemented+&8000:or a:jr z,.ok
+          ld bc,txt_memory_full+&8000:dec a:jr z,.ok
+          ld bc,txt_mess+&8000
+.ok
+          LOCATION(0,y_pos_last_line)
+          push bc
+          call status_clear_from
+          pop bc
+          LOCATION(x_pos_error,y_pos_last_line)
+          call status_str_at
+          ld a,":":call status_char
+          call status_hexa_hl
+          ld bc,txt_press_a_key+&8000
+          call status_str
+;sanity if assert comming while playing
+          di
+          ld bc,&7F8E
+          exx
+          jp km_wait_key
+
 _status_cursor
 ;In: d=x (0 based) e=y (0 based) <= 4
 ;Out: HL= Scr pos.
           push af
       IF dev_checks'
-          ld a,d:cp r1'*2:call nc,mess
-          ld a,e:cp 7:call nc,mess
+          ld a,d:cp r1'*2:jr c,$+4:ld d,0
+          ld a,e:cp 7:jr c,$+4:ld e,6
       ELSE
           ld a,e
       END
@@ -918,8 +859,10 @@ status_get_pos
       IF dev_checks'
           push af
           ld a,d
-          cp &40:call c,mess
-          cp &44:call nc,mess
+          cp &40:jr c,.ko
+          cp &44:jr c,.ok
+.ko       ld d,&40
+.ok
           pop af
       END
           ret
@@ -1080,7 +1023,6 @@ status_inv_cursor_at
 ; NB: doesn't change internal cursor position
           push bc:push hl
           call _status_cursor
-          ld a,h:and &F0:cp &40:call nz,&BE00
           ld b,8
 .sicalp
           ld a,(hl):cpl:ld (hl),a
@@ -1122,18 +1064,6 @@ status_ret
           ex de,hl
           ld sp,(vo_status_savesp)
           ret
-
-      IF 0
-;Check IX dest is in C000
-;Not needed anymore
-jp_ix_c1
-      IF dev_checks'
-          push af
-          ld a,ixh:and &C0:cp &C0:call nz,mess
-          pop af
-      END
-          jp ix
-      END
 
 vo_status_savesp WORD 
 vo_status_pos WORD 0    ; 0 for proper bin length

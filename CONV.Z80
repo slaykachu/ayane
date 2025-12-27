@@ -1,9 +1,5 @@
 ; <<< Conv. Conversions >>>
 
-fail  = &BE00
-
-; !!TODO!!: remove put_* from disp.o
-
 ; //// 2025 ////
 ; -- alpha 1--
 ;Nov

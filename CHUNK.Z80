@@ -11,13 +11,18 @@ need_room = 1
 ;   or BRK if failed assertion. (no 'exit/exception' mecanism)
 
       IMPORT "memmap.i" ; for checks and Init_chunk_module
+      IMPORT "assert.o"
       IMPORT "memcpc.o"
+
 dev_checks' = 1         ; forced for now
 
 ; Disable 'free' code (must be re-viewed)
 enable_free = 0
 
 ; \/\/\/ 2025 \/\/\/\/\/\/\/\/\/\
+; -- alpha1 --
+; Dec 26: Use assert.o, remove dead code.
+
 ; -- v0au --
 ; Nov 11 Next_node: actually return Z if loop node (instead of assert)
 
@@ -281,15 +286,6 @@ list3_next
       END
           jp connect_b
 
-mess  = &BE00           ; TODO: harmonize!  They mean the same thing.
-fatal = &BE00
-
-
-nc_memfull
-          call &BE00
-          ld a,fail_memoryfull
-          or a
-          ret           ; ko
 
 new_chunk_no_init
 ;----------------
@@ -320,7 +316,7 @@ new_chunk_no_init
 .no_freed
           ld hl,v_free_chunks
           ld a,(hl)
-          or a:jr z,nc_memfull ; -> No more chunks
+          or a:jp z,memory_full ; -> No more chunks
           dec (hl)
 
 ;Use MSB in decreasing order (simpler code)
@@ -403,7 +399,7 @@ _swapfree
           ld a,l:or h
           call nz,is_in_list
  ; Not exactly fatal, but denote a programming mistake.
-          call c,fatal
+          call c,mess
           ex de,hl
 ; Most recently freed on top of list (doesn't matter much!).
           CHECK_ID()
@@ -472,65 +468,10 @@ Insert_new_node
           pop bc
           ret
 
-
-      IF 0
-insert_new_chunk_from_here
-;like /insert_new_chunk_connected/ just below,
-;but l can point anywhere in the chunk.
-      BRK
-;Still used by ayane?
-          ld a,(vo_thisbk)
-          ld l,a
-      IF dev_checks'
-;Full id is checked below, but it's clearer to fail fast.
-          and &C4:xor &C4:call nz,&BE00
-      END
-;enchaine
-insert_new_chunk_connected
-;Like /org_insert_new_chunk/, but:
-   ; * takes HL=id (rather than HA)   
-   ; * leave inserted chunk connected.
-   ; * do not touch **vo_curbk**. Rationale:
-       ; - vo_curbk is codesource's current bk, 
-         ; we shouldn't know about it, left alone change it.
-;in; HL= ID cur chunk (!! MUST BE CONNECTED). Needed for link?
-;out: HL id new chunk (connected)   
-    ; BC, DE preserved.
-
-          CHECK_ID()
-
-          push bc:push de
-          push hl
-          call get_next
-          ld c,l:ld b,h ; Existing link A->B (B can be 0)
-
-          call new_chunk ; New chunk: C
-          ex de,hl      ; de = id new chunk
-          pop hl
-          jr nc,incc_end ; Memory full?
-
-          call connect_chunk_from_id
-          ld l,chead_next
-          ld (hl),e:inc l ; Replace by A->C
-          ld (hl),d
-
-          call connect_next:ret nc
-          ld a,l
-          ld l,chead_next
-          ld (hl),c:inc l ; Set Link C->B
-          ld (hl),b
-          ld l,a
-incc_end
-          pop de:pop bc
-          ret
-      END
-
-New_node7
-;--------
-; In: N/A, bk agnostic
-          ld a,7
 New_node_x
-; Connect new node of size 7 with 'next' field initialized (0).
+;---------
+; Connect new node of size A with 'next' field initialized (0).
+; Used by track.o
 ; In: A= total size (with 'next' field)
 ; Out: C:bk DE:pnt  !! connected
 ;    : B, HL preserved
@@ -595,68 +536,6 @@ connect_chunk_from_id
           CHECK_ID()
           jp connect_l
 
-      IF 0
-org_insert_new_chunk
-;Insertion in linked list.
-; This is the version for org and aap, updating vo_curbk!
-      BRK
-;still used by ayane?
-;a= cur bk
-;h= msb cur chunk
-;out: C if ok. 'next' fields are updated.
-   ; NC if memory full or mess
-    ; DE preserved. !! IX trashed. TODO! Save it or don't use it at all.
-    ; HL points to input chunk 
-    ; Reconnect input chunk, for stack purpose. TODO: change that?
-        ; -> see insert_new_chunk_connected
-          ld ixl,a
-          ld a,h
-          ld ixh,a
-          call check_hl_in_bank ;  no return mess if fail
-
-;in: ix = connexion current chunk
-
-          push bc
-          push de
-          call get_next
-;[space] save 1 byte by saving HL instead, and poping de below
-          ex de,hl
-
-          call new_chunk_no_init:jr nc,oinc_end ; Memory full possible
-;!!!! needed to setup bank (basebk) etc.
-          call org_connect_chunk_from_id
-;header
-          push de
-          ld e,0
-          ld d,h
-          ld hl,chunk_def
-          ld bc,chunk_header_size
-          ldir
-          ld h,d
-          pop de
-;;;
-          ld l,chead_next
-          ld (hl),e
-          inc l
-          ld (hl),d
-
-          ld a,(vo_curbk)
-          ld e,a
-          ld d,h
-
-          push ix
-          pop hl
-          call org_connect_chunk_from_id
-          ld l,chead_next
-          ld (hl),e
-          inc l
-          ld (hl),d
-          scf
-oinc_end
-          pop de
-          pop bc
-          ret
-      END
 
 chunk_def
       BYTE 0,0,chunk_header_size-1 ;next (bk, MSB), pos last
@@ -731,38 +610,6 @@ _check_msb0
           cp &40:call c,mess
           cp &7F:call nc,mess
           ret
-
-
-      IF 0
-;---------------------------
-; routines for aap and asset
-;---------------------------
-
-aap_chunk_start = 4
-aap_chunk_size = &FC
-
-;-------------------------
-connect_next_aap_chunk
-; comme connect_next_chunk, but:
-;- doesn't touch bk_cur
-;- modify b
-;- return a=bk    
-;NB: aap just check Z (and not always!)
-;  ; H musn't be changed if (hl)=0 
-   ; app and free_list use H.
-
-          call connect_next:jr z,aap_mess
-          ld a,l
-          ld l,chunk_aap_header_size
-          or a          ; nz
-          ret
-
-aap_mess
-;cannot do much                   
-          xor a
-          ret
-
-      END
 
 ; =========== Persistent Variables ==============
 

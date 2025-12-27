@@ -26,6 +26,7 @@ row_link = 2
       IMPORT "macro.i"
       IMPORT "plyconf.i" ; for nb_fx and use_instr_chip_down_vib (tmp)
 
+      IMPORT "assert.o"
       IMPORT "instr.o"  ; Use LSB as type.
       IMPORT "timer.o"  ; fx_null/fx_end/sync_buzzer_register
       IMPORT "heap.o"   ; new_heap_chunk
@@ -158,16 +159,7 @@ row_link = 2
       END
       ENDM
 
-
 ;==============================================
-fatal = &BE00           ; TODO: replace by warning mecanism.
-memory_full = fatal
-mess  = &BE00
-unexpected = &BE00
-to_be_implemented
-          call &BE00
-;implement/handle me
-          ret
 
       IF dev_checks'
 _check_instr_pnt
@@ -293,7 +285,7 @@ Song_select_instr
 _select_instr
           ld (va_current_instr),a
           call get_instr_pnt
-          ld a,(hl):cp instr_null ; Z if empty 
+          ld a,(hl):cp instr_null AND &FF ; Z if empty 
           ld l,a
           ld h,instr_code/&0100
           dec hl:ld a,(hl)
@@ -317,11 +309,11 @@ New_instr
           inc b:dec b:call z,to_be_implemented
           dec b:call z,to_be_implemented
           dec b:jr z,.default
-          call unexpected
+          call mess
 
 .default
 ; for now, expect 0 params 
-          inc c:dec c:call nz,unexpected
+          inc c:dec c:call nz,mess
 ;enchaine
 New_instr_ayane
           ld e,instr_default AND &FF
@@ -335,7 +327,7 @@ _select_new_instr
      ; A/L like Song_select_instr
           call _prelude
       IF dev_checks'
-          or a:call z,unexpected ; 0 reserved (for mute?)
+          or a:call z,mess ; 0 reserved (for mute?)
       END
           ld l,a
           call _get_instr_pnt
@@ -745,7 +737,7 @@ instr_set_rows#
 ; Check this assumption
           push bc
           call instr_get_rows#
-          inc c:dec c:call nz,unexpected
+          inc c:dec c:call nz,mess
           pop bc
       END
 .rowlp
@@ -872,7 +864,7 @@ set_column_custom
 
 _copy_to_instr
       IF dev_checks'
-          inc c:dec c:call z,unexpected
+          inc c:dec c:call z,mess
       END
 .cplp
           ld a,(de):inc de
@@ -898,7 +890,7 @@ fx_type_to_rout
           ret z
           ld bc,sync_buzzer_register
       IF dev_checks'
-          cp fx_type_sync_buzzer:call nz,unexpected
+          cp fx_type_sync_buzzer:call nz,mess
       END
           ret
 
@@ -923,7 +915,7 @@ fx_rout_to_type
           ld a,fx_type_sync_buzzer
       IF dev_checks'
           push hl
-          ld hl,sync_buzzer_register:or a:sbc hl,bc:call nz,unexpected
+          ld hl,sync_buzzer_register:or a:sbc hl,bc:call nz,mess
           pop hl
       END
           ret
@@ -1002,7 +994,7 @@ get_column_custom
 
 _copy_from_instr
       IF dev_checks'
-          inc c:dec c:call z,unexpected
+          inc c:dec c:call z,mess
       END
 .cplp
           ld a,(hl):inc hl
@@ -1104,7 +1096,7 @@ allocate
 ; In:  A = size to reserve (without link)
 ;Out: DE = pointer
     ; A, HL preserved
-          or a:call z,unexpected
+          or a:call z,mess
           push hl
           ld de,(va_free_pnt)
           ld l,a:ld h,0:add hl,de

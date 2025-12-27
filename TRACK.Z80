@@ -90,6 +90,7 @@ use_widget = 0
       IMPORT "memmap.i" ; for check BK_TRACK
       END
 
+      IMPORT "assert.o"
       IMPORT "phrase.o" ; song_get_phrase_id, phrase_start
         ; + all needed by Song_attach_empty_phrases/Song_add_map
       IMPORT "chunk.o"  ; for chunk_start
@@ -565,7 +566,7 @@ eval_loop
           ld a,(hl)     ; opcode # * 8
           and &FF-CONDITION_MASK
           inc hl
-          add a:call c,not_implemented ; # * 16 for address
+          add a:call c,to_be_implemented ; # * 16 for address
           ld ixl,a
           ld ixh,opcodes/&0100
           jp ix
@@ -577,7 +578,7 @@ skip
           ld a,(hl)     ; opcode # * 8
           and &FF-CONDITION_MASK
           inc hl
-          add a:call c,not_implemented ; # * 16 for address
+          add a:call c,to_be_implemented ; # * 16 for address
           ld ixl,a
           ld ixh,skipcodes/&0100
           jp ix
@@ -600,7 +601,7 @@ previous_frame
           ld hl,(frame_pnt)
 ; Check we are not in frame 0
           ld bc,aum_regs:or a:sbc hl,bc:add hl,bc
-          call z,programming_error
+          call z,mess
 
 ; Prepare source/dest
           ld bc,-FRAME_REGS_SIZE + out0*4
@@ -853,7 +854,7 @@ call_ext_com
           push hl
           ld hl,(frame_pnt)
           ld a,out0*4
-          add l:call c,programming_error ; regs should be confined
+          add l:call c,mess ; regs should be confined
           ld l,a
           ld (hl),e:inc l
           ld (hl),d:inc l
@@ -877,7 +878,7 @@ call_ext_com_input
 
           inc b
           dec b:jr z,.noargs
-          dec b:call nz,not_implemented
+          dec b:call nz,to_be_implemented
 ; 1 argument: pass it via BCDE
           call eval_operand
           pop ix        ; was de: address routine
@@ -1152,7 +1153,7 @@ skipcodes
           OPCODE_ALIGN(ld)
           ld a,(hl)
 ; destination should be a plain register
-          and MODIFIER_MASK:call nz,programming_error
+          and MODIFIER_MASK:call nz,mess
           inc hl
           call skip_operand
           jp eval_loop
@@ -1204,7 +1205,7 @@ _reg
 ; Each register is 4-bytes aligned
           2 ** add a
           ld de,(frame_pnt)
-          add e:call c,programming_error ; assume confined
+          add e:call c,mess ; assume confined
           ld e,a
           ret
 
@@ -1290,7 +1291,7 @@ _add
           inc de:ld a,(de):or a:call nz,mess
           dec de:ld a,(de)
           or a
-          call m,not_implemented ; Shift to left
+          call m,to_be_implemented ; Shift to left
 ;Sanity: for now shouldn't be 0, as it would mean no-op
 ; (might happen in the future with dynamic parameter)
           call z,mess
@@ -1403,11 +1404,7 @@ cond_table
  !! Error confignement
       END
 
-nrtfail = &BE00
-not_implemented = &BE00
-mess  = &BE00
-programming_error = &BE00
-stack_overflow = &BE00
+stack_overflow = mess
 
           SIGN(1,0,NO_FLAGS)
 ext_set_time
@@ -1434,7 +1431,7 @@ copy_regs
           ld bc,reg_size
           ldir
           pop hl
-          ld a,l:add 4:call z,nrtfail
+          ld a,l:add 4:call z,mess
           ld l,a
           pop bc
           djnz .lp
@@ -1464,7 +1461,7 @@ setup_regs'
           ld bc,reg_size
           ldir
           pop de
-          ld a,e:add 4:call z,nrtfail
+          ld a,e:add 4:call z,mess
           ld e,a
           pop bc
           djnz .lp
@@ -1906,7 +1903,7 @@ Song_select_new_track
           inc a
           ld (used_tracks),a
           ld a,c
-          cp 4:call nc,not_implemented_yet ; see /todo1/
+          cp 4:call nc,to_be_implemented ; see /todo1/
           cp MAX_TRACKS:call nc,mess
           ld (current_track),a
 
@@ -1939,7 +1936,7 @@ Set_phrase_at_t
  ; Directly phrase itself instead of header
       IF dev_checks
  ; check assumption. May change with tiny chunks
-          ld a,e:cp chunk_start:call nz,fail
+          ld a,e:cp chunk_start:call nz,mess
       END
           ld e,phrase_start
           pop hl
@@ -2345,7 +2342,7 @@ goto_event
 .found
           inc h:dec h   ; NZ 
       IF dev_checks
-          call z,fail
+          call z,mess
       END
           ret
 
@@ -2362,10 +2359,6 @@ set_empty_list
           ld b,idsz
 .raz      ld (hl),0:inc hl:djnz .raz
           ret
-
-mess  = &BE00
-memory_full = &BE00
-not_implemented_yet = &BE00
 
 Init_track_module
 ;----------------
@@ -2496,7 +2489,6 @@ Song_add_map
           add hl,de
           ld a,(hl)
           push af
-         ;  cp &28:call nc,&BE00
           ld hl,timestamp
           push hl
           ld de,previous_timestamp
@@ -2744,7 +2736,7 @@ ext_insert_hook_node_after
           call Insert_new_node
           call nc,mess  ; TODO: handle memory full
       IF dev_checks
-          ld a,d:or a:call z,fail
+          ld a,d:or a:call z,mess
       END
 ; Enchaine
 hook_setup

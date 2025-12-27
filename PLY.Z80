@@ -46,6 +46,7 @@ check_pc
  !!! periods must be imported at the right location by instr.o
       END
       IF ayane
+      IMPORT "assert.o"
       IMPORT "memcpc.o" ; scope_bk_base
       IMPORT "song.o"   ; Song_get_first_track and co
       IMPORT "tracknub.o" ; get_track_header
@@ -140,7 +141,7 @@ set_transpose_tm = 12
       IF dev_checks
  ; must be pre-doubled 
           SUB_TM''(5)
-          bit 0,a:call nz,fail
+          bit 0,a:call nz,mess
       END
 
       IF may_optim
@@ -342,16 +343,6 @@ update_note_tm = 15
           inc hl
       END
       ENDM
-
-
-fail  = &BE00           ; TODO: replace by guru meditation.
-mess  = &BE00
-programming_error = &BE00
-
-      IF todo
-; check occurences of this!
-to_be_implemented = &BE00
-      END
 
 ; ------------------------------------------------
 play
@@ -787,7 +778,7 @@ set_replay_period
           inc a
           ld hl,replay_300_48Hz:sbc hl,de
 
-          call nz,programming_error
+          call nz,mess
 .ok
           ex de,hl
           call scope_bk_base
@@ -836,7 +827,7 @@ evt_set_transpose
       IF ayane
 nxt_event_pnt ld hl,0
       IF dev_checks
-          ld a,l:or h:call z,fail
+          ld a,l:or h:call z,mess
           EX_AF'()
           SUB_TM(tm_evt_iter+set_transpose_tm+7+5)
       ELSE
@@ -951,7 +942,7 @@ Amorce_song
           ld hl,track_stack_ - 1 ; -1 for compare
           or a
           sbc hl,de:add hl,de
-          call c,fail
+          call c,mess
       END
 
 ; Track pnt   
@@ -1009,7 +1000,7 @@ Amorce_song
       IF dev_checks
           ld hl,track_stack
           or a:sbc hl,de
-          call z,fail
+          call z,mess
 ; Fail if no tracks at all
       END
           ex de,hl

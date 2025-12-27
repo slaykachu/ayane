@@ -45,6 +45,7 @@ MAX_TIMER_FXS = 15      ; used here only -> no ui check.
       IMPORT "memmap.i" ; psg_regs
       IMPORT "macro.i"
 check_pc = $
+      IMPORT "assert.o"
       IMPORT "periods.o"
           ASSERT($ == check_pc) ; Must have been imported first (via ply)
 ;Otherwise, $ = c1, and Init_periods would trash the code!
@@ -71,8 +72,6 @@ hdr_link_next = 2       ; next event
 hdr_clock = 3           ; clock (MSB then LSB)
 hdr_clock_msb = 3
 hdr_code = 5            ; execution
-
-fail  = &BE00
 
 ;---------------------------------------
       MACRO INIT_LISTS  ; also for timernrt
@@ -227,7 +226,7 @@ insert_event_tm = 34 + 13
 ; We check that to be more future-robust, and detect programming error
       IF dev_checks
           ld b,a
-          ld a,c:inc a:cp e:call z,&BE00
+          ld a,c:inc a:cp e:call z,mess
           ld a,b
           SUB_TM''(8)
       END
@@ -298,7 +297,7 @@ program_next_event_tm = 11
           ASSERT_NOT(EVENT_MAX_SIZE AND EVENT_MAX_SIZE-1)
 ; -> if not power of 2, replace 'and' by modulo 
           and EVENT_MAX_SIZE-1
-          cp offset:call nz,fail
+          cp offset:call nz,mess
       END
       ENDM
 
@@ -559,7 +558,7 @@ change_pnt = $+1
 ; Use exception mecanism, as we don't want to crash in user mode
 ; (exec without orgams)
       END
-          call fail
+          call mess
 
 .start
 ; Setup code as new event
@@ -794,7 +793,7 @@ change_params_tm = 10   ; until chgend taken
 
       IF dev_checks
 ; For now, only 1 type of fx so we know what/where to poke
-          cp fx_type_sync_buzzer:call nz,fail
+          cp fx_type_sync_buzzer:call nz,mess
           SUB_TM''(5)
       END
           inc l
@@ -937,7 +936,7 @@ cut_tm2 = 6 - 1         ; until jr .removefound (taken) -1: not .race1
           cp anchor_event
       IF dev_checks
 removelp_tm = 14
-          call z,fail
+          call z,mess
       ELSE
 removelp_tm = 13
           jr z,.mess

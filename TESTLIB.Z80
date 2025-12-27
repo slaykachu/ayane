@@ -1,38 +1,44 @@
 ; Common routines for tests 
 
 ; 2025
-; --- Ayane 0.0ab ---  
-  ; Mar
-   ;  3 +dummy_instr_ui to avoid messing with nrts (using dummy_instr)
-      ; Change memdisk_pnt_r/_w checks to accomodate for new buffer
-        ; location in salo-nrt
-      ; Fix typo in memdisk_seek_read. This also im
-                ; - memdisk_init_read
-                ; - memdisk_load_bloc
-; 2024  
-; --- Ayane ??? ---  
-  ; Oct
-   ;  6 v4: Add init_for_test, dummy_instr
-  ; Jun      
-   ; 11 v3: Add memdisk_flush and co
-   ;  3 v2: compare_regs: no noise check if vol 0
-                        ; (was done for channel open)
-  ; Apr
-   ; 23 v1: Add /psg_read/
-   ; 22 v0: /compare_regs/ extracted from ide:ay/plybh
-            ; Smarter comparison: r7 can be <> when volume 0
-            ; Adjustable tolerance
+  ;Sep
+   ; -- v0aq --
+    ;26: psg_nrt: use PER_16_TO_12
+   ; -- v0ap --
+    ;17: memdisk_write_bloc: more flexible check_no_overrun 
+       ; memdisk_read_bloc:  same
+  ;Aug
+   ; -- v0a? --
+    ;24: Add CHECK_HL_EQUAL
+    ; 9: memdisk_write_bloc: take BC = size (to match io_write_bloc)
+    ; 8: init_for_test: call set_diapason
+    ; 1: init_for_test: call setup_keys
+
 tolerance = 4
 
       IMPORT "const.i"
       IMPORT "memmap.i"
+      IMPORT "macro.i"
+
+      IMPORT "memcpc.o" ; set_sp_backup
       IMPORT "chung.o"  ; Init_chung and instr setup
  ;      IMPORT "piano.o"
       IMPORT "timer.o"  ; init_timer/fx_end/sync_buzzer_register
-      IMPORT "ply.o"    ; Init_periods
+      IMPORT "periods.o" ; init_periods, set_diapason
+      SKIP -$ AND &FF
+;      IMPORT "ply.o"  
+      IMPORT "shortcut.o" ; setup_keys
 
+;--------------------------
+      MACRO CHECK_HL_EQUAL x
+          push de
+          ld de,x:or a:sbc hl,de:add hl,de:call nz,nrtfail
+          pop de
+      ENDM
 
-fail  = &BE00
+;--------------------------
+
+nrtfail = &BE00
 
 compare_sized
           ld a,(de):cp (hl):call nz,&BE00
@@ -56,15 +62,15 @@ compare_regs
           bit chbit,(ix+7):jr z,.open
           bit chbit,(iy+7):jr nz,.perok ; both closed
           ld a,(iy+ch):or a:jr z,.perok ; de: volume 0
-          call fail     ; mismatch
+          call nrtfail  ; mismatch
 
 .open
           bit chbit,(iy+7):jr z,.openok
           ld a,(ix+ch):or a:jr z,.perok ; hl: volume 0
-          call fail     ; mismatch
+          call nrtfail  ; mismatch
 
 .openok
-          ld a,(ix+ch):cp (iy+ch):call nz,fail
+          ld a,(ix+ch):cp (iy+ch):call nz,nrtfail
           ld a,(ix+ch):or a:jr z,.perok
 
 ; compare with allowed diff (since vibrato isn't exactly the same)
@@ -83,7 +89,7 @@ compare_regs
           ex de,hl
           ld hl,tolerance
           or a:sbc hl,de
-          call c,fail
+          call c,nrtfail
 
 .perok_
           pop hl:pop de
@@ -92,11 +98,11 @@ compare_regs
 
           bit chbit+3,(ix+7):jr z,.noise
           bit chbit+3,(iy+7):jr nz,.noiseok ; both closed
-          call fail     ; mismatch
+          call nrtfail  ; mismatch
 
 .noise
-          bit chbit+3,(iy+7):call nz,fail
-          ld a,(ix+6):cp (iy+6):call nz,fail
+          bit chbit+3,(iy+7):call nz,nrtfail
+          ld a,(ix+6):cp (iy+6):call nz,nrtfail
 .noiseok
       ENDM
 
@@ -141,6 +147,8 @@ psg_nrt
           push bc
           ld hl,timer_noop
           exx
+; Maybe we could call set_timer_and_psg instead
+          PER_16_TO_12()
           call psg
           pop bc
           exx
@@ -188,15 +196,20 @@ psg_read1
           ret
 
 memdisk_write_bloc
+;!!! copy-pasted in org/ramdisk.o
+
 ;In: hl = source 
-   ;  c = size (0 = 256)
+   ; bc = size (0 = no-op)
 ;Out: hl+= size
 memdisk_pnt_w ld de,&C000
-; Check no overrun (assume buffer in free_ram_for_nrt. cf salo-nrt.o) 
-          ld a,d
-          cp free_ram_for_nrt/&0100:call c,fail
-          cp ramlimit'/&0100:call nc,fail
-          ld b,0:dec c:inc bc
+          call check_no_overrun_w
+          push de
+          ex de,hl:add hl,bc:ex de,hl:call c,nrtfail
+          pop de
+          call check_no_overrun_w
+          ld a,b:or c
+          scf
+          ret z
           ldir
 ;Enchaine
 memdisk_seek_write
@@ -204,31 +217,65 @@ memdisk_seek_write
           ld (memdisk_pnt_w+1),de
           ret
 
-memdisk_init_write = memdisk_seek_write ; IN: de = destination
+check_no_overrun_w
+          ld a,d
+limit_lo_w cp 0:call c,nrtfail
+limit_hi_w cp 0:call nc,nrtfail
+          ret
+
+check_no_overrun_r
+          ld a,h
+limit_lo_r cp 0:call c,nrtfail
+limit_hi_r cp 0:call nc,nrtfail
+          ret
+
+
+memdisk_init_write
+ ; IN: de = destination
+     ;  a = max MSB + 1
+          ld (limit_hi_w+1),a
+          ld a,d:ld (limit_lo_w+1),a
+          jr memdisk_seek_write
 
 memdisk_load_bloc
 ;In: de = dest 
    ; bc = size !! not symetrical for now
 ;Out: de += size
 memdisk_pnt_r ld hl,&C000
-; strict check for salo specifically
-          ld a,h
-          cp free_ram_for_nrt/&0100:call c,fail
-          cp ramlimit'/&0100:call nc,fail
-          ld a,b:or a:call nz,fail ; not > &ff
-          ld a,c:or a:call z,fail ; not 0
+          call check_no_overrun_r
+          push hl
+          add hl,bc:call check_no_overrun_r
+          pop hl
+          ld a,b:or a:call nz,nrtfail ; not > &ff
+          ld a,c:or a:call z,nrtfail ; not 0
           ldir
+          scf
 ;Enchaine
 memdisk_seek_read
           ld (memdisk_pnt_r+1),hl
           ret
 
-memdisk_init_read = memdisk_seek_read ; IN: hl = source
+memdisk_init_read
+; IN: hl = source
+          ld (limit_hi_r+1),a
+          ld a,h:ld (limit_lo_r+1),a
+          jr memdisk_seek_read
+
+nrt_init_periods = init_periods ; pull label for timernrt.o
 
 init_for_test
+          call set_sp_backup ; root level - 2, nevermind
+          call setup_keys
           call Init_chung
-          call Init_periods
-          call init_timer
+          call init_periods
+ ;          call init_timer   ; done by piano
+          ld hl,diapason_default
+          call set_diapason
+; replay_period init in Init_track_module
+      IF todo
+; Call Init_track_module?
+; Or use full init at some point?
+      END
           ret
 
 dummy_instr
@@ -240,7 +287,7 @@ dummy_instr
           call New_instr_ayane
           xor a
           ld b,3
-          ld hl,row0
+          ld de,row0
           call helper_setrows
           ret
 
@@ -248,47 +295,70 @@ dummy_instr_ui
 ;-------------
 ; For manual test in instrui.o
           ld a,1        ; id (0 is reserved)
+dummy_instr_ui_id
+; In: A = instr id
+          ld c,0        ; nb params
+          call New_instr_ayane
+          xor a
+          ld b,1
+.lp
+          push bc
+          push af
+          ld de,row2_sync
+          call helper_setrow
+          pop af
+          inc a
+          pop bc
+          djnz .lp
+          push af
+          ld de,row2_sync
+          call helper_setrow
+          pop af
+          ld b,a:dec b:call instr_set_loop
+          ret
+
+dummy_instr_sync
+;---------------
+; 1 row with sync buzeer for plynrt
+          ld a,1        ; id (0 is reserved)
           ld c,0        ; nb params
           call New_instr_ayane
           xor a
           ld b,2
-          ld hl,row0
+          ld de,row0
           call helper_setrows
-          ld b,1
-          ld hl,row2_ui
-          call helper_setrows
+          ld de,row2_ui
+          call helper_setrow
           ret
 
-
+helper_setrow
+;In: a = start row 
+   ;de = data row
+          ld b,1
 helper_setrows
+;In: a = start row 
+   ; b = rows#
+   ;de = data row
+;Out:a += b 
           push af
           push bc
-          push hl
-          push hl
+          push de
+          push de
           push af
           call insert_empty_row
           pop af
           call select_row
           pop de
           call set_row
-          pop hl
-          ld de,instr_row_size_max
+          pop de
+          ld hl,instr_row_size_max
           add hl,de
+          ex de,hl
           pop bc
           pop af
           inc a
           djnz helper_setrows
           ret
-
-      MACRO VOL n
-; Encode as expected -> xxxx0
-      BYTE n*2
-      ENDM
-
-      MACRO VOL_HARD
-      BYTE &21          ; Bit 0 and 5 Set (so after rrca, bit set)
-      ENDM
-
 
 
 row0  BYTE 0:WORD 0:BYTE &38,0
@@ -357,7 +427,8 @@ row2  BYTE 0:WORD 0:BYTE flags,3 ; Noise
  !!! incomplete
       END
 
-row2_ui BYTE 0:WORD 0:BYTE flags_ui,3 ; 
+row2_ui
+      BYTE 0:WORD 0:BYTE flags_ui,3 ; 
           VOL_HARD()    ; Hard env 
       BYTE hard_env_type_ui
       BYTE hard_arp_ui * 2
@@ -379,4 +450,45 @@ row2_ui BYTE 0:WORD 0:BYTE flags_ui,3 ;
       IF instr_row_size_max - [$-row2_ui]
  !!! incomplete
       END
+
+row2_sync
+; same as row2_ui but we want to be able to change the former
+      BYTE 0:WORD 0
+;:BYTE flags_ui,3 ; 
+      BYTE &3F,3
+          VOL_HARD()    ; Hard env 
+      BYTE hard_env_type_ui
+      BYTE hard_arp_ui * 2
+      WORD hard_pitch_ui
+      IF fx0_type - [$-row2_sync]
+   !! error align
+      END
+.syncbuzzer0
+      WORD sync_buzzer_register
+      BYTE sync_env_type_ui
+      BYTE 0            ; sync_arp_ui*2
+;      WORD sync_pitch_ui
+      WORD 0
+  ;    WORD 3            ; C3 = &1ddd. +3 = &1de0 -> mustn't dephase
+;      WORD &2700 - &1DDD ; exaclty 3 halt
+;      WORD &1A00 - &1DDD + &40 ; exaclty 2 halt + 1 line
+;      WORD &4E00 - &1DDD + &07 ; 1 frame + 1/2 line
+      IF $-.syncbuzzer0 - instr_fx_size
+   !! missing fields
+      END
+      IF 1
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      ELSE
+      WORD sync_buzzer_register
+      BYTE sync_env_type_ui
+      BYTE 0
+      WORD 1
+      END
+      WORD fx_end
+      IF instr_row_size_max - [$-row2_sync]
+ !!! incomplete
+      END
+
+
 

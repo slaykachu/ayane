@@ -22,6 +22,7 @@
 
       IMPORT "const.i"  ; to_be_implemented
       IMPORT "memmap.i"
+      IMPORT "assert.o"
       IMPORT "memcpc.o"
 
 Subsong_add

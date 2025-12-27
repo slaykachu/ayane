@@ -8,6 +8,7 @@ todo  = 1
 ; 2025    
 ; -- alpha 1 --
   ; Dec
+    ;26 s/CALL_DS/CALL_STATUS (uniformisation)
     ;18 adjust for phrasui integration
 ; -- v0au --
   ; Nov
@@ -40,14 +41,6 @@ uiloop_code
           jr ui_process_key
 
 ;---------------------------------------------
-      MACRO CALL_DS adr
- ; ds="disp status" status_* in disp.o
-      IF BK_DISP - &C7
- !!!! review
-      END
-          call call_status:WORD adr
-      ENDM
-
       MACRO CHECK_UNHANDLED
 ;NC,Z was reserved by ged (to notify event?)
 ; But we don't handled that for now
@@ -80,11 +73,11 @@ ui_init_band
 ; Bandaya fields 
           ld bc,bandfields+&8000
           ld de,0       ; top left
-          CALL_DS(status_paragraph_at)
+          CALL_STATUS(status_paragraph_at)
 ; Name                         
           ld bc,name_module+&8000
           LOCATION(x_pos_name,y_pos_name)
-          CALL_DS(status_str_at)
+          CALL_STATUS(status_str_at)
 ; Instr
           jp update_instr_in_status
 
@@ -162,6 +155,7 @@ shortcuts
       BYTE kf+8:WORD instr_up ; f8
       BYTE kf+6:WORD octave_down ; f6
       BYTE kf+9:WORD octave_up ; f9  
+      BYTE "B"-&40:WORD to_be_implemented ; for manual check
 ; Fallback in caller (ayane.o)
       BYTE 0
 
@@ -169,8 +163,8 @@ ui_null
       BYTE w_brk        ; todo: rename to w_null
 
 uiloop_end
-          LIMIT(code_main)
       IF 1
+          LIMIT(phrase)
 ; Ensure sync with ayane
           ASSERT(memcpc_code == memcpc)
           ASSERT(scankey_code == scankey)

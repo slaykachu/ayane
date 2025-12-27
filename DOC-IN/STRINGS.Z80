@@ -11,3 +11,16 @@ instr_fields
       BYTE "Buz1 Arp Pitch  "
       BYTE "Buz2 Arp Pitch",0
 
+txt_to_be_implemented
+;0
+      BYTE "To be implemented",0
+txt_memory_full
+;1
+      BYTE "Memory full",0
+txt_mess
+;2 Keep this one last as fallback message
+      BYTE "Bug in ayane",0
+
+txt_press_a_key
+      BYTE " Press a key",0
+

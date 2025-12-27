@@ -8,6 +8,7 @@
       IMPORT "const.i"
       IMPORT "memmap.i"
       IMPORT "macro.i"
+      IMPORT "assert.o"
       IMPORT "memcpc.o"
 
 get_track_header
