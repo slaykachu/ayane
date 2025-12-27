@@ -5,7 +5,8 @@
  ;Aug 
    ;29 jump table update  
 
-raster = 1              ; debug rasters in border
+raster = 1              ; marker at each int
+raster_when_int0_missed = 0
 change_r2 = 1           ; 0 for debug timing
 todo  = 1
 needroom = 1
@@ -270,8 +271,10 @@ call_int_firm
           jp int_firm_nc
 
 _int_ret_dbg
+      IF raster_when_int0_missed
           ld a,r:and &3F:or &40
           ld b,&7F:out (c),0:out (c),a
+      END
           jr _int_ret_
 
 
