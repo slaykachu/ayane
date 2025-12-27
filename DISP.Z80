@@ -4,6 +4,7 @@
 ; 2025     
 ; -- alpha 1 --
  ; Dec
+   ; 27 Add disp_locate[_y], disp_place_cursor
    ; 26 Add status_error
       ; Remove check for status_* (cannot "assert"), since those
         ; routine are use to display assert error
@@ -181,7 +182,7 @@ spae_next
 init_disp
 ;in A = Reg1
           ld (vo_reg1),a
-          ld de,&C000
+          ld de,screen_main
 disp_locate_scr
           ld (vo_scrpos0),de
           ld (vo_scrpos),de
@@ -224,6 +225,7 @@ disp_chr_at
 ;in: a=chr (bit 7 for video inverse)
    ;de=screen dest
 ;out:de=new pos
+    ; a=new cursor x
     ;hl trashed
 
           ld h,fonte/&0400
@@ -250,6 +252,12 @@ disp_ret_
           ld sp,(vo_savesp)
 _disp_ret_
           ld (vo_scrpos),de
+;enchaine
+;_disp_update_cursor
+; Needed for disp_get_cursor (when plugged to ged)
+          ld a,(vo_scrpos0)
+          neg:add e
+          ld (vo_cursor_x),a
           ret
 
 
@@ -596,7 +604,11 @@ _disp_deci_a
           push ix:ld ix,put_deci_a
           jr _disp_num_com
 
-      IF enable
+disp_locate
+          ld (vo_cursor),hl
+          ld a,l:call disp_locate_y
+          ld a,h
+;enchaine
 disp_locate_x
           push hl
           ld hl,(vo_scrpos0)
@@ -612,7 +624,37 @@ disp_locate_inc
           ld hl,(vo_scrpos)
           inc hl
           jr _disp_locate_
-      END
+
+disp_locate_y
+; !! reset x to 0 
+; Nevermind, only used via disp_locate for now
+;IN: A= pos, 0-based
+          push hl
+          ASSERT(r1 == 40)
+          ld l,a:add a:add a:add l:ld l,a ; *5
+          ld h,screen_main / &1000
+          4 ** add hl,hl
+          ld (vo_scrpos0),hl
+          ld (vo_scrpos),hl
+          pop hl
+          ret
+
+disp_get_cursor
+          ld hl,(vo_cursor)
+          ret
+
+
+disp_place_cursor
+; Inverse video at cursor pos
+          push hl
+          ld hl,(vo_scrpos)
+          ld a,h:or screen_main/&0100:and &C7:ld h,a ; sanitize
+          ASSERT(screen_main == &C000) ; for Carry detection
+.lp       ld a,(hl):cpl:ld (hl),a
+          ld a,h:add 8:ld h,a
+          jr nc,.lp
+          pop hl
+          ret
 
 ;---------------
 ;Display highres
@@ -670,7 +712,7 @@ inc_d_wrap              ; called by phradisp
           ret z
           ld a,d:sub 8:ld d,a
       IF dev_checks'
-          cp &C0:call c,mess
+          cp screen_main/&0100:call c,mess
       END
           ret
 
@@ -738,7 +780,7 @@ dh_locate_y
           and &38:jr z,.ok
           ld a,h:sub 8:ld h,a
       IF dev_checks'
-          cp &C0:call c,mess
+          cp screen_main/&0100:call c,mess
       END
 .ok
           ld (dh_scrpos0),hl
@@ -771,17 +813,20 @@ vo_ei     ret:ret       ; might be replace by ei:ret above
 
 ; -----------------------------
 
-vo_scrpos0 WORD &C000
-vo_scrpos WORD &C000
-vo_tmp SKIP 6
+vo_cursor
+vo_cursor_y BYTE 0
+vo_cursor_x BYTE 0
+vo_scrpos0 WORD screen_main
+vo_scrpos WORD screen_main
+vo_tmp FILL 6,0
 vo_reg1 BYTE 40
-vo_savesp WORD 
-dh_scrpos00 WORD &C000  ; Start of page (change when scrolling)
-dh_scrpos0 WORD &C000   ; Start of line
-dh_scrpos WORD &C000
+vo_savesp WORD 0
+dh_scrpos00 WORD screen_main ; Start of page (change when scrolling)
+dh_scrpos0 WORD screen_main ; Start of line
+dh_scrpos WORD screen_main
 dh_cursor               ; for phradisp
-dh_cursor_y BYTE 
-dh_cursor_x BYTE 
+dh_cursor_y BYTE 0
+dh_cursor_x BYTE 0
 
 ; -----------------------------
 ; !!! Status routines (and var)
@@ -1065,7 +1110,7 @@ status_ret
           ld sp,(vo_status_savesp)
           ret
 
-vo_status_savesp WORD 
+vo_status_savesp WORD 0
 vo_status_pos WORD 0    ; 0 for proper bin length
 ; Otherwise variables would overlap with what's loaded/imported next.
 vo_status_tmp SKIP &80  ; buffer tmp

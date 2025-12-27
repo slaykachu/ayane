@@ -1,7 +1,9 @@
 ; <<<<<<<< Instrument editor >>>>>>>>>
 
 ; 2025                           
- ; -- alpha1 --
+ ; -- alpha1 -- 
+ ; Dec
+   ; 27 Display: replace firware routines by fast internal ones
  ; Nov
    ; 19 Move sep1_ui & co in ged.o
  ; -- v0au --
@@ -75,8 +77,14 @@ instr_cold_refresh
 
  ; -- gedeihen 
           call gedeihen_init
- ; For now, keep default (firmware hooks)
- ;     call gedeihen_set_hooks 
+
+          ld hl,_set_cursor
+          ld ix,_get_cursor
+          ld iy,_place_cursor
+          ld de,_write_char
+          ld bc,_paint_sprite
+          call gedeihen_set_hooks
+
           ld hl,&0101:call txt_set_cursor
           ld hl,instr_ui
           call setup_widget
@@ -768,16 +776,23 @@ ld_hl_bc
           ld h,b
           ret
 
-; ----------- make dummy instr ---------------
+; ----------- Display hooks ------------------
+_set_cursor
+;1-based to 0-based
+          dec l:dec h
+          JP_DISP(disp_locate)
+_get_cursor
+          CALL_DISP_BK(disp_get_cursor)
+          inc l:inc h
+          ret
+_place_cursor
+          JP_DISP(disp_place_cursor)
+_write_char
+          CALL_DISP_BK(disp_chr)
+          ei
+          ret
 
-      MACRO VOL n
-; Encode as expected -> xxxx0
-      BYTE n*2
-      ENDM
-
-      MACRO VOL_HARD
-      BYTE flags_env_hard ; Bit 0 and 5 Set (so after rrca, bit set)
-      ENDM
+_paint_sprite = mess
 
 ;----------------------------------------
 
