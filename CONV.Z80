@@ -2,6 +2,8 @@
 
 ; //// 2025 ////
 ; -- alpha 1--
+;Dec
+  ; 27: Display "0  " for special note c_10 (period 0)
 ;Nov
   ; 27: Add put_deci_a_pad_space
   ; 17: put_note: save hl
@@ -23,6 +25,8 @@
 
    ; Misc
      ; convert_note
+
+      IMPORT "const.i"  ; note_c_10
 
 conv_code
 ; ========================================
@@ -307,23 +311,37 @@ put_double_space
 
 put_note
 ;-------
+; 0 -> C-0
+; 1 -> C#0
+;...
+; Exception: C-10 special note
 ;in a: Encoded note
   ;de: Buffer
 ;out: de past written note
     ;  a preserved
     ; bc thrashed
           push af:push hl
+          cp note_c_10
+          jr z,.c_10
           call convert_note
+          add a
+          add notes_text AND &FF
           ld l,a
-          add a:add l
-          add notes_text AND &FF:ld l,a
           ld h,notes_text/&0100
           ldi:inc bc
           ldi:inc bc
           ld a,c
           call put_a_deci_digit
+.exit
           pop hl:pop af
           ret
+
+.c_10
+          ld hl,period_0
+          ld bc,3
+          ldir
+          jr .exit
+
 
 convert_note
 ;in a: Encoded note
@@ -339,20 +357,21 @@ convert_note
 
 
 notes_text
-      BYTE "C-",0
-      BYTE "C#",0
-      BYTE "D-",0
-      BYTE "D#",0
-      BYTE "E-",0
-      BYTE "F-",0
-      BYTE "F#",0
-      BYTE "G-",0
-      BYTE "G#",0
-      BYTE "A-",0
-      BYTE "A#",0
-      BYTE "B-",0
+      BYTE "C-"
+      BYTE "C#"
+      BYTE "D-"
+      BYTE "D#"
+      BYTE "E-"
+      BYTE "F-"
+      BYTE "F#"
+      BYTE "G-"
+      BYTE "G#"
+      BYTE "A-"
+      BYTE "A#"
+      BYTE "B-"
       IF $/&0100 - notes_text/&0100
  !! error align
       END
+period_0 BYTE "0  "
 
 
