@@ -1,0 +1,75 @@
+; <<< instruit: Manual tst of instrui.o >>>
+
+;2025
+  ; -- v0aq --
+  ; Sep 28: Move /start/ at bandaya_end
+
+      IMPORT "memmap.i"
+      IMPORT "const.i"  ; kesc
+      IMPORT "macro.i"
+      IMPORT "import.i"
+
+      ORG code_start
+      ENT start
+
+;to do first    
+          IMPORT_CORE()
+          IMPORT_GED_BANDAYA() ; firm2status
+
+      IMPORT "uiloop.o"
+      IMPORT "instrui.o"
+      IMPORT "chung.o"  ; instr_set_loop
+;      IMPORT "memcpc.o" ; for set_sp_backup
+      IMPORT "shortcut.o" ; for setup_keys
+; disp loaded at the end
+ho
+          LIMIT(ramlimit)
+
+      ORG bandaya_end
+      IMPORT "testlib.o" ; for dev test
+
+;---------------------------------
+start
+; --- Firmware setup ---
+          ld a,2:call &BC0E
+          call setup_keys
+
+; --- For dev test ---
+          call init_for_test
+;          call dummy_instr
+          call dummy_instr_ui
+    ;      ld b,0:call instr_set_loop ;
+
+;band will be activate anyway (via check_note)
+          ASSERT(BK_IO == &C0)
+          call connect_bk_io
+          call clearstatus
+          call firm2status
+          call connect_bk_base
+;order to review!
+          call ui_init_band
+
+; add rows to test scroll
+          ld b,6
+.addrows  push bc
+          xor a
+    ;      call insert_empty_row
+          pop bc
+          djnz .addrows
+
+;          call set_sp_backup   ; done by init_for_test
+          call instr_cold_refresh
+.lp
+          call km_wait_key
+          call ui_process_key
+          jr c,.lp
+          cp kesc
+          jr nz,.lp
+          ret
+
+;          LIMIT(ramlimit')
+          LIMIT(&A600)
+
+      BANK BK_DISP
+          IMPORT_DISP()
+
