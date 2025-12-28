@@ -171,6 +171,7 @@ uiloop_end
           ASSERT(conv_code == conv)
           ASSERT(chunk_code == chunk_module)
           ASSERT(instrui_code == instrui)
+          ASSERT(instrsel_code == instrsel)
           ASSERT(field_editor == field_module)
 ; Ensure sync with phrasui
           ASSERT(instr_code == instr_module)

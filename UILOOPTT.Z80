@@ -81,10 +81,17 @@ hi
       IF dev_checks
       SAVE "set const.dev_checks=0",0,0
       ELSE
-      SAVE "ayalib0.bin",post_core,uiloop_end-post_core
-      SAVE "ayalib1.bin",ged,ged_end-ged
+      IF release
+      SAVE "ayalib0r.bin",post_core,uiloop_end-post_core
+      SAVE "ayagedr.bin",ged,ged_end-ged
       BANK BK_DISP
-      SAVE "ayapianu.bin",pianoui,pianoui_end-&8000-pianoui
+      SAVE "ayapianr.bin",pianoui,pianoui_end-&8000-pianoui
+      ELSE
+      SAVE "ayalib0d.bin",post_core,uiloop_end-post_core
+      SAVE "ayagedd.bin",ged,ged_end-ged
+      BANK BK_DISP
+      SAVE "ayapiand.bin",pianoui,pianoui_end-&8000-pianoui
+      END
       END
 ; -----------------------------------
 

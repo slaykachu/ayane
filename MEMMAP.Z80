@@ -31,10 +31,13 @@ bk_connected = &3C
 code_start = &40
 ; Expected addresses, for sanity checks
 ; -- All
+      IF dev_checks
+ !! argl, shifted addresses
+      END
 memcpc = &40
-scankey = &0211
-conv  = &0222
-chunk_module = &042F
+scankey = &01FC
+conv  = &020D
+chunk_module = &041D
 ;dispjp = &1900   ; not a dep anymore
 ;periods_module = &057F
 ;timer = &0A61
@@ -47,13 +50,13 @@ ppi   = &1400
 piano = &145F
 ; --  uiloop
 instrui = &157A
-instrsel = &1959
-uiloop = &19E0
+instrsel = &1989
+uiloop = &1A50
 ; ---- uiloop end ----
 ; -- phrasui, salo
 ;padding
-phrase = &1A70
-track_module = &2190
+phrase = &1AE0
+track_module = &2200
 ; -- salo
 fx_module = &2F00
 ply   = &2F04           ;needed for events signatures
@@ -207,6 +210,8 @@ ramlimit' = &A400
 ; -> No corruption if " < &a400 
 ; Note, when detecting himen, check it is > tables
       END
+
+screen_main = &C000
 
       ORG savepc,saveobj
 

@@ -559,16 +559,17 @@ vampire_size = &1110
           ASSERT(play_song == playsong_module)
           ASSERT(init_code == init_module)
 
-      IF 0              ; dev_checks 
+      IF 0              ; dev_checks (ambiguous)
       SAVE "set const.dev_checks=0",0,0
       ELSE
-      IF use_widget
-!! review
-      SAVE "ayalib2.bin",rgb256_code,init_end - rgb256_code
+      IF release
+      SAVE "ayalib1r.bin",phrase,init_end - phrase
+      SAVE "ayaior.bin",io_code,io_end - io_code
+      SAVE "ayasalor.bin",salo_code,salo_end - salo_code
       ELSE
-      SAVE "ayalib2.bin",phrase,init_end - phrase
-      SAVE "ayalib2'.bin",fx_module,init_end - fx_module ;for debug
+      SAVE "ayalib1d.bin",phrase,init_end - phrase
+      SAVE "ayalib'd.bin",fx_module,init_end - fx_module ; for debug
+      SAVE "ayaiod.bin",io_code,io_end - io_code
+      SAVE "ayasalod.bin",salo_code,salo_end - salo_code
       END
-      SAVE "ayaio.bin",io_code,io_end - io_code
-      SAVE "ayasalo.bin",salo_code,salo_end - salo_code
       END

@@ -651,5 +651,9 @@ ho
           ASSERT(track_code == track_module)
 
       BANK BK_DISP
-      SAVE "ayaphras.bin",phrasui,phrasui_end-phrasui
+      IF release
+      SAVE "ayaphrar.bin",phrasui,phrasui_end-phrasui
+      ELSE
+      SAVE "ayaphrad.bin",phrasui,phrasui_end-phrasui
+      END
 

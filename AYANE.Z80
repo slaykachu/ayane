@@ -43,9 +43,16 @@ r2'   = 50              ; sequence
 
       IF 1
           IMPORT_CORE()
-      LOAD "ayalib0.bin"
+      IF release
+      LOAD "ayalib0r.bin"
       ORG phrase
-      LOAD "ayalib2.bin"
+      LOAD "ayalib1r.bin"
+      ELSE
+      LOAD "ayalib0d.bin"
+      ORG phrase
+      LOAD "ayalib1d.bin"
+      END
+
       ELSE
 ;for debug: import sources
           IMPORT_SHARED_DEPS_ALL()
@@ -55,7 +62,7 @@ r2'   = 50              ; sequence
           ASSERT(track_code == track_module)
  !! todo: load uiloop bin
       ORG fx_module
-      LOAD "ayalib2'.bin" ; ply and init
+      LOAD "ayalib'd.bin" ; ply and init
       END
 
 ; All text/fonte/disp routines in dedicated bank
@@ -63,7 +70,7 @@ r2'   = 50              ; sequence
       BANK BK_DISP
           LOAD_FONTS()
           IMPORT_DISP()
-          LOAD_PIANOUI()
+          LOAD_PIANOUI(release)
           IMPORT_STRINGS()
 ; See /disp_ext/ for other routines in /DISP_BK/
 ; GED and BANDAYA imported at the end
@@ -114,21 +121,6 @@ piano_play_song = playsong_module
 field_editor = field_module
 
 ; ---------------------------------------------
-
-      MACRO CALL_DISP adr
-; When caller already in bank
-          ASSERT($ AND &C000 == &4000)
-          ASSERT(adr AND &C000 == &4000)
-          call adr
-      ENDM
-
-      MACRO CALL_DISP_BK adr
-; When caller out of bank
-          ASSERT($ AND &C000 != &4000)
-   ;       ASSERT(adr AND &C000 == &4000) (cannot check: forward ref)
-          call call_disp:WORD adr
-      ENDM
-
       MACRO SET_CRTC reg,val
 !! use bandaya to set crtc (cheaper to do it there)
           call set_crtc:BYTE reg,val,-1
@@ -203,6 +195,7 @@ start
 ;----------
 ayane_entry
 ;----------
+          ENTER(ayane_entry)
           call ui_init_ged_null
           call clear_status_last_line
           CALL_DISP_BK(help)
@@ -372,7 +365,7 @@ io_postlude
           call ui_init_band ; !! also set instr 1 
           ei
           call status_on
-          jp return_to_screen
+          jp reenter_last
 
 ;-----------------------------------------------
 ; Commands
@@ -435,7 +428,11 @@ hi
 disp_ext
       BANK BK_DISP
       ORG phrasui       ; after disp/pianoui
-      LOAD "ayaphras.bin"
+      IF release
+      LOAD "ayaphrar.bin"
+      ELSE
+      LOAD "ayaphrad.bin"
+      END
 
       ORG disp_ayane
           IMPORT_DISP()
@@ -447,7 +444,11 @@ disp_ext_start
       ORG $ - &8000
       IMPORT "help.o"
 io0
-      LOAD "ayaio.bin"
+      IF release
+      LOAD "ayaior.bin"
+      ELSE
+      LOAD "ayaiod.bin"
+      END
 io0_  = $ - io0
 
 init_disp_bk
@@ -462,7 +463,7 @@ init_disp_bk
      ;      xor a:ld (name_file),a
       END
           ld a,CRTC_R1_IO
-          CALL_DISP(init_disp)
+          call init_disp
           ret
 
 text_welcome LOAD "doc-in/welcome.txt"
@@ -649,10 +650,16 @@ disp_ext_end = name_module ; after strings imported in IMPORT_STRINGS
 ; -------------------------------
 
       ORG salo
-      LOAD "ayasalo.bin"
-
+      IF release
+      LOAD "ayasalor.bin"
       SKIP ged-$
-      LOAD "ayalib1.bin"
+      LOAD "ayagedr.bin"
+      ELSE
+      LOAD "ayasalod.bin"
+      SKIP ged-$
+      LOAD "ayagedd.bin"
+      END
+
           ASSERT($ <= bandaya)
           IMPORT_BANDAYA() ; firm2status, status_on
       SKIP bandaya_end - $
