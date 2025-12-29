@@ -85,15 +85,15 @@ instr_cold_refresh
           ld bc,_paint_sprite
           call gedeihen_set_hooks
 
-          ld hl,&0101:call txt_set_cursor
+          ld hl,&0101:call _set_cursor
           ld hl,instr_ui
           call setup_widget
 ;enchaine
 refresh_all
-          ld hl,&0101:call txt_set_cursor ; needed?
+          ld hl,&0101:call _set_cursor ; needed?
           call gedeihen_disp
 reenter
-          ld hl,&0101:call txt_set_cursor
+          ld hl,&0101:call _set_cursor
           ld hl,instr_ui
           jp gedeihen_enter
 
