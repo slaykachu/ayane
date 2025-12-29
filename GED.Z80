@@ -1,6 +1,7 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
 ; -- alpha1 --
-; Dec   
+; Dec               
+  ;29 Fix regression spurious cursor when inserting in w_multiline 
   ;17 Less strict check on ui pnt, since phrasui is in bank.   
   ;16 [on_hold] enter_child: propagate both X and Y
 propagate_x = 0
@@ -1485,6 +1486,7 @@ enter_child
           call push_state
           SET_STATE_BYTE(widget_pos_y)
       END
+_child_enter
           call enter
           scf           ;no event
           ret
@@ -1498,7 +1500,10 @@ multiline_on_enter
 ;see /w_key_handler/
           ld a,(hl):cp w_key_handler:call z,mess
       END
-          jp enter_child
+;!! don't use /enter_child/ which propagate Y
+;!! we want to keep Y of line (already setup)
+          call push_state
+          jr _child_enter
 
 
 refresh_on_enter

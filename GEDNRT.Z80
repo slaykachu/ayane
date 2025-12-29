@@ -7,7 +7,8 @@ todo_wrong_chr = 0
 
 ; -- 2025 -- 
  ; --- Alpha 1---
-; Dec     
+; Dec
+  ;28: Add test_focus_after_insert     
   ;16: [on hold] Add test_focus_update_x
   ; 8: test_focus_update_y: must explicitly call enter
   ;??: Add test_focus_update_y
@@ -231,6 +232,7 @@ tests
           call test_multiline_focus
           call test_multiline_fuzz
           call test_insert_line
+          call test_focus_after_insert
           call test_delete_first_line
           call test_delete_last_line
           call test_delete_last_line'
@@ -1446,7 +1448,6 @@ ui_byte_word
 test_set_deci
 ;------------
           ld a,3:ld (nrt_deci_byte),a
-          ld a,"x":ld (&3001),a
           TEST_RUN(deci_ui2,t_set_deci)
 ; additional check: no field overflow.
           ld a,(iotest_screen+2):cp mockspace:call nz,&BE00
@@ -2552,6 +2553,16 @@ test_insert_line
 ;model wasn't update, so we must have same lines
           FOCUS("F"):BYTE nrt_nl
       BYTE "3",nrtend   ; nrt_insert_line doesn't really insert
+
+test_focus_after_insert
+;----------------------
+          ld hl,&0605:ld (nrt_hexa_digit_lines),hl
+          TEST_RUN_FOCUS(ui_multiline_refresh,.seq)
+          ret
+.seq  BYTE kdwn,kreturn
+          END_OF_NRT_SEQUENCE()
+      BYTE "5",nrt_nl   ; no more focus on first line
+          FOCUS("F"):BYTE nrtend
 
 test_delete_first_line
 ;---------------------
@@ -3902,8 +3913,12 @@ iotest_check_cursor_pos'
 nrt_place_cursor
           push hl
           ld hl,(iotest_cursor)
-          call iotest_get_char_pnt
+          ld a,l:cp 1:jr nz,.ok
+.cpt      ld a,5:dec a:ld (.cpt+1),a
+          jr nz,.ok
 ;      BRK
+.ok
+          call iotest_get_char_pnt
       IF 1
 ; Dev: see if doublon on focus
           bit 7,(hl):call nz,&BE00
