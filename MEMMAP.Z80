@@ -35,9 +35,9 @@ code_start = &40
  !! argl, shifted addresses
       END
 memcpc = &40
-scankey = &01FC
-conv  = &020D
-chunk_module = &041D
+scankey = &0211
+conv  = &0222
+chunk_module = &0432
 ;dispjp = &1900   ; not a dep anymore
 ;periods_module = &057F
 ;timer = &0A61
@@ -58,15 +58,15 @@ uiloop = &1A50
 phrase = &1AE0
 track_module = &2200
 ; -- salo
-fx_module = &2F00
-ply   = &2F04           ;needed for events signatures
+fx_module = &3000
+ply   = &3004           ;needed for events signatures
 fx_set_phrase_jp = ply+5
 evt_set_transpose_lsb = ply+&68 AND &FF ; track 
 evt_change_phrase_lsb = ply+&79 AND &FF ; track 
 
-playsong_module = &32A2
-shortcut = &3300
-init_module = &3391
+playsong_module = &33A2
+shortcut = &3400
+init_module = &3491
 
 code_main = &3C20       ; ayane.o
 

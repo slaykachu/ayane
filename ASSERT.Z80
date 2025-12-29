@@ -4,6 +4,21 @@
       IMPORT "memmap.i" ; jp_status_error
       IMPORT "memcpc.o"
 
+;Assemble code even if not used (dev=1)
+;To harmonize release/dev addresses.
+
+_to_be_implemented
+          xor a:jr com_error
+_memory_full
+          ld a,1:jr com_error
+_mess
+          ld a,2
+com_error
+          pop hl        ; failing point (dropped)
+          CALL_STATUS(jp_status_error + &8000)
+          call connect_bk_base
+          jp reenter_last
+
       IF dev
 ;fail  = &BE00
 mess  = &BE00
@@ -11,17 +26,9 @@ to_be_implemented = &BE00
 memory_full = &BE00
 
       ELSE
-to_be_implemented
-          xor a:jr com_error
-memory_full
-          ld a,1:jr com_error
-mess
-          ld a,2
-com_error
-          pop hl        ; failing point (dropped)
-          CALL_STATUS(jp_status_error + &8000)
-          call connect_bk_base
-          jp reenter_last
+mess  = _mess
+to_be_implemented = _to_be_implemented
+memory_full = _memory_full
       END
 
 
