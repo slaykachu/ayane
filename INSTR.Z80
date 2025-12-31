@@ -4,10 +4,6 @@ may_crunch = 1
 dev_checks' = 1         ; new checks
 ; Routine for each type of intruments:
       ; - instr_default
-      ; - instr_chip_down_vib
-      ; - instr_chip_down_vib_noise
-      ; - instr_chip_down_arp
-      ; - instr_chip_down_arp_noise
 
 ; Limitations:
    ; - only works for fixed /regs/ address XX00. 
@@ -54,44 +50,6 @@ r14   = psg_regs+14     ; Reset by ply before iteration
       END
       END
 
-      IF may_optim
-; chip+arp : don't read arp first iter?
-   ; - faster
-   ; - problem: then doesn't match chipsnf
-              ; -> actually can be mitigated by shifting table
-      END
-
-; \\\\\ 2025 ///  
-; -- alpha 1.7 --
-; Dec
- ; 19 deactivate instr_state
-; -- alpha 1.5 --
- ;  2 instr_setup: Don't assert if instr doesn't exists (for dev mode)
-; ---- v0at ----
-;Oct
- ; 16 _instr_end: fix tm
-; ---- v0aq ----
-;Sep  
- ; 29 _instr_end: must call _fx_end to cut fx
- ; 27 instr_play: c0 now aligned.
-    ; Fix tm when dev_checks
-; ---- v0an ----
-;Aug
- ; 25 Fix time instr_play
-; ---- v0am ----
- ; 23 Move common macro in macro.i
-; ---- v0ad ----   
-;Apr
- ; 24: Store period in BC (was only in comment!?)
-  ; CHIP_VOL_AND_PNT: remove "if use_volume" -> was doing sheiss
-
-;Mar
-; ---- v0l2 ----
-  ; SIGN: only for ayane = 1
-  ; Use default_use_arp
-      ; default_use_hard_env
-  ; Fix instr_default for kim compiled
-
 loop_bit = 7
 fail  = &BE00
 
@@ -121,7 +79,6 @@ instr_code              ; MSB needed by ply.o  +check by fx.o
 VARIABLE_SIZE = -1      ; For rows
 
 ; --------------------------------------------------------
-
       MACRO SIGN type,paramsize,rowsize
       IF ayane
 ; Order used by chung.Song_select_instr
@@ -136,76 +93,18 @@ VARIABLE_SIZE = -1      ; For rows
       END
       ENDM
 
-      MACRO CHIP_STATE_PRELUDE exec
-          ld hl,exec:push hl:pop hl ; for next iter
-          pop hl        ; instr data
-      IF ayane
-      IF use_phrase_pitch
- !!! todo                      
-; Cannot use de anymore
-      ELSE
-; we can use de
-          ld e,(hl):inc hl
-          ld d,(hl):inc hl
-      END
-      ELSE
-; Compiled version: no indirection, rows follow volume parameter
-      END
-      ENDM
-
-      MACRO CONSTANT_NOISE
-;!! Hack: we know it is constant for the duration of the instrument 
-;!!!! **AND** that other instruments doesn't touch r6.
-          ld a,(hl):inc hl
-          ld (psg_regs+6),a
-      ENDM
-
-      MACRO CHIP_STATE_POSTLUDE
-      IF use_phrase_pitch
- !!! todo                      
-; Cannot use de anymore
-      END
-      IF ayane
-          ld b,(hl):inc hl ;step
-          ld a,(hl)     ;initial volume
-      ELSE
-          ld b,(hl):inc l ;step
-          ld a,(hl):inc l ;initial volume
-          ex de,hl      ; DE points to table
-      END
-; state needs 2 words, so we deroute in fresh allocation 
-          ld hl,(instr_state_pnt)
-          2 ** inc l
-          push hl       ; update param
-          pop hl
-          ld (hl),b:inc l
-          ld (hl),a:inc l
-          ld (instr_state_pnt),hl
-      ENDM
-
 ; --------------------------------------------------------
-
-
           SIGN(type_instr_null,0,0)
 instr_null
 ;Required in both in-tool and compiled,
 ; as ply inconditionaly jump to instr routine.
 ;When no current instr, come here.
-;Always safe fallback for undefined instr.
+;Also fallback for undefined instr.
           pop hl        ; consume param
       IF use_flag_channel
           pop hl
       END
           pop hl        ; consume regs+vol
-;Actually instr_mute:
- ; we set vol to 0 for minimala.chp: allows to open all channels
- ; inconditionnaly
-; !!! NO !!! -> Lead to a bug, since now compile.o replace intermediary
-; dummy row (for duration > &100) by instr_null (to avoid having to 
-; deal with flags). So for minimala.chp it would cut the sound at
-; iter &101 (i.e tick +1 from 2nd "pattern")
-; Instead, we rely on regs 8,9,10 being 0 at init time
-;          ld (hl),0                      
           RET_ROUT(9)
 
       IF use_instr_end
@@ -225,67 +124,6 @@ tm1_  = 8               ; from .exec to jr instr_end (taken)
       END
       END
 ; --------------------------------------------------------
-; Start with chip instruments (shorter) for confinement
-
-paramsize_vol = 2       ; step, start
-paramsize_vol_noise = 3 ; noise, step, start
-
-      IF use_instr_chip_down_vib
-          SIGN(3,paramsize_vol,2)
-instr_chip_down_vib
-; Very ad-hoc instrument that matchs mimimala.chp needs
-; Same input as inst_default
-          CHECK_CONFINE()
-
-          CHIP_STATE_PRELUDE(icdv_exec)
-          CHIP_STATE_POSTLUDE()
-          jp icdv_entry
-      END
-
-      IF use_instr_chip_down_arp
-          SIGN(4,paramsize_vol,1)
-instr_chip_down_arp
-; Very ad-hoc instrument that matchs 4k08.chp need
-   ; Instr 4, 5 7 with arp without noise 
-; Same input as inst_default
-          CHECK_CONFINE()
-          CHIP_STATE_PRELUDE(icda_exec)
-          CHIP_STATE_POSTLUDE()
-          jp icda_entry
-      END
-
-      IF use_instr_chip_down_vib_noise
-          SIGN(5,paramsize_vol_noise,2)
-instr_chip_down_vib_noise
-; Very ad-hoc instrument that matchs 4k08.chp needs
-; Same input as inst_default
-          CHECK_CONFINE()
-
-          CHIP_STATE_PRELUDE(icdvn_exec)
-          CONSTANT_NOISE()
-          CHIP_STATE_POSTLUDE()
-          jp icdvn_entry
-      END
-
-      IF use_instr_chip_down_arp_noise
-          SIGN(6,paramsize_vol_noise,1)
-instr_chip_down_arp_noise
-; Very ad-hoc instrument that matchs mimimala.chp needs:
-   ; Instr 4, 5 7 with arp + constant noise (might be 0)
-; Same input as inst_default
-          CHECK_CONFINE()
-
-          CHIP_STATE_PRELUDE(icdan_exec)
-          CONSTANT_NOISE()
-          CHIP_STATE_POSTLUDE()
-      IF todo
-!!! reoder code to use jr (for crunchability)
-;at other place
-      END
-          jp icdan_entry
-      END
-
-
       IF use_instr_default ; Not used to compile minimala.chp
           SIGN(type_instr_default,0,VARIABLE_SIZE)
 instr_default
@@ -567,216 +405,6 @@ tm3'  = 14              ; until RET_ROUT'
       END
       END
 
-; ------ Core code -------
-
-      MACRO CHIP_VOL_AND_PNT
-; Update volume and get table pnt
-  ; Common for instr_chip_down_arp_noise
-             ; instr_chip_down_vib
-          pop hl
-; instr params
-      IF may_optim
-; Interleave for compiled version, as MSB is constant? 
-; Better: MSB could be static if all chipnsfx instruments fit in &100
-; We just need to know destination adress.
-      END
-; no volume: we can use B
-          ld b,(hl):inc l ;step       
-          ld a,(hl)     ;current volume
-          sub b:jr nc,$+3:add b ; decrement with saturation
-          ld (hl),a:inc l
-      IF use_phrase_pitch
-!! todo 
-; Cannot use DE anymore
-      ELSE
-      IF ayane
-          ld e,(hl):inc l ; LSB first to respect common links used
-          ld d,(hl)
-          dec l         ; for update    
-      ELSE
-      IF hack_minimala
- ; MSB is constant global. We didn't store it.
-      IF may_crunch
-; Actually it might be more crunchable to store D anyway and re-read it
-; (no "magic" value), as DE is already pointing the table
-; when state is setup
-      END
-          ld e,(hl)
-          ld d,compiled_instr/&0100
-      ELSE
- ; MSB is constant per instr (so, read it first to ease update).
-  !! check me
-          ld d,(hl):inc l
-          ld e,(hl)
-      END
-      END
-      END
-      ENDM
-
-      MACRO CHIP_UPDATE_PNT
-; -- update link for next time
-      IF ayane
-; absolute link. (hl) = (de)
-          ld b,a
-          ld a,(de):inc e
-          ld (hl),a:inc l
-          ld a,(de):inc e
-          res loop_bit,a
-          ld (hl),a:inc l
-          ld a,b
-; Don't need hl = params anymore
-      ELSE
-; in compiled version, MSB is constant and link is relative
-; (for crunchability)
-          ld b,a        ; save
-          ld a,(de):add e
-          ld (hl),a
-          inc e
-          ld a,b
-      END
-      ENDM
-
-      MACRO CHIP_R7
-; -- set r7     
-          pop hl
-      IF hack_minimala
-; Nothing to do (must still consume HL to advance in stack)
-; All channel open by default
-      ELSE
-          ld a,&38      ; close noise
-          or l
-          ld l,7
-          and (hl)
-          ld (hl),a
-      END
-      ENDM
-
-      MACRO CHIP_R7_WHEN_NOISE
-; -- set r7
-; Open channel and optionnally noise.
-      BRK
-          pop hl
-          ld a,(psg_regs+6)
-          or a
-          ld a,&38      ; noise close
-          jr z,$+3:xor a ; noise open if r6 <> 0
-          or l
-          ld l,7
-          and (hl)
-          ld (hl),a
-      ENDM
-
-
-
-      IF use_instr_chip_down_vib
-icdv_exec
-          CHIP_VOL_AND_PNT()
-icdv_entry
-; Here: like icdan_entry
-          CHIP_UPDATE_PNT()
-
-          CHIP_R7()
-
- ; volume register
-          pop hl
-          4 ** rrca:and &0F
-          ld (hl),a
-
- ; period register
-          ld a,l:sub 8:add a:ld l,a
-;!!! doesn't keep6 de=period like instr_default
-          ex de,hl
-          ld b,periods/&0100
-          ld a,(bc):add (hl):inc hl:ld (de),a:inc e
-          inc c
-          ld a,(bc):adc (hl):ld (de),a
-
-; r7
-          ret
-      END
-
-      IF use_instr_chip_down_arp
-icda_exec
-      BRK
-          CHIP_VOL_AND_PNT()
-icda_entry
-; Here a= vol, c= note
-     ; hl: field in state: link to table
-     ; de: pnt table 
-          CHIP_UPDATE_PNT()
-
-          CHIP_R7()
-
- ; -- set volume register
-          pop hl
-          4 ** rrca:and &0F
-          ld (hl),a
- ; -- set period register
-          ld a,l:sub 8:add a:ld l,a
-;!!! doesn't keep de=period like instr_default
-          ld a,(de):add c:ld c,a ; arp
-          ld b,periods/&0100
-          ld a,(bc):ld (hl),a:inc l
-          inc c
-          ld a,(bc):ld (hl),a
-          ret
-      END
-
-      IF use_instr_chip_down_vib_noise
-icdvn_exec
-          CHIP_VOL_AND_PNT()
-icdvn_entry
-; Here: like icdan_entry
-          CHIP_UPDATE_PNT()
-
-          CHIP_R7_WHEN_NOISE()
-
- ; volume register
-          pop hl
-          4 ** rrca:and &0F
-          ld (hl),a
-
- ; period register
-          ld a,l:sub 8:add a:ld l,a
-;!!! doesn't keep6 de=period like instr_default
-          ex de,hl
-          ld b,periods/&0100
-          ld a,(bc):add (hl):inc hl:ld (de),a:inc e
-          inc c
-          ld a,(bc):adc (hl):ld (de),a
-
-          ret
-      END
-
-
-      IF use_instr_chip_down_arp_noise
-icdan_exec
-          CHIP_VOL_AND_PNT()
-icdan_entry
-; Here a= vol, c= note
-     ; hl: field in state: link to table
-     ; de: pnt table 
-          CHIP_UPDATE_PNT()
-
-; -- set r7
-; Open channel and optionnally noise.
-          CHIP_R7_WHEN_NOISE()
-
- ; -- set volume register
-          pop hl
-          4 ** rrca:and &0F
-          ld (hl),a
- ; -- set period register
-          ld a,l:sub 8:add a:ld l,a
-;!!! doesn't keep de=period like instr_default
-          ld a,(de):add c:ld c,a ; arp
-          ld b,periods/&0100
-          ld a,(bc):ld (hl),a:inc l
-          inc c
-          ld a,(bc):ld (hl),a
-          ret
-      END
-
 instr_code_             ; for check by fx.o
 
 ; ------------ Helpers ------------
@@ -878,15 +506,5 @@ instr_param WORD
 trash WORD 
       END
 
-      IF use_instr_chip
-instr_state_pnt WORD instr_state
-      IF ayane
-      FILL -$ AND &FF,&F7
-instr_state
-      FILL &0100,&F7
-      ELSE
-instr_state = compiled_instr_buf
-      END
-      END
 hi
 

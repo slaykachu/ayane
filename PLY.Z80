@@ -373,12 +373,10 @@ play
           di
 tm0   = 1+15            ; until track_loop
           ld hl,r7
-      IF hack_minimala
-; Channel always open
-          ld (hl),&38
-      ELSE
-;We only open voice/noise, so start from all closed.
+      IF use_flag_channel
           ld (hl),&3F
+      ELSE
+          ld (hl),&38
       END
 ;r13 : keep value from previous iter to detect if retrig needed
 ;r14 : sentinelle set in instr.o

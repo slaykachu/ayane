@@ -1,16 +1,7 @@
 ; Config for player
 ayane = 1               ; 0: Stand-alone  1: In-tool player
-todo  = 1
-is_minimala = 1         ; hack
 
 ; 2025
-  ; Dec
-    ; 19 Add use_instr_chip
-  ; Mar               
-    ; 29 Add /is_pattern_indexed/ 
-    ; 24 Add /pattern_size/ for kima  (N/A on kimb)
-    ; 18 Settings for kim9.chp
-       ; + default_use_arp
 
 ; Hard coded dest compile  
 ;Buffer first, so we can better concatenate code+data
@@ -25,7 +16,6 @@ compiled_instr = compiled_data
 
 periods_in_16bits = 1
 
-      IF ayane
 ; Special fx (interleave player with routine in HL')
 sfx   = 1
 
@@ -64,8 +54,6 @@ use_event_type = 1
 
 use_hard_env = 1
 
-hack_minimala = 0
-
 ; --- All those: necessarily 1 in-tool ----
 use_instr_end = 1       ; to cut instr
 use_instr_default = 1
@@ -73,80 +61,6 @@ use_instr_default = 1
 default_use_arp = 1
 default_use_pitch = 1
 default_use_hard_env = 1 ; "
-
-; deactivate them for now,
-; as we don't want to support in ayane first version 
-use_instr_chip = 0
-use_instr_chip_down_arp = use_instr_chip
-use_instr_chip_down_arp_noise = use_instr_chip
-use_instr_chip_down_vib = use_instr_chip
-use_instr_chip_down_vib_noise = use_instr_chip
-
-      ELSE
-; Special fx (interleave player with routine in IY)
-sfx   = 0
-
-pattern_size = 32*3     ; 0 for dynamic
-
-; How many simultaneous fx are handled
-nb_fx = 0               ; warning: 0 won't work for chung
-
-; Can change "master" volume (by track basic)
-use_track_volume = 0
-; Can change volume in phrase
-use_phrase_volume = 0
-
-use_transpose = 1
-
-; Hum. to be reviewed (fx.o)
-use_fx_noise = 0
-use_instr_noise = 1
-use_noise = use_fx_noise OR use_instr_noise
-
-use_flag_channel = 0    ; 0 if channels always open
-                        ; (and infer noise flag from noise value)
-
-use_phrase_pitch = 0    ; chipnsfx: no effect
-
-use_instr_flag = 0      ; Flag not need when always instr in row
-use_note_flag = 0       ; Flag not need when always note in row
-has_phrase_loop = 0     ; 0: no loop, phrase changed on time 
-
-is_instr_indexed = 0    ; 0: direct LSB in first &100 chunk
-is_compiled_phrase_indexed = 1
-
-use_psg_call = 1        ; n/a for in-tool
-
-use_event_type = 0
-
-use_hard_env = 0
-
-hack_minimala = 1       ; adhoc optimisations
-
-use_instr_end = 0       ; to cut instr
-use_instr_default = 1   ; kim uses it
-default_use_arp = 1     ; "
-default_use_pitch = 0   ; kimd': no pitch (removed instr 8)
-default_use_hard_env = 0
-      IF is_minimala
-;minimamal
-;use_instr_chip_down_arp = 0
-;use_instr_chip_down_arp_noise = 1
-;use_instr_chip_down_vib = 1
-;use_instr_chip_down_vib_noise = 0
-use_instr_chip_down_arp = 1
-use_instr_chip_down_arp_noise = 0
-use_instr_chip_down_vib = 1
-use_instr_chip_down_vib_noise = 0
-      ELSE
-;4k08
-use_instr_chip_down_arp = 1
-use_instr_chip_down_arp_noise = 0
-use_instr_chip_down_vib = 1
-use_instr_chip_down_vib_noise = 0
-      END
-
-      END
 
 use_volume = use_track_volume OR use_phrase_volume
 use_noise = use_fx_noise OR use_instr_noise
