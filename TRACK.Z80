@@ -2,6 +2,8 @@ dev_checks = 1
 todo  = 1
 makeroom = 1
 do_set_loop = 1
+do_set_replay_period = 0
+use_widget = 0
 ; -----------------------------------------------
 ; Song & Track handling for ayane (map/songlist)
 ; -----------------------------------------------
@@ -9,23 +11,7 @@ do_set_loop = 1
 ; 2025 
 ; -- alpha 1.07 --
  ; Dec     
-    ; 24: Add Song_attach_empty_phrases
-    ; 17: s/connect_bk_track/scope_bk_track to reconnect caller bank 
-        ; (only for externally used routines)
-; -- alpha 1.05 --
-    ;  2: ext_fetch_event: register t1 as well
-; -- alpha 1.04 --
-    ;  2: Remove ply dependency
-        ; Deactiveate replay period for now (defined in ply.o)
-do_set_replay_period = 0
-; -- alpha 1.03 --
-    ;  1: Deactivate widget related code
-use_widget = 0
-; -- alpha 1.02 --
- ; Nov
-    ; 30: Fix track_select_phrase_at
-        ; Add get_event_at
-        ; Remove some dead code
+    ; 30: Add track_get_state_at
 
 ; Setup ------
 ; ------------
@@ -66,15 +52,6 @@ use_widget = 0
     ; get_track_header
     ; track_get_hook_at
     ; track_get_last_hook
-
-; Aum helpers (do not use directly!) --------
-; -------------------------------------------
-    ; ext_insert_hook_node_after
-    ; ext_next_node
-    ; ext_connect_head
-    ; set_hook_at
-    ; get_hook_at
-    ; get_event_at
 
 ; Track update -------
     ; Set_phrase_at_t
@@ -2024,7 +2001,7 @@ track_select_phrase_at
           push hl
           ld a,evt_change_phrase_lsb
           call track_get_event_at
-          jr z,.exit
+          jr z,_exit
 ; -- Select phrase
  ; Here de: phrase start (after header)
           ld hl,fc_index - clip_header_size
@@ -2068,12 +2045,28 @@ track_select_phrase_at
       END
           pop af
           push hl
-.exit
+_exit
           pop hl
           pop de
           pop ix
           ret
 
+track_get_state_at
+;-----------------
+; For now, state consists on only transpose
+; In: hl = pnt to t
+; Out: last_transpose updated
+          call scope_bk_track
+          ld a,evt_set_transpose_lsb
+          call track_get_event_at
+          ld a,0:jr z,.com
+          ld a,e
+          srl a
+.com
+          ld (last_transpose),a
+          ret
+
+;-----------------------------------------
 dec_ihl
 ;(hl) -= 1
           ld a,(hl):dec (hl):or a:ret nz
@@ -2838,7 +2831,7 @@ ext_get_track
           ret
       END
 
-time_zero FILL 3,0
+time_zero TIME(0)
 time_inf FILL 3,&FF
 
 ;--------------------------
@@ -2848,14 +2841,16 @@ time_inf FILL 3,&FF
 
 ;for phrasui
           ASSERT($ AND &C000 != &4000) ; out of bank for sharing
-fetched_t0 SKIP 3
-fetched_t1 SKIP 3
+fetched_t0 TIME(0)
+fetched_t1 TIME(0)
           ASSERT(fetched_t1 == fetched_t0+3)
 
-timestamp SKIP 3
-previous_timestamp SKIP 3
+timestamp TIME(0)
+previous_timestamp TIME(0)
 
-fetched_event WORD 
+fetched_event WORD 0
+
+last_transpose BYTE 0
 
 ;---- Keep this order for /goto_pos/
 time_cursor TIME(0)     ; Position in sequencer
@@ -2873,7 +2868,7 @@ frame_pnt WORD          ; point
 aum_af WORD             ; A: Unused, but makes F easier to store
 aum_sp WORD 
 aum_pc WORD             ; for debug
-aum_stack SKIP MAX_FRAMES*2 ; only AUM'S PC saved.
+aum_stack FILL MAX_FRAMES*2,0 ; only AUM'S PC saved.
 aum_stack_
           CHECK_CONFINE(aum_stack)
 
@@ -2881,10 +2876,10 @@ aum_stack_
 ; we must store literals.
 ; The alternative would be a static array of litterals.
   ; -> Faster but requires &80 bytes.
-tmp_lit SKIP 4:CHECK_CONFINE(tmp_lit)
+tmp_lit FILL 4,0:CHECK_CONFINE(tmp_lit)
 tmp_arg = tmp_lit
-tmp_binary SKIP 4:CHECK_CONFINE(tmp_binary)
-tmp_ext_args SKIP MAX_EXT_PARAMETERS * 2:CHECK_CONFINE(tmp_ext_args)
+tmp_binary FILL 4,0:CHECK_CONFINE(tmp_binary)
+tmp_ext_args FILL MAX_EXT_PARAMETERS * 2,0:CHECK_CONFINE(tmp_ext_args)
 
           ALIGN(&0100)
 aum_regs

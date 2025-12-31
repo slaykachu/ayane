@@ -4,7 +4,8 @@ do_brittle = 0
 
 ; ----- 2025 ----------
 ; -- alpha 1.07 --
- ; Dec  
+ ; Dec       
+     ; 30 Add test_track_get_state_at
      ; 25 Add test_Song_attach_empty_phrases
 
 ; -- alpha 1.06 --
@@ -84,6 +85,8 @@ tests
           call nrt_init
 
 ; ---- Recent
+          call test_track_get_state_at
+      BRK
           call test_Song_attach_empty_phrases
 
 ; ---- UI (manual)
@@ -142,6 +145,7 @@ tests
           call test_get_phrase_implicit_repeat
           call test_track_select_phrase_far
           call test_t0_when_repeat
+          call test_track_get_state_at
 
 ; ---- Test subsong -----
           call test_subsong_add_track
@@ -1489,6 +1493,32 @@ test_t0_when_repeat
           or a:sbc hl,de:add hl,de:call nz,nrtfail
           ld a,(fetched_t0+2):or a:call nz,nrtfail
           ret
+
+test_track_get_state_at
+;----------------------
+; For now, state consists on only transpose
+          call nrt_init
+;Put a phrase to exercie event filtering
+          call nrt_dummy_phrase_finite
+          xor a
+          ld hl,time7
+          call Set_phrase_at_t
+
+          ld a,24:ld hl,time7:call Set_transpose_at_t
+          ld a,42:ld hl,time14:call Set_transpose_at_t
+
+          ld hl,time6:call track_get_state_at
+          ld a,(last_transpose):cp 0:call nz,fail
+          ld hl,time7:call track_get_state_at
+          ld a,(last_transpose):cp 24:call nz,fail
+          ld hl,time13:call track_get_state_at
+          ld a,(last_transpose):cp 24:call nz,fail
+          ld hl,time14:call track_get_state_at
+          ld a,(last_transpose):cp 42:call nz,fail
+          ld hl,time_far:call track_get_state_at
+          ld a,(last_transpose):cp 42:call nz,fail
+          ret
+
 
 time0     TIME(0)
 time6     TIME(6)
