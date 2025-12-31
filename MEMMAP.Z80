@@ -41,7 +41,7 @@ chunk_module = &0432
 ;dispjp = &1900   ; not a dep anymore
 ;periods_module = &057F
 ;timer = &0A61
-instr_module = &0DD4
+instr_module = &0DD8
 ;chung f19 - &13b0
 ;13b0 "AYA!  " what's that
 ;then free?

@@ -28,6 +28,8 @@ MAX_TIMER_FXS = 15      ; used here only -> no ui check.
 ; - sync_buzzer_register
 
 ; /// 2025 //////
+  ; ---- alpha1 ----
+     ; Cannot use PSG_L_HL_FAST for periods MSB
   ; ---- v0at ---- 
    ; Nov
      ; 6: sync_buzzer_register: reset r13 so no spurious trigger 
@@ -344,6 +346,9 @@ psg_l_hl_tm = 26
       MACRO PSG_L_HL_FAST
 ; Direct from C0 to 80 (temporarily send reg to itself: ok for
 ; all regs but periods LSB. See psgtst1.o)
+; !!! oh actually won't work for periods MSB either for low notes:
+    ; e.g g-1 (&1fc) -> reg 1 or 3 would trigger tone switch since 3<4 
+; 
 psg_l_hl_fast_tm = 22
           ld b,&F4:out (c),l ; assume PPI:F6 already in select mode
           ld b,d:out (c),h
@@ -878,8 +883,8 @@ psg_channel
 ; IN: hl: points to periods
     ;  A: tm
           PSG_L_HL()
-          PSG_L_HL_FAST()
-          SUB_TM_CALL(psg_l_hl_tm + psg_l_hl_fast_tm)
+          PSG_L_HL()
+          SUB_TM_CALL(psg_l_hl_tm*2)
 ; period to volume without using A
           dec l         ; compensate 2nd OUTI
           srl l:set 3,l
