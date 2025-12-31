@@ -1,24 +1,6 @@
 ; Disp: text display. From Orgams.
    ; Difference: status_*: same API than disp_* (e.g. BC for text)
 
-; 2025     
-; -- alpha 1 --
- ; Dec
-   ; 27 Add disp_locate[_y], disp_place_cursor
-   ; 26 Add status_error
-      ; Remove check for status_* (cannot "assert"), since those
-        ; routine are use to display assert error
- ; Nov      
-   ; 16 dh_* routines for phrases (h: halfsize / highres)    
-; -- v0au --
-   ; 15 Adapt /status_inv_cursor_at/ for ayane's status
-   ; 10 s/dev_checks/dev_checks' to avoid ambiguity
-; -- v0aq -- 
- ; Oct
-     ;15 Add status_paragraph_at:
-            ; - less code in client area
-            ; - C1 connected to read final 0
-
 todo  = 1
 dev_checks' = 1
 

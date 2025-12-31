@@ -27,21 +27,6 @@ MAX_TIMER_FXS = 15      ; used here only -> no ui check.
 ; - fx_null                    
 ; - sync_buzzer_register
 
-; /// 2025 //////
-  ; ---- alpha1 ----
-     ; Cannot use PSG_L_HL_FAST for periods MSB
-  ; ---- v0at ---- 
-   ; Nov
-     ; 6: sync_buzzer_register: reset r13 so no spurious trigger 
-        ; set_timer_and_psg: more ints + PSG_L_HL_FAST
-                           ; to alleviate artefacts (hmm, pas flagrant)
-   ; Oct
-     ;16: Reorder tables for wasteless align
-        ; Move fx_by_track at 8100  
-  ; ---- v0as ---- 
-     ; 8: cutlp: fix race condition    
-     ; 4: cutlp: remove event instead of replacing it by cut_fx
-
       IMPORT "const.i"
       IMPORT "plyconf.i"
       IMPORT "memmap.i" ; psg_regs

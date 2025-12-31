@@ -1,11 +1,6 @@
 
 ; Dispatch key -> routine.
 
-; 2025 Aug 21 Move key codes in const.i
-
-; 2023 Mar 27
-; v0: Extracted from ed.o vBRAL for reuse in vectoria
-
 ksetkey = &BB27         ; aka km_set_translate
 kgetkey = &BB2A         ; aka km_get_translate
 ksetshift = &BB2D

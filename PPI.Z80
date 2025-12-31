@@ -3,9 +3,6 @@
    ; * Leave AY in 'select' mode
 ; Some other routines (vsync_timed, psg) in timer.o
 
- ; 2025
-   ; Aug 25: use macro.i
-
 ;---------------------------------------
       IMPORT "macro.i"
 ;---------------------------------------

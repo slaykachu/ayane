@@ -1,14 +1,6 @@
 ; << Memory bank handling for ayane >>
 ; CPC specific PAGING (out &7fxx,&cX)
 ; 2025
- ; --alpha 1-- 
-     ; Dev 25: Use assert.o
-     ; Nov 16: call_disp: update checks (no more jp table)
- ; --v0.a?--
-     ; Aug 25: Remove jump table. Short module: neater to import
-     ; Jun 20: jump table
-
-todo  = 1
 
       IMPORT "memmap.i"
       IMPORT "macro.i"  ; ASSERT

@@ -3,20 +3,6 @@ todo  = 1
 need_room = 1
 
 ; 2025
-; ----- v0as -----
- ; Oct 28
-    ; Init periods here: - easier for reg2note
-                       ; - doesn't have to depend on ply anymor
-; ----- v0aq -----
- ; Sep 27
-    ; Don't reserve anymore before c0. 
-; ----- v0an -----
- ; Aug 26
-    ; Fill before c0 
-; ----- v0l2 -----
- ; Mar 19
-    ; Don't pad, for correct binary size when assembling ply
-
 
       IMPORT "plyconf.i"
       IMPORT "const.i"  ; note_c_10

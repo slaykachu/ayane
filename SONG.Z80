@@ -1,14 +1,6 @@
 ; <<< Song/Subsong handling >>>
 
 ; 2025
-; --- alpha1 ---
- ; Nov
-   ; 26 Welcome Song_get_instr for chung.o
-
-; --- v0.at ---
- ; Oct
-   ; 16 Extracted from track.o
-
 ; TOC ---------------
 ; -------------------
     ; New_subsong (no!! lives in track.o to avoid song->track dep)

@@ -5,20 +5,6 @@ tmp_rast = 0
 ; <<<< Handling cpc keyboard as piano >>>>
 ; -> Using hardware keycode: locale agnostic (azerty/qwerty)
 
- ; 2025                
-    ; -- alpha1 --
-  ;Dec
-   ;17: Use scope_bk_instr ensuring proper bk connection (at return too)
-  ;Nov
-   ;19: Move play_song in playsong.o (remove ply dependency) 
-      ; s/va_current_instr/Song_get_instr so proper bank is connected
-    ; -- v0au --
-   ;10: play_song: also exit with space (+ anti test)
-    ; -- v0as --
-  ;Oct
-   ;11: more checks
-      ; _play_lp: remove waits when tmp_rast = 0 (less code)
-
       IMPORT "memmap.i"
       IMPORT "macro.i"
 

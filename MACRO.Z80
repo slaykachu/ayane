@@ -21,8 +21,6 @@
       ENDM
 
       MACRO LIMIT last
- ; !! Not equivalent to LIMIT directive:
- ; !! Must be invoked at the end of the code meant to respect the limit
           ASSERT($-1 <= last)
       ENDM
 

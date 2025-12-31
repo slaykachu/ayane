@@ -2,9 +2,6 @@
 ; -> Needed by ply for Song_amorce, without pulling full track.o ui
    ; (otherwise, memory full via uilooptt)
 
-; -- v0.0au --
-; 2025 Nov 7: + connect_bk_track (now that tracks are in bank)
-
       IMPORT "const.i"
       IMPORT "memmap.i"
       IMPORT "macro.i"

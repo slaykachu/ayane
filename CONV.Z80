@@ -1,17 +1,6 @@
 ; <<< Conv. Conversions >>>
 
 ; //// 2025 ////
-; -- alpha 1--
-;Dec
-  ; 27: Display "0  " for special note c_10 (period 0)
-;Nov
-  ; 27: Add put_deci_a_pad_space
-  ; 17: put_note: save hl
-; -- v0am --
-;Aug      
-  ; 24: Add convert_note, put_note, put_double_space
-
-
 ; TOC:             
    ; From string to integer:
      ; deci_to_int

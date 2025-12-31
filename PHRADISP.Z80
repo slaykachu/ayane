@@ -5,12 +5,7 @@ dev_checks' = 1
 ; -- Alpha1 --
   ; Dec
     ; 25 disp_rows: fix buffer not reloaded
-    ; 17 row_buf: out of bank   
-    ; 16 ticks_per_page: round to 32 rows
-       ; disp_rows: fix returned pos y when size not multiple of delai
-    ; 12 correct_y: must return NC when zoom overflow
 
-;      IMPORT "const.i"
       IMPORT "memmap.i" ; BK_DISP
       IMPORT "macro.i"
       IMPORT "import.i"

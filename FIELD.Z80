@@ -7,26 +7,13 @@
 todo  = 1
 dev_checks' = 1
 
-; 2025
- ; Nov 10 s/dev_checks/dev_checks' to avoid ambiguity
- ; Aug 4: Deactivate CTRL-Lft/Rgt in field
-               ; -> not useful for short numerical fields
-               ; -> prevent consistent shortcut in instrui row
 handle_ctrl_cursor = 0
       IF todo
  ; !! we need both version (for open/save and bigger text fields)
       END
 
-; TODO [space optim] Reuse shortcut.o for /scan_key/
-     ; Or the other way around: shortcut would reuse this instance.
-
       IMPORT "assert.o"
       IMPORT "scan-key.o"
-
-      IF todo
-; do same for k_lft?  or don't allow to navigate in field?
-      END
-     ; 1. Taken from lib (version B -- 2023 12 13)
 
 field_editor
 ;  A: key

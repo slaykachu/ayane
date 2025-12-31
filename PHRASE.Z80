@@ -6,27 +6,6 @@ do_add_empty_row = 0
 
 ; 2025    
  ; -- alpha 1 --
-; Dec 
-   ; 17 s/_prelude/scope_bk_phrase so can be called from bank    
-      ; phrase_select_new_row: exception if memory full instead of NC
-   ; 15 Add row_del_note/instr/vol
-      ; Add phrase_clone
-      ; phrase_def: fix 'last' (was pointing one extra byte)
-   ; 13 phrase_get_row_at: must use goto_next_row for multi-chunks
-   ; 12 Add phrase_get_last_row 
-; Nov
-   ; 27 Add get_phrase_id
-      ; phrase_get_duration: handle duration 0 as &10000
-   ; 21 _unpack_row_com: fix pnt row post reading, fix vol decoding
-      ; row_get_vol: Fix NZ not returned when vol=0
-   ; 19 phrase_delete_row_at: draft
-      ; phrase_select_row_at: Fix when empty phrase 
-                            ; Fix when DE > total duration 
-                            ; Handle padding for duration > &100
-   ; 18 Remove phrase_select_row (deadcode)                   
-      ; phrase_get_row_at: Set row_t1=&ffff for "infinite" duration
-                         ; Return BC = t-t0 (simplify client code)
-   ; 16 Remove ply and chung deps
 dev_checks' = 1
 todo  = 1
 makeroom = 1

@@ -16,22 +16,6 @@ need_room = 1
 
 dev_checks' = 1         ; forced for now
 
-; Disable 'free' code (must be re-viewed)
-enable_free = 0
-
-; \/\/\/ 2025 \/\/\/\/\/\/\/\/\/\
-; -- alpha1 --
-; Dec 26: Use assert.o, remove dead code.
-
-; -- v0au --
-; Nov 11 Next_node: actually return Z if loop node (instead of assert)
-
-; -- v0l2 --
-; Mar 21 Next_node: must return Z if loop node
-
-design_doc
-; See :lib/chunk.o
-
 chunk_offset = &40
 
 chead_next = 0
@@ -346,67 +330,6 @@ get_next
           ld l,(hl):ld h,a
           ret
 
-      IF enable_free
-free
-;---
-;  In: HL: ID chunk to free
-; Out: N/A: If invalid input or mess, there's nothing the caller can do.
-     ; a, de, hl trashed.
-; Note: Works even for non-linked chunk,
-      ; since we set hl.next=(v_free_list)
-      ; That is, we'll never try to follow link,
-      ; so it's ok if it is not a link.
-
-          call check_id0
-          call _swapfree:ret z
-
-          push bc
-          ld bc,1
-          call connect_chunk_from_id
-__plugtail
-; plug tail: HL.next = DE (previous freelist)
-; in: HL: points in cur chunk (connected)
-    ; DE: freed list
-    ; BC: nb chunks in DE.
-          ld l,chead_next
-          ld (hl),e:inc l
-          ld (hl),d
-
-          call connect_bk_base
-          ld a,(v_free_chunks)
-          add c
-          ld (v_free_chunks),a
-          pop bc
-          ret
-
-_swapfree
-;  In: HL: ID head of chunk/list to free.
-; Whether only first chunk is actually freed is dealt by caller.
-; Out: No-op if HL is 0.
-     ; Otherwise:         
-     ;   de=(v_free_list)  Previous head of freelist.
-     ;   (v_free_list)=hl  Chunk to free set as head of freelist.
-     ;         All linked chunks are set free as a consequence.
-     ; In any case:
-     ; Z iif HL == 0 (means nothing to do).
-
-          ld a,l:or h:ret z ; Sanity
-
-          call connect_bk_base
-          ex de,hl
-          ld hl,(v_free_list)
-          call check_id0
-          ld a,l:or h
-          call nz,is_in_list
- ; Not exactly fatal, but denote a programming mistake.
-          call c,mess
-          ex de,hl
-; Most recently freed on top of list (doesn't matter much!).
-          CHECK_ID()
-          ld (v_free_list),hl
-          xor a:inc a   ; NZ
-          ret
-      END
 
 Next_node
 ; Follow next node (unless loop)
@@ -541,56 +464,6 @@ chunk_def
       BYTE 0,0,chunk_header_size-1 ;next (bk, MSB), pos last
       FILL 0,0          ;csum, row#
 
-
-      IF enable_free
-free_list
-; in: hl = points to first chunk in list to be removed.
-
-          call check_id0
-          call _swapfree:ret z
-
-          push bc
-; Plug tail of freelist at end of freed list.
-; !! Even if tail is 0, we must do this to count freed chunks.
-          call goto_end
-          jp __plugtail
-
-goto_end
-;Connect last chunk of list, and return list length.
-;In:  HL: head id.
-;Out: HL: last id (connected). Rationale: more convenient
-    ; BC: nb chunks in list
-    ; F trashed. All other registers preserved.         
-          call connect_chunk_from_id
-          ld bc,0
-gotolp
-          inc bc
-          call connect_next
-          jr nz,gotolp
-          ret
-
-is_in_list
-;---------
-; Is node already in list?
-; In: hl= id list
-    ; de= id node
-; Out: Carry iif in list.
-     ; All register but AF preserved.
-
-          ld a,e:or d:ret z
-          push hl
-          call connect_chunk_from_id ; to follow list
-          call _is_in_list
-          pop hl
-          jp connect_bk_base
-
-_is_in_list
-          or a:sbc hl,de:add hl,de:scf:ret z
-          call connect_next
-          jr nz,_is_in_list
-          or a
-          ret
-      END
 
 _check_bk0
 ;Check proper bank. 0 is ok (case null id)

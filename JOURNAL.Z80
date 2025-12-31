@@ -1,10 +1,56 @@
-; ------ Right now --------                  
+; Menu:
+ ; design_choices
+ ; changelog
+ ; changelog_by_module
+ ; style
+ ; notes
+ ; site
+ ; todo 
+ ; bugs
+ ; errors
+
+; ------ Right now -------- 
+
+
+; ------ Right after --------                  
+phrase_get_rows# and phrase_get_row: doesn't work when multi chunks
+test instr and phrases idx > &e0
+test save / load with 2 phrases
+
 ; phrase: check API shift_in_row (rotten comments?)
-; chung: allocate &4000-&41ff for index etc.
-; chung: put track_index at &4000. 
-; ply: amorce_song: verify track# < 32      
+; track: put track_index at &4000. For persitance.
+; ply: amorce_song: verify track# < 32  (why ??)
 
+;!!! -> Go back to previous design? allocate table for instr
+  ; (for sharing). No need right now!!!
 
+BEFORE RELEASE:
+; Fix desyncing when playing regular song sem FX (testdata/vampire1.aya)
+   ; -> try to reproduce via plynrt
+; clip arp (more sense musically)
+
+bugs
+artefacts               ; (e.g d-3 d-4 with no tone, hard env = 0)
+; (todo: check c-4 c-5 also)
+; note: already present in v0ak
+
+<> Playing track without phrases will assert after &ffff ticks (21 min)
+ ; -> phrase pnt is set to &bad0. If no phrase,
+ ; Solution: put pnt to empty phrase (well, dummy phrase with empty row)
+
+site
+;--------- Things to put in the website --------------
+; Some features your tracker might not have
+   ; - Multi timer FX (e.g. double synz buzzer)
+   ; - Free duration of notes
+   ; - Versatile sequencer (free position of phrases)
+   ; - Only requires a CPC 6128 (save the planet!)
+   ; - Virtual tracks (incoming)
+   ; - Inline help
+   ; - Preloaded bank of instruments
+   ; - Crash-free (hi Zabutom)
+
+style
 ; ------- Style guide / Nomenclatura -----------------
 
 ; - Prefix indicate on which structure the routine is applied. Example
@@ -18,8 +64,59 @@
 ; Also, discriminate routine that can fail from other?
         ; (e.g. must we check carry ?)
 
-; ------- Todo ----------------------
+notes
+; ------- Random notes --------------
+idea ged
+; Add insert_line/del_line fields to w_multiline,
+; so it can trigger model change and do the refresh itself
+; Cleaner, and allow for smart refresh (e.g. refresh only from the
+; impacted line)
 
+; on_enter: take HL=widget pos (for propagation, remove hacks)
+; [optim]: For display multiline+struct not to be too slow:
+   ; struct_enter would lay out all fields (so, stack become tree)
+         ; and we must find a way to express we re-enter for each line
+         ; without all the init.
+ ; En profiter pour separer static (so this tree would be only build
+ ; once at gedehein init) and state.
+   ; !!! profile first !!!
+
+diapason
+; Useful listed diapason are 128Hz, 432Hz, 440Hz, 528Hz
+; But 128Hz can be achieved with 256Hz and 1 octave lower
+; and 528Hw with 264Hz and 1 octave higher
+; Hence encoded by 256 + 8 bits value
+!!! That being said, we might want fractional diaposon,
+  ; to get the most accurate possible gamme 
+
+todo
+; ------- Todo ----------------------
+ply
+; Does it need to be imported by ayalib / uiloop?
+ ; Clean deps if too slow for development
+
+timer_fx
+; fix artefacts c4 / c5 (simple buzz with hard env 0)
+; reproduce tao sounds. alive bitrh part 1. nostalgic credits 45 sec 
+
+<<polissage>>
+ged
+; (for instrui)
+; - w_multiline: delete endofinstr (--------) when scrolling
+    ; [] Workaround: smaller separator  
+; - CRTL-f0 / CTRL-f1: easy to do, frustating not to have
+; - check insert on last line
+
+chung
+   ; -> must set fx hooks in chung.append_new_rows 
+           ; (nb: no check in instr.o)
+     ; meta: add test in chungnrt (now only viewed in chipnrt)
+
+instrui
+; See why fx_set_phrase used both in phrase and chung
+; instrui: don't delete when only one row
+
+track
 ;Tracks themselve: in chunks or contiguous?
   ; chunk advantage:
         ; - easy insertion
@@ -32,7 +129,7 @@
 ; track: move vars in bank, and init them! (Reset_tracks)
 
 chunk
-remove org_insert_new_chunk if unused!
+; remove org_insert_new_chunk if unused!
 
  ; New_track: resolve "conflict"
      ; - should be empty to easily append stuff   
@@ -41,21 +138,20 @@ remove org_insert_new_chunk if unused!
    ; -> simply enough! Have 2 apis and or append empty_phrase
                         ; when called by ui?  
 
-; Chung:     
+chung
  ; - ensure instr after fx and before note, vol. why?
  ; - new_chunk: 
       ; must discriminate bank according to type (table vs phrase)
 
-; chung: change "stored_table_start"? only store at one place anyway!
+ ; change "stored_table_start"? only store at one place anyway!
 
-;Ply
+ply
 ; - Setup stack with channel, delay etc.
 ; - Review 
 ; - Must ensure all fx share MSB
 
-;st128
-why ? va_instr_pnt WORD       ; Shared by chung and st128
-
+st128
+;why ? va_instr_pnt WORD       ; Shared by chung and st128
 
 ; Then: handle track with event (transpose: no phrase playing, no ins)
       ; handle succession of events at same time stamps
@@ -65,27 +161,24 @@ why ? va_instr_pnt WORD       ; Shared by chung and st128
 
 ; track: track_draw must handle multi-event.
 
-; ------ Log and notes (also see /changelog/) --------
+ged
+; Todo harmonize dyn / custom (or maybe not, to discriminate RO/RW).
+; Todo renam: cur_row -> table_row.  cur -> cursor
+; Todo frame: replace previous input/output when popping out of frame
+            ; Not done for now by laziness, since main use case is
+            ; to setup global io externally.
+            ; Or maybe that's done automaticaly by stack mecanism?
 
-rumination bank. Where to put stuff so that:
-- everything fits
-- avoid shooting ourselves in the foot
+; --------------------------
+; TODO? Must reset wv_edit_buffer at each level?
+; TODO? Reuse param for wv_text_pnt / wv_byte_pnt?
+      ; Or add them in state? 
+; TODO? Screen init (e.g. setup cursor at 101) should be done by client?
+      ; Then should state be saved between disp and run?
 
-track.o: connect clip via AUM routines such as draw_track
-;--------- Tabs -----------------------------------
-
-ayane 2
-memmap.i 3
-track 4
 
 ;--------- TODOs ------------------------------
 TODO NEXT:                
-; Find cahier ayane
-; Plug play in ayane
-; Add track (empty track shouldn't impact)
-; Transpose
-; Faster assembling
-; Analysis
 
 ; ----- On hold / unnecessary -----
 
@@ -118,19 +211,72 @@ TODO LaTER
 
 ; Orgams: control-enter with imports
 
+instr
+  ; [Cleanup] row size no more needed in sign
 
 TODO (long term)
 Remove bit_phrase (ONLY if need room for flags)
   ; Replace by dummy instr
   ; Or dymically insert event in track? NO! More cumbersome and costly
 
---------- Design choice ---------------------------- 
+design_choices
+;--------- Design choice ---------------------------- 
+timestamp
+; Always pass pointer 
+   ; only requires 16 bits register
+   ; no convertion
+
+select (stateful) vs get (more FP)
+; chose select for consistency and not having to pass too much variables
+
+ Handling of empty row
+  ; Needed for: 
+      ; 1/ Empty phrase 
+         ; We need at least one row, as last row (loop) must be
+         ; processed immediatly. Allowing duration for looping would
+         ; be clumsy and require to treat 0 as empty duration, only
+         ; in this case (see /point2/). Too ugly.
+      ; 2/ Duration > &100 (filler row)
+      ; 3/ Simplify UI
+compiled_version
+; In-tool, we use flags. No flags = empty row.
+; For maximum efficiency in .chp compilation, no flags: we expect
+; instr+note at each row.
+; Well, this is handled specially when instr is read in row.
+; If LSB(instr)=0  (only the LSB is encoded)
+; -> Don't install instr (!! empty row <> instr_null which would
+   ; stop the instr)
+; -> Don't read note
+;!! We use LSB(instr)=0, requiring compiled data to be aligned (XX00) 
+
+ End of Track: Loop/Stop via link (+&8000 and 0 respectively)
+   ; More natural than using events, in regards to hook insertion
+      ; (links are moved naturally when appending a hook,
+        ;whereas events should be detected, and moved manually)
+   ; A bit slower (as we test at each hook). Nevermind for now.
+   ; !! Not the same design as for phrase loop
+      ; -> Well rows aren't linked, so it's normal to have <> handling
+      ; -> Don't need forced harmonisation
+compiled_version
+; The hooks are flattened, so link trick isn't applicable
+; Plus, we don't use arbitrary event code
+   ; Instead we expect transpose + phrase link unconditionaly (*)
+; So we had a sentinelle hook, with link+&8000 (track link instead of
+; phrase link)
+;(*) This choice should be revisited, as tranposition are often +0
+   ; - less ram footprint
+   ; - more crunchable?
+
+
+point2
  Allow duration 0 for "65536"
    ; - minimala.chp has a note that lasts all the pattern (&100 ticks)
      ; Using blank row as intermediates (1+&ff or &80+&80) step
            ; prevents to use simplification "unconditional instr
            ; at each row" since we would then cut running instr
            ; (see compnrt.o in v0h for this bug).
+        ; !! No, this bug is corrected more naturally by instr_null
+           ; (see /point1)
    ; - 0 is naturally interpreted as 65536 for the player
        ; (!!!! unless we switch to 8 bits RDV !!!!)
    ; - special row in-tool (e.g. end of phrase) can and should be 
@@ -196,7 +342,7 @@ Remove bit_phrase (ONLY if need room for flags)
 
 - Same structure in each bank: index at 4000
       ; - Simpler code 
-      ; - 
+      ; - !!! well isn't really the case for instr?
 
 
 - instr: encode its number
@@ -260,6 +406,37 @@ Remove bit_phrase (ONLY if need room for flags)
        ; -> far simpler handling (id= address directly)
   ; For now, 256 max anyway
 
+ged invariants
+; Invariants for internal consistancy. Users don't have to care!
+
+;1. /state_sp/ always point to "concrete" widget, not container such
+  ; as table or struct (but cell or field respectively)
+     ; -> e.g. struct_lft / rgt expect field entered
+  ; This also simplifies handling of intermediate state 
+  ; (e.g. '-' also in signed field). If we had pass through wrapping
+  ; widget, this we could neither validate nor refresh edit buffer,
+  ; conflicting with some current implementation choices.
+
+; !!! Exception: w_optional_readwrite: we cannot enter child if off,
+                ; as it would not display "-" (disabled_char)
+; !!! Exception 2: actually w_optional mustn't enter child either,
+          ; otherwise enable flag wouldn't be re-evaluated when 
+          ; changing line.
+
+;2. Numerical widgets: 
+     ; a. Fill /wv_edit_buffer/ on 'on_enter' stage
+     ; b. Key handler modify the buffer without validating
+            ; (E.g. can have a dangling "-" while editing)
+     ; c. Validation done on 'on_exit'
+
+      IF need_room
+; Could use invariant 2 to just use a common 'display_buffer' routine 
+; for numerical widgets' 'on_display'
+  ; For now we unnecessarily use wv_tmp_buffer for display and 
+  ; wv_edit_buffer for 'on_enter'
+      END
+
+
 ------- Ideas for later ------------------
 
 (NO!) Having just one RDV of linked events for all tracks?
@@ -268,7 +445,46 @@ Remove bit_phrase (ONLY if need room for flags)
        ; (so each event is associated with the right track)
     ; prevent optim consisting of delaying tracks?
 
+errors
 --------- Errors -----------------------------------
+ ; === common ==== (todo: put in single place)
+; lack of discipline (getting started)
+; lack of perseverance (getting re-started)
+; lack of focus
+; switching to other tasks (orgams, glup) without writting exactly
+     ; what remains to be done
+
+#rogor #ORG
+intrui
+;2 hours lost 
+      ; Moral: - no ORG in imported files!
+             ; - TODO: raise error if overlap 
+
+#rigor                           
+; 15min lost on gednrt, because my assumption was that
+      ; ui_multiline_refresh displayed line# (0, 1, 2..)
+      ; Instead it displayed from a table, which wasn't init:
+        ; got 0 at each line, which wasn't very telling.
+; 1h lost on ged.multiline_del, because of HL not popped in one codepath
+; - Should have been more careful
+; - Should have tested the case
+
+#binary
+; disp.bin was too short: variables (WORD) at end of source weren't
+    ; counted for bin size, hence overlapping what was imported next.
+; morale: - be careful with binary libs
+        ; - such lib wouldn't be necessary with 2Mb and fast ass
+
+#api
+; w_toggle_custom: thinking getter must return Z/NZ flag 
+                 ; -> Actually A=0 or non-zero
+
+; Not putting the rationale behind choices/changes
+
+; Using conditional assembling to change testlib.dummy_instr
+    ; (instrnrt vs instrui)
+    ; -> Then I forget to change the IF and wonder why the test fails
+    ; Morale: use two dedicated instruments
 ; Favorising optimisation over api uniformity.
     ; E.G. aum.eval returns out0 in AHL, but in ext_* routines it's CDE
 ; Leaving thing in unfinished state. Hard to dive back.
@@ -276,7 +492,7 @@ Remove bit_phrase (ONLY if need room for flags)
      ; E.G. trying to juggle with push/pop rather than storing in vars
      ; !! No premature optimisation. Especially if it works as is
 ; Not having everything outlined on paper
-     ; still to many back and forth will writing code
+     ; still too many back and forth will writing code
 ; Renaming clip to phrase:
     ; - wasn't important or urgent
     ; - actually wrong if different types of clip.
@@ -291,8 +507,1536 @@ Remove bit_phrase (ONLY if need room for flags)
 ; - trying to display file_name (lives in C6) with disp (in C7)
 
 changelog
-; \/\/\/ 2024 \/\/\/\/\/                  
-; Also see cahier!
+; \/\/\/ 2025 \/\/\/\/\/       
+; ---- aya -------
+TOSEE!!
+; area not covered by source:
+; 900 -  a4c
+;10c3 - 12a1
+;9915 - 9e2f
+
+; ---- v0au ----
+; 2025 Nov 10
+;Use const.dev_checks=0 for ply, timer, instr (improve timer resolution)
+          ;dev_checks'=1 for other module
+phrase
+; Empty row for empty phrase: cancelled (inconvenient)
+; !! I will have to remember to do it explicitly for UI !!!!!!!!!!!
+
+tracknub
+; + connect_bk_track (now that tracks are in bank) -> fix salo-nrt
+; ---- v0at ----
+ayalib
+;reordering code (again!) track doesn't fit anymore
+timer
+;Fast psg rout
+
+; ---- v0as ----
+salo
+; reserve slot for info
+timer                   ; remove cut_fx: remove event instead
+; this fix problem when next event out of frame: was dangling
+; would have been a bigger problem with 300hz instrument
+
+; ---- v0an ----
+; Revert to v0al regarding timer's lists 
+; aug
+; ---- v0am ----
+;24
+conv                    ;Add convert_note, put_note
+timer                   ;fix race conditions. !!WIP BROKEN!!
+
+;22
+ged                     ;multiline: +params insert_line/delete_line
+; -> much cleaner and generic
+; -> fix remaining bug when deleting last line
+; -> will ease optimisation scroll (only refresh impacted lines)
+; ---- v0al ----
+;20                    
+ayaloop                 ; export imports!
+uiloop                  ; use lib
+; Call status_off to hide a bug!
+; Sometimes piano.o would hang because at vsync because no more vbl
+; It acts like R4 still = bandeau height, 
+ged                     ; don't validate if not modified
+; Rationale: for instrui, we set noise flag when noise value is changed
+; (user-friendly), but we don't want that to happen when we are just
+; passing through the noise value field.
+; Also, hopefully a bit less slugish.
+; !!! still bug for multiline_del
+; ---- v0ak ----
+;20 ok uilooptt, ayalib
+;9
+salo                    ; display tags
+; ---- v0aj ----
+;8
+salo                    ; repair. ok salonrt
+uilooptt                ; ok CTRL-f3 and piano play
+instrui                 ; display field info 
+; ---- v0ai ----
+pianouit                ; ok stable and displaying octave
+bandaya                 ; stabilize int1
+; ---- v0ah ----
+; jul
+  ; 29
+uiloop
+; Handle  
+       ; f5/f8 for instr
+       ; f6/f9 for octave
+
+  ; 15
+ged
+;Trim to gain some memory
+
+; ---- v0ag ----
+uiloop
+
+
+ayalib
+; memful with orgams
+; ---- v0af ----
+ayane
+; Plug instrument editor
+
+; ---- v0ae ----  
+instrsel
+; Handle empty instr
+; Jun 5
+widget
+; init_widget: Remove (again) CRTC/pal setup
+
+; Jun 1
+ged
+  ; w_multiline: handle scroll
+; May 30
+; !!!!!!! switch back to sd:aya as source of truth !!!!!!!
+; Remove hist again (were re-introduced with merge)
+instrui
+  ; handle loop
+chungnrt
+  ; additional tests around get_loop
+track
+  ; + select_next_row (for Pattern ui)   !!!! On hold for now
+
+; ---- v0ad ----
+  ; Manual fix of merge
+; 23 apr
+chungnrt
+   ; add test_instr_ayane_append_rows
+
+; ---- ayagit ----                                  
+; 20 apr (revision!)
+   ; plynrt -> Forgot to read "todo" about sync_buzzer test hanging
+   ; 
+
+; 14 apr
+; Slowed down by auxilliary issues.
+   ; e.G. compnrt failing because use_instr_chip_down_vib = 0
+          ; (since i trimmed kimd3 of last pattern and instr 8)
+     ; -> but then old test case (kim0.chp) still has it
+        ; -> assert because we don't handle long (slow) instrument
+
+;  Allow compiled_data in C000 (switch loop handling)
+;kimd8: Compiled in c089 
+;(kimd?: Compiled in c089 with padding) -> no need
+;(kimd?: Compiled in c167)              -> no need
+;kimd7: like d5 with new ply.amorce_init (amorce_init erased)
+;kimd6: without last pattern, only instr_default
+      ; !!! -> compile.o asserts because intrs too long 
+;kimd5: without last pattern (389+399)
+; 11 apr
+plyconf.i
+; must set default_use_arp (wasn't detected at compile time)
+instr
+; s/inc hl/inc l  for compiled version (INC_HL_INSTR)
+
+; ---- v0.0ad ----
+; Merge with chpnsfx branch (ums:ayagit)
+instr
+; Use B for volume (instead of ixh)
+      ; - faster
+      ; - shorter   
+      ; - I don't remember why I used ixh in the first place
+; C for note instead of E (to free DE for accumulated pitch)
+; Use DE for accumulated of BC (since B used for volume)
+
+; 16 Mar
+; Retry compiling minimala.chp in ums:aya/old/v0k2 
+
+; ---- v0.0ac ----
+salo
+ ; 9 Only keep "variable row size"
+      ; - we need that anyway to allow extensions (on/off, more fx) 
+ ; 8 One hour to fix instr_append_rows called inside a loop. WTH PPP?
+ ; 6    
+instrui
+ ; plug instrsel (new module!)
+ged
+ ; w_text_dyn: s/break/noevent for "on_enter" field
+ ; 5
+; All modules: - Export/Import
+             ; - Move history here (save memory and easier bird view)
+  ; Ordered by module (actually mixed)
+  ; Will order by date later if needed
+             ; - harmonize import order: from top to bottom modules
+              ; -> Same start locations from e.g. instrnrt and plynrt
+               ; Allow cache reuse when switching from one to the other
+              ; -> Import modules loaded in lower tabs
+              ; -> Con: "tabs" show them all starting at code_start
+
+
+memcpc
+; +scope_bk_base/phrase for temp bank change.
+;                        
+chung
+  ; Allow selection of instr 0 (happen in salo-nrt when empty module)
+  ; -> it's just in ui we won't allow that.
+salo
+     ; Fix current instr not preserved (since save scan all instr)
+     ; Add fields:              
+        ; diapason (in ply.o since period table built here)
+            ; Init done in init.o (i couldn't find a better place)
+        ; replay_period (in ply.o, since used here)
+            ; But init in track.o since, subsong dependent (future)
+        ; instr_replay_period (not plugged)
+        ; "delay_ui" field (general and phrases, both phrase.o)
+            ; 12 bits flag (default %00 = 16 bits) (instr)
+     ; !!! They are not all yet plugged to actual ayane fields
+     ; !!! YAGNIY and need to find room in instr header
+; Why: futuro-compatibility (otherwise old ayane wouldn't be able to
+     ; read newer .aya, even when default value is used).
+     ; -> more convenient for users
+
+instr
+     ; Interrupt instr more often (TM_SUB_CALL) to 
+       ; address spurious parasites frequencies with sync buzzer
+ ; 4
+ply
+     ; Interrupt player more often (TM_SUB_CALL) to (preemptively)
+       ; address spurious parasites frequencies with sync buzzer
+    ; 3: Org in /free_ram_for_nrt/ for code to fit.
+plynrt
+     ; Remove obsolete tests (using old api)
+     ; Move st128 test in st128.nrt
+     ; +test_sync_buzzer
+
+   ; ----- v0.0ab ------
+    ;1 Use :orgrel/prof.o (rather than ums:)
+     ; Fix test_empty_song_tm:
+                              ; Returned: &1f7
+                              ; Prof:     &20f 
+changelog_by_module
+shortcut
+; 2025 Aug 21 Move key codes in const.i
+
+; 2023 Mar 27
+; v0: Extracted from ed.o vBRAL for reuse in vectoria
+field
+; 2025
+ ; Nov 10 s/dev_checks/dev_checks' to avoid ambiguity
+ ; Aug 4: Deactivate CTRL-Lft/Rgt in field
+               ; -> not useful for short numerical fields
+               ; -> prevent consistent shortcut in instrui row
+periods
+; ----- v0as -----
+ ; Oct 28
+    ; Init periods here: - easier for reg2note
+                       ; - doesn't have to depend on ply anymor
+; ----- v0aq -----
+ ; Sep 27
+    ; Don't reserve anymore before c0. 
+; ----- v0an -----
+ ; Aug 26
+    ; Fill before c0 
+; ----- v0l2 -----
+ ; Mar 19
+    ; Don't pad, for correct binary size when assembling ply
+
+song
+; --- alpha1 ---
+ ; Nov
+   ; 26 Welcome Song_get_instr for chung.o
+
+; --- v0.at ---
+ ; Oct
+   ; 16 Extracted from track.o
+tracknub
+; -- v0.0au --
+; 2025 Nov 7: + connect_bk_track (now that tracks are in bank)
+conv
+; -- alpha 1--
+;Dec
+  ; 27: Display "0  " for special note c_10 (period 0)
+;Nov
+  ; 27: Add put_deci_a_pad_space
+  ; 17: put_note: save hl
+; -- v0am --
+;Aug      
+  ; 24: Add convert_note, put_note, put_double_space
+memcpc
+ ; --alpha 1-- 
+     ; Dev 25: Use assert.o
+     ; Nov 16: call_disp: update checks (no more jp table)
+ ; --v0.a?--
+     ; Aug 25: Remove jump table. Short module: neater to import
+     ; Jun 20: jump table
+import
+; 2025
+   ; -- Alpha 1 --
+   ; Dec 26: Import assert.o
+       ; 24: track.o must skip instrsel.o
+       ; 19: Remove uiloopt -> ply dependency
+plyconf
+  ; Dec
+    ; 19 Add use_instr_chip
+  ; Mar               
+    ; 29 Add /is_pattern_indexed/ 
+    ; 24 Add /pattern_size/ for kima  (N/A on kimb)
+    ; 18 Settings for kim9.chp
+       ; + default_use_arp
+phradisp
+; 2025
+; -- Alpha1 --
+  ; Dec
+    ; 25 disp_rows: fix buffer not reloaded
+    ; 17 row_buf: out of bank   
+    ; 16 ticks_per_page: round to 32 rows
+       ; disp_rows: fix returned pos y when size not multiple of delai
+    ; 12 correct_y: must return NC when zoom overflow
+
+phraseui
+  ; Dec 
+    ; 16 IMPORT_PHRADISP: in BK_DISP
+       ; Fix display of non-aligned row at end of page.
+         ; (switch pages by 32 rows instead of 33)
+    ; 15 Handle all tracks
+       ; Handle deletion note/vol/instr
+       ; Clone when modifying repetition (pre_modif)
+    ; 13 Refresh all instances of repeated phrase       
+    ; 12 Handle page change
+       ; Handle kcup/kcdwn
+    ; 10 Clean-up code: - All vars infered from time_at_top & time_cur
+                          ; See /state/
+                      ; - Better naming
+
+  ; Nov
+    ; 27 
+    ; 19 1st version
+
+
+ply
+; ----- v0aq -----
+  ; Sep
+   ;28 end_of_track: handle end of song (null link)
+   ;27 Init_periods: Put 0 at /note_c_10/
+     ; fix tm tracking (A was corrupted to set r7)
+   ;26 ply_code: jump table for ayane
+; ----- v0am -----
+  ; Aug
+   ;23 Move common macro in macro.i
+     ; Move timer list handing in ... timer.o
+; ----- v0ak -----
+  ; Jun
+   ;15 Padding for fx.o
+  ; Apr
+   ;23 Re-put r7 first, to match instr.o
+; ----- v0l2 -----
+  ; Mar
+; Mar 24: Handle constant /pattern_size/ 
+   ;21 Handle loop for compiled version  
+      IF todo
+         ; (in-tool use link, check if it's done properly)
+      END
+   ;19 De-unroll psg routine
+     ; Remove stop when ayane=0
+     ; kim= empty row encoded by instr lsb=0
+          ; (before: was replaced by instr null which stopped the instr:
+                   ; but note from last instr was still set)
+; -----------------------------
+bandaya
+;2025 aug
+   ;27 firm2status: don't clear page! Error-prone for me.
+   ;25 firm2status: clear page.              
+   ;24 Black for piano         
+   ;21 Restore r4 at the end of int1 instead of int2
+         ; -> needed to prevent wrong state when DI or status_off
+   ;20 More robust status_on
+   ; 3 Stabilize int1 (like in orgams)
+         ; - Needed to mitigate DI in disp
+         ; - Will also split rasters/mode
+     ; firm2status: don't call clearstatus, for debugging purpose
+     ; status_on: wait for vsync for int0
+
+   ; 2 Mode 2 before piano
+
+ ;Jun 
+   ;25 Remove memmap.o dep, caller must connect C0 before clearstatus
+     ; Fix r2 transition (again?)
+   ;22 Save DE!
+   ; 8 Special ayane: no need r9=0, bandeau 7*8 lignes
+                  ; !!! Not Nop-synchro (so )
+
+
+piano
+ ; 2025                
+    ; -- alpha1 --
+  ;Dec
+   ;17: Use scope_bk_instr ensuring proper bk connection (at return too)
+  ;Nov
+   ;19: Move play_song in playsong.o (remove ply dependency) 
+      ; s/va_current_instr/Song_get_instr so proper bank is connected
+    ; -- v0au --
+   ;10: play_song: also exit with space (+ anti test)
+    ; -- v0as --
+  ;Oct
+   ;11: more checks
+      ; _play_lp: remove waits when tmp_rast = 0 (less code)
+
+; 2025 Aug 24 Add disp_note
+         ; 23 Default octave to 3
+         ; 20 Use IMPORT_DISP 
+            ; Each routine retourne octave
+         ;  2 More static checks
+            ; Update status bar
+         ;  1 Lower display
+     ; Jun 23 Move test in pianouit
+
+ged
+  ;17 Less strict check on ui pnt, since phrasui is in bank.   
+  ;16 [on_hold] enter_child: propagate both X and Y
+propagate_x = 0
+      IF propagate_x
+!! breaks struct_on_enter ; To fix: must reselect child for X pos
+      END
+  ;15 Add update_pos_x
+  ; 8 update_pos_y: client must explicitly call enter
+; Nov
+  ;25 enter_child: propagate Y
+  ;24 delegate_width: don't use clone!! a getter shouldn't change state
+  ;19 Add sep1_ui & c0 (used by instrui and phrasui)
+    ; -> Remove check about widget address (hinders more than it helps)
+    ; -> gedeihen_enter: remove check about cursor being at (1,1) """
+; -- v0au --
+  ;15 multiline_top: fix top = 0   
+  ;14 key_hexa: fix buggy validation (e.g. was accepting Q)
+    ; _multiline_update_cur_y: must also update model
+  ;10 s/dev_checks/dev_checks' to avoid ambiguity
+; -- v0aq --
+; Sep    
+  ;30 multiline_ctrl_up:  Musn't refresh when line in view
+  ;29 multiline_ctrl_dwn: Musn't scroll when line in view
+    ; Deactivate multiline scrolling: too slughish
+; -- v0ao --
+   ;6 Add jump table (cancelled: not needed, as uiloop calls directly)
+;Aug       
+; -- v0am --
+  ;24 noline: shorter ----- 
+; -- v0al -- 
+  ;23 multiline: +params insert_line/delete_line
+  ;22 multiline_top: don't refresh if line_at_top already 0
+    ; multiline_bottom: don't scroll if line reachable
+  ;21 Don't validate if not modified
+    ; Add multiline_del to handle scroll up when last line
+    ; Remove check Z when event returns Carry
+; -- v0ak --  
+  ; 5 multiline_up: fix invalid check
+  ; 4 toggle_char_off = " "  (less crowed in screen)
+  ; 3 Remove export flag (rotten code) 
+  ; 1 setup_widget: Remove test hl > end_of_ged since ged is 
+                      ; placed now at &8b00
+                  ; Allow w_brk to be (null) init
+                    ; Used to create an empty ui.
+; v0.ag 15 Remove unused widget (w_table, wc_frame, w_sprite)
+             ; - avoid mem full in orgams
+             ; - rotting code anyway
+; v0.ae 14 Jun wv_tmp_buffer: reserve 80.
+     ;  3 Jun s/CALL_STATE/call_state_on_exit and co
+
+track
+; -- alpha 1.07 --
+ ; Dec     
+    ; 30: Add track_get_state_at
+    ; 24: Add Song_attach_empty_phrases
+    ; 17: s/connect_bk_track/scope_bk_track to reconnect caller bank 
+        ; (only for externally used routines)
+; -- alpha 1.05 --
+    ;  2: ext_fetch_event: register t1 as well
+; -- alpha 1.04 --
+    ;  2: Remove ply dependency
+        ; Deactiveate replay period for now (defined in ply.o)
+do_set_replay_period = 0
+; -- alpha 1.03 --
+    ;  1: Deactivate widget related code
+use_widget = 0
+; -- alpha 1.02 --
+ ; Nov
+    ; 30: Fix track_select_phrase_at
+        ; Add get_event_at
+        ; Remove some dead code
+; -- v0au -- 
+    ; 10: Reactivate do_set_loop
+        ; Add get_timestamp_from_hook
+
+; -- v0at --        
+ ; Nov  8: get_current_track_header: call connect_bk_track
+
+ ; Oct 16: Move some subsong handling in song.o:
+            ; Needed for ply.Amorce_song not to depend on track.o
+              ; (memory full otherwise via uilooptt)
+            ; Cleaner anyway
+   ; Move get_track_header in tracknub.o
+       ; (same reason)
+ ; Oct 14: Subsong_add_track: dynamic # of params
+         ; Song_select_new_track: output channel not param (anymore)
+                                ; (plugged in subsong tracklist instead)
+
+
+      IF todo
+todo1                   ; !!! remove used_tracks
+; -> instead introduce subsong's list of tracks
+      END
+
+; -- v0a? --
+ ; Sep 26: track_code: jump table for ayane
+ ; Aug  9: Add Set_last_hook_duration
+      ; 8: s/Reset_tracks/Reset_tracks_and_subsongs
+         ; Do set loop for chipn import (not handled by salo yet) 
+
+uiloop
+; -- v0a? --
+      ;Sep       
+         ;  7: ui_process_key: remove km_wait_key
+                    ; - easier for debugging
+                    ; - now fits the routine name!
+         ;  6: Add ui_init_ged_null
+         ;  4: Fix unhandled key still in A
+      ;Aug 24: ui_process_key: must return NC when no piano note
+             ; go_check_note: display note
+         ; 23: Fix octave sync: C0 doesn't start at 0!
+         ; 20: [cancelled] Use lib
+              ; Instead, use import.i to ensure same location than lib
+         ; 03: Display bandaya text
+      ;Jul 15: Move instr_ed_entry in uientry.o
+             ; Add piano handling
+
+chung
+ ; -- v0a? --
+  ; Aug  9. Remove st-related code:
+                   ; - dead code
+                   ; - can pick it up from older chung versions
+                   ; - i need memory
+       ; 8. Deactivate st-related code
+       ; 7. Move column_type_default & co in salo 
+          ; get_column: return size
+       ; 4. add instr_remove_loop
+
+     ; Jun 20. Jump table
+; hist in journal.o
+; ------ For v0l2 -------
+; Mar   
+  ; 20 Remove check instr_null (which has been removed as useless)
+  ; 18 Use use_instr_chip_down_vib_noise
+
+timer
+; /// 2025 //////
+  ; ---- alpha1 ----
+     ; Cannot use PSG_L_HL_FAST for periods MSB
+  ; ---- v0at ---- 
+   ; Nov
+     ; 6: sync_buzzer_register: reset r13 so no spurious trigger 
+        ; set_timer_and_psg: more ints + PSG_L_HL_FAST
+                           ; to alleviate artefacts (hmm, pas flagrant)
+   ; Oct
+     ;16: Reorder tables for wasteless align
+        ; Move fx_by_track at 8100  
+  ; ---- v0as ---- 
+     ; 8: cutlp: fix race condition    
+     ; 4: cutlp: remove event instead of replacing it by cut_fx
+
+  ; ---- v0ar ---- 
+     ; 3: Fix cut_fx: must do COMPENSATE_RDV
+  ; ---- v0aq ---- 
+     ; 1: Fix cut fx by introducing cut_fx!
+
+  ; ---- v0ao ---- 
+   ; Sep
+    ; 16: PROGRAM_NEXT_EVENT: better tm check
+        ; Anchor: 1 nop faster!
+   ; Aug  
+    ; 28: INSERT_EVENT: Fix A trashed for self-insert check
+                      ; -> fix double sync timer.
+    ; 27: Add nrt_marker for analysis 
+  ; ---- v0an ----
+    ; 26: Turn period 0 to &fe00 (instead of assert)
+    ; 25: Fix anchor_tm
+        ; Clean-up, comment
+        ; vsync_timed: take A=TM
+  ; ---- v0am ----
+    ; 23: Double period while < &100. See rational at /
+        ; Move common macros in macro.i
+
+instrui
+ ; -- v0ap --
+ ; Sep
+   ; 18 Only create instrument when displaying it 
+      ; not with f5/f8 outside of editor
+         ; -> prevent spurious creation when instrsel lists them!
+ ; Aug      
+ ; -- v0am --
+   ; 24 Inverse pitch for user comfort (+N= higher pitch)
+ ; -- v0al --
+   ; 21 deactivate main r13 when there is buzz
+      ; _del_row: cursor up if it's the last
+   ; 20 Fix sep after retrig          
+ ; -- v0ak --          
+   ; 07 smarter flip-flops for volume and co 
+          ; e.g. activating sync buzz automatically set hard env
+   ; 04 instr_row_ui: Add separators
+      ; 8 lines of instr
+   ; 02 instr_cold_refresh: display fields
+   ; 01 Add jp instr_cold_refresh
+ ; Jul
+   ; 15 Extract ui loop   o  in uiloop.o
+   ; 14 Extract manual setup in instruit.o 
+
+;Lp X Vol  Arp Pitch Noise  H R Arp Pitch  Buz1 Arp Pitch Buz2 
+;x  x F -- +12 -4095  x 31  A x +12 +1000   x A +10 +1000    
+;   x 8 -  +12 -4095  x 31  A   +12 +1000   x A +10 +1000    
+;   x 0    +12 -4095  x 31  A   +12 +1000   x A +10 +1000    
+
+
+piano
+    ; -- v0aq --
+  ;Sep
+   ;27: Add play_song (mechanical piano!)
+    ; -- v0a? --
+  ;Aug   
+   ;25: Must init hl' !!!  
+   ;24: Split check_note into is_piano_key_pressed/play_piano 
+   ;20: tmp add .dbgcpt      
+      ; Remove bandaya dependencies: let caller do status_on/off
+      ; Fix check key when octave = 0
+   ; 4: quick_exit if no pianod key pressed
+   ; 3: exit: use status_on to ensure int0 properly re-sync
+   ; 1: _check_regs': ok when mode <> 2!
+
+
+disp
+; -- v0aq -- 
+ ; Sep
+     ;28 s/status_clear_line_at/status_clear_from
+; -- v0an -- 
+     ;25 Don't import fonts ourselves (avoid mem-full in ayalib.o)
+ ; Aug
+     ;24 Use put_deci_a & co from conv.o (used out of bank by ged)
+       ; Remove dump_hexa
+; -- v0a? --
+     ; 2 Fix _status_num: must past buffer in BC
+       ; Add status_deci_a_pad0_at
+ ; Jun 9
+  ; Adapt status_set_cursor and co to new bandeau (page &4000, r9=7)
+
+
+ged
+   ;  3 force_refresh_custom: save state_sp 
+                            ; (rather than clients doing it)
+; Feb
+   ; 26 Fix force_refresh_custom for multiline refresh
+; --- 2024 ----    
+ ; --- Ayane 0aa ----
+; Dec
+   ;28 export/import
+   ;21 field_editing: call /auto_validate/ when buffer is full.
+ ; --- Ayane 0z ----
+   ;12 force_refresh: Fix test_set_multiline_refresh and co
+; Nov                                       
+   ;11 force_refresh: re-enter  
+   ; 7 gedeihen_enter: widget stack must be already setup, 
+           ; to be able to re-enter same state 
+   ; 3 Use state_stack_disp for display, so we don't overwrite state
+   ; 1: Fix gednrt.test_focus_multiline_struct_refresh      
+      ; force_refresh: save cursor location 
+; Oct       
+ ; --- Ayane 0y ----
+   ;21: Add checks
+   ;20: [cancelled] Add /set_root_state/
+      ; Add /force_refresh_custom/
+   ;17: key_hexa_digit: reset field editor to accept new char
+   ;14: Remove double inverse video in disp_optional.
+   ;12: Fix optional when going from enabled to disable via w_multiline
+ ; --- Ayane 0v ----
+; Sep
+   ;25: Fix toggle API: any non-zero value should be considered as set
+ ; --- Ayane 0p ----
+   ; 7: multiline: erase lines past "last line"
+; Aug         
+   ; 24: Fix all for instrui, but break test_disp_table_of_sprite
+   ; Well, w_optional_readwrite cannot follow /invariant/ 1
+   ; 19: w_hexa_digit_custom: auto-validate
+ ; --- Ayane 0o ----
+   ; Rewrite w_optional to respect /invariant/ 1
+ ; --- Ayane 0n ----
+   ; Fix w_key_handler (mustn't setup widget in init: /invariant/ 3)
+   ; Add w_optional_readwrite
+; Jul
+   ; 26 /is_readwrite/ Handle dynamic (for w_optional)
+   ; 16 **While editing** Left-justify to solve cursor issue!
+      ; -> no more cursor past field
+              ; (would need erasing, not handy if special separators) 
+ ; --- Ayane 0m ----
+; Jul            
+   ; 11: Remove deci_width: we don't handle dynamic width field for now
+   ; 10: set_deci_custom and co: don't clean buffer
+                               ; (see rationale in routine)
+       ; /enter/ does it instead.
+       ; [cosmetic] handler returns event in A instead of E
+       ; disp_toggle_custom: display inverse video
+            ; (note: each 'on_display' routine must call it, since
+                   ; we want to remain able to customize)
+
+    ; 8: Inverse video when focus.
+       ; Disable cursor for now (yagni, also might conflict with 
+       ; seperator). Actually it wasn't handled, just put instead of
+       ; inverse video.
+
+    ; 5: Introduce disp_deci_padded 
+    ; 1: Add w_deci_99_signed
+       ; Design change: add on_enter 
+; Jun          
+    ; 30: h_kstruct: handle k_rgt
+    ; 28: Reprise!
+        ; Remove inRom/export version
+
+; --- 2023? ---
+     ;25  F: Add and fix /test_all_fields_refreshed/
+              ; -> Well, not really fixed after all? Disabled!
+        ; E: Export/import
+        ; D: NRT: Simplification: only pass 1 address for all nrt data.
+        ; C: Relaxed constraints in CHECK_EXPORT if export.
+        ; B: Clearly separate this 3 phases:
+               ; - gedeihen_init
+               ; - gedeihen_set_hooks 
+               ; - setup_widget
+           ; Don't set_cursor in init: more control for client.
+           ; NRT macros: also use routine, so code can be reused
+           ; rather than copy/pasted, and variables kept private.
+   ; 23   A: GET_* & co macros: use routine rather than inlining,
+                              ; to ease step by step debugging.
+   ; 22   9: gedeihen_iter doesn't call init itself.
+           ; That allows more flexibility.
+       ; v2: Introduce w_key_handler. TODO? Rename event_handler.
+
+; --------------------------
+; Todo next:list (1 column table). Or should we do heterogenous table
+           ; instead -> To align header with columns.
+           ; decimal in Z with min/max and two floating part.
+
+; Todo harmonize dyn / custom (or maybe not, to discriminate RO/RW).
+; Todo renam: cur_row -> table_row.  cur -> cursor
+; Todo frame: replace previous input/output when popping out of frame
+            ; Not done for now by laziness, since main use case is
+            ; to setup global io externally.
+            ; Or maybe that's done automaticaly by stack mecanism?
+
+; --------------------------
+; Was: TABATA AO (Renamed since that's the whole UI motor,
+             ; not just table/data editor).
+
+; --------------------------
+
+; TODO? Must reset wv_edit_buffer at each level?
+; TODO? Reuse param for wv_text_pnt / wv_byte_pnt?
+      ; Or add them in state? 
+; TODO? Screen init (e.g. setup cursor at 101) should be done by client?
+      ; Then should state be saved between disp and run?
+
+
+
+testlib
+    ; 4 +dummy_instr_sync for plynrt
+; --- Ayane 0.0ab ---  
+    ; 3 +dummy_instr_ui to avoid messing with nrts (using dummy_instr)
+      ; Change memdisk_pnt_r/_w checks to accomodate for new buffer
+        ; location in salo-nrt
+      ; Fix typo in memdisk_seek_read. This also im
+                ; - memdisk_init_read
+                ; - memdisk_load_bloc
+; 2024  
+; --- Ayane ??? ---  
+  ; Oct
+   ;  6 v4: Add init_for_test, dummy_instr
+  ; Jun      
+   ; 11 v3: Add memdisk_flush and co
+   ;  3 v2: compare_regs: no noise check if vol 0
+                        ; (was done for channel open)
+  ; Apr
+   ; 23 v1: Add /psg_read/
+   ; 22 v0: /compare_regs/ extracted from ide:ay/plybh
+            ; Smarter comparison: r7 can be <> when volume 0
+            ; Adjustable tolerance
+
+
+ply
+; ------ v0ab ---------
+  ; 1: Fix typo (or bit corruption?) in /play/ when hack_minimala=1
+     ; Fix plynrt.test_empty_song_tm:
+                                     ; Returned: &1f7
+                                     ; Prof:     &20f 
+        ; tm0, tm2, track_end_tm, tm_read_vol were wrong
+
+
+; \/\/\/ 2024 \/\/\/\/\
+; ------ v0v ----------
+  ; Closer integration with timer: setup at each track
+
+; ------ v0t ----------
+  ; Sep 
+   ;24 Fix TM counting
+     ; Init tick=0
+   ;17 track_stack: put mask before volume (ease instr_defaut)
+     ; Remove psg replay: now in timer.
+   ;16 Use: BC for pitch instead of DE (useful in instr.o)
+          ;  E for note instead of C
+          ; IXH for volume instead of B
+
+; ------ v0n ----------
+  ; Aug
+   ; 4 WIP Add timing
+; ----- v0l -----
+  ; Jun     
+   ;17 Add type_evt_loop
+   ;12 Add SIGN_EVT for serialisation in salo.o
+
+
+ayane
+    ; 19: Use "disp-jp.o"
+; 2023
+  ; Dec      
+    ; 22: Use local disp, status
+    ; 21: Setup multimode at /sequencer/   
+        ; Import from ":lib" (no need usb key anymore)
+    ; 16: Move display_help and string routines in help.o
+
+  ; Nov 
+    ; 28; question: use bandeau like orgam, scr-lo doesn't handle r1=48
+    ; 27: question: try fix cursor issues
+    ; 26: Fix display_help (set mode and ink 1)
+        ; scan_key: take C = code, not A
+        ; open: fix question handling
+        ; skip_nt: was bugged
+
+
+
+; ----- Ayane v0h -----
+  ; May 
+   ;14 When /hack_minimala/, open channels by default
+     ; Optimise /tick/ (and return it in HL)
+  ; Apr
+   ;24 For compiled minimala:
+     ; - Version use_flags = 0 
+; ----- Ayane v0g -----
+  ; Apr                            
+   ;22 Don't handle volume if use_volume = 0
+   ;21 track_loop: connect BK_TRACK  
+   ;15 Fix init_periods
+   ;11 evt_set_transpose: add check
+     ; read_instr: use instr header
+
+   ; 8 s/regs/psg_regs to avoid mixing up with aum_regs
+
+; ----- Ayane v0f -----
+  ; Mar
+   ; 31 Simplify init: we don't need empty phrase.
+       ; instead tool we'll make sure a phrase will be set at RDV 0
+   ; 14 Adapt evt_set_transpose to new code.
+
+; ----- Ayane v0d -----
+  ; Feb
+   ; 29 Amorce_song: adapt to real track index (track.tracks)
+; ----- Ayane v0c -----
+    ; 21 s/chunk_start/phrase_start (must skip clip_header_size)
+       ; Rewrite!!! See rationale in journal.o
+           ; - Same code for each channel 
+           ; - No delay (duration encoded with note/row)     
+           ; - No init fx, instead copy address routine and 1 word param
+                         ; systematically 
+                ; Pro:
+                    ; - faster
+                    ; - simpler
+                    ; - vibrato TM peak is smoothed:
+                           ; Before: both init and 1st iter
+                           ; Now: first iter do init (replace itself)
+                                ; but doesn't change pitch. 
+                ; Con:
+                    ; Plus gourmand a stocker dans phrase
+                       ; (use 1 word even for 1 byte param fx)
+                    ; -> nevermind, can be mitigated with custom players
+           ; - Don't jump to read_fx read_ins etc via stack!
+                   ; Did i do that for Sample code interleaving!?
+                   ; (aka ADD n:RET m:jp IY)
+                   ; Well, JP m,next  works as well!
+      ;OH FUCK NO that's not enough to jump back where we are
+      ;TODO: Make the stuff work without sfx
+
+         ; Oh no I see: was needed to jump back after random fx init
+         ; -> so, simplification made possible by previous point
+       ; Don't rewrite everything!!!
+           ; - Don't fix what isn't broken
+           ; - Some reasons of doing stuff i might have forgotten
+           ; - Takes too much time for nothing
+
+
+; /\/\/\/ 2024 \/\/\/\/\/
+   ; ----- v0.0.0u ------
+  ; Sep 
+    ;17 Start at track1 to amorce song (0 is reserved/empty)
+   ; ----- v0.0.0p ------
+    ; 8  Fix compilation. !!! MOST TESTS STILL DEACTIVATED !!!
+                          ;;; -> must update fx-api
+       ; !!!! test failing.!!!!
+   ; ----- Ayane v0.0.0e ------
+  ; Mar
+    ; 10 Adapt to new structure (multi-events)
+  ; Feb           
+   ; ----- Ayane v0.0.0b ------
+    ; 26  v2 Adapt to new ply!
+
+; ---- v0.0ab ----
+; All tests ok except chipnrt, compnrt (on hold), st128nrt (on hold)
+  ; 3
+gednrt
+     ;test_focus_multiline_struct_refresh: client must 'enter'
+                                         ; after force_refresh_custom
+ged
+     ; force_refresh_custom saves state_sp
+salonrt
+     ; Org in /free_ram_for_nrt/ for code to fit.
+     ; ply: fix more tm tests.  
+testlib
+      ; +dummy_instr_ui to avoid messing with nrts (using dummy_instr)
+      ; Change memdisk_pnt_r/_w checks to accomodate for new buffer
+        ; location in salo-nrt
+      ; Fix typo in memdisk_seek_read. This also im
+                ; - memdisk_init_read
+                ; - memdisk_load_bloc
+timer
+  ; 1: (Re?)introduce set_reg13_insert_and_program_tm 
+
+  ; 2024         
+ ; Oct               
+; ------ v0y ----------
+  ;16 Events (anchor_tm and set_psg_insert_and_program)
+    ; must use RET_ROUT to avoid overflow due to accumulated retard.
+  ;14 Fix release event when cut.   
+; ------ v0x ----------
+  ; 6 Convert PSG regs (/16)
+    ; Fix (no)retrig reg 13
+  ; 4 Discriminate fx_null vs fx_end 
+
+; ------ v0v -----------
+    ; Sep 
+      ; 26 Rewrite to setup fx directly from instr
+           ; - No intermediate virtual regs
+           ; - Simpler and Faster
+
+;  ------- Ayane v0R -----------
+      ; 13 Complete /setup_timer/
+      ; 12 Rewrite event handling.
+              ; - simpler
+              ; - faster
+      ; 10 WIP. Anchor ok and stable (tested viad timertst.o)
+
+instrui
+; --- Ayane 0ab ----
+; Mar 2025
+   ; 3 _refresh: no need to save state_sp, done by force_refresh_custom
+
+; Feb      
+ayane
+   ;28 Replace :lib imports by local version
+instrui
+   ;26 Fix refresh when inserting row
+     ; _insert_row: copy current row instead of blank.
+     ; Plug CTRL-DEL (_del_row)
+
+; --- Ayane 0aa ----      
+;
+; Oct          
+; ------ Ayane 0y -------
+   ;18 Plug Return (_insert_row)
+
+; ------ Ayane 0w -------
+   ; 6 Move test dependencies in testlib 
+              ; (well we still have most of them...)
+     ; Fix is_env_hard/is_volume 
+     ; Fix _set_flags/_get_flags (must inverse)
+     ; Fix arp encoding for env hard and fx
+   ; 4 s/sync_buzzer/sync_buzzer_register
+
+; ------ Ayane 0v -------
+; Sep            
+   ;25 Add fx0_type_ui and co. Same for fx1
+     ; Remove call to clip_4095 for pitch: N/A since 16 bits virt period
+     ; ??? What to do for "= period" (set)
+     ; Plug piano
+
+; ------ Ayane 0p -------
+   ; 7 plug instr.o
+
+
+  ; 1 mar 2024
+
+ply
+    ;Fix test_empty_song_tm:
+                                  ; Returned: &1f7
+                                  ; Prof:     &20f 
+            ; tm0 and tm2 weren't updated after change of code
+               ; WTF now? with tm0=39 (bad value)
+                                  ; Returned: &217
+                                  ; Prof:     &218 
+               ; WTF now? with tm0=40
+                                  ; Returned: &2a7
+                                  ; Prof:     &2a8
+            ; Why would it take &90 more?
+    ; -> Oh i think that was another tests failing
+timer
+            ; (Re?)introduce set_reg13_insert_and_program_tm 
+            ; (so instrnrt assembles)
+instrnrt
+        ; Fix test_instr.ref2code: sync with actual code
+        ; Use :orgrel/prof.o (rather than ums:) 
+        ; ref2code: sync with actual code
+chung
+hist
+
+; //// 2025 /////////////////
+; ------ v0ab --------
+; Feb
+  ; 26 insert_empty_row: select inserted row
+     ; Reactivat /instr_ayane_append_rows/ for chungnrt
+
+; //// 2024 /////////////////
+piano
+; 2024
+; -------- Ayane v0y ----------
+; Oct
+  ; 17: Fix timing issues.
+; -------- Ayane v0v ----------
+; Sep      
+  ; 30: Plug timer.
+      ; scan_key: Fix NC when no piano touch pressed
+; -------- Ayane v0t ----------
+  ; 17: Extract helpers in instr.o
+; -------- Ayane v0p ----------
+  ;  8: Functional!
+
+; ------ v0x --------
+; Oct     
+  ; 4 Discriminate fx_null vs fx_end
+    ; For now, KISS: 2 fx (can be null), followed by fx_end
+; ------ For v0w -------
+; Oct
+  ; 4 Fix get_row (again!): must check source, not destination buffer
+  ; 1 Fix bug in _check_sfx when advancing pointer to next fx.
+; ------ For v0v -------
+; Sep
+  ;25 Add CHECK_SFX()  
+; ------ For v0t -------
+  ;18 Remove chipnsfx instr handling
+; ------ For v0o -------
+  ; 7 Add get_row, set_row, add_row, del_row
+; ------ For v0l -------
+; Jun    
+phrase
+; 2025    
+ ; -- alpha 1 --
+; Dec 
+   ; 17 s/_prelude/scope_bk_phrase so can be called from bank    
+      ; phrase_select_new_row: exception if memory full instead of NC
+   ; 15 Add row_del_note/instr/vol
+      ; Add phrase_clone
+      ; phrase_def: fix 'last' (was pointing one extra byte)
+   ; 13 phrase_get_row_at: must use goto_next_row for multi-chunks
+   ; 12 Add phrase_get_last_row 
+; Nov
+   ; 27 Add get_phrase_id
+      ; phrase_get_duration: handle duration 0 as &10000
+   ; 21 _unpack_row_com: fix pnt row post reading, fix vol decoding
+      ; row_get_vol: Fix NZ not returned when vol=0
+   ; 19 phrase_delete_row_at: draft
+      ; phrase_select_row_at: Fix when empty phrase 
+                            ; Fix when DE > total duration 
+                            ; Handle padding for duration > &100
+   ; 18 Remove phrase_select_row (deadcode)                   
+      ; phrase_get_row_at: Set row_t1=&ffff for "infinite" duration
+                         ; Return BC = t-t0 (simplify client code)
+   ; 16 Remove ply and chung deps
+ ; -- v0.0au --
+   ; 10 s/dev_checks/dev_checks' to avoid ambiguity
+      ; unpack_next_row: s/jr nz/jr nc (typo). Again?
+      ; [ON HOLD] song_select_new_phrase: create empty row  
+                ; (to avoid ply infinite autoloop on empty phrase)
+ ; -- v0.0at --
+; Oct
+   ; 17 Add unpack_row_at/unpack_next_row
+      ; Reorder: note before vol to match ply
+ ; -- v0.0ai --
+; Aug 8 set row_set_vol_encoded     ; for salo
+      ; s/song_reset/phrase_reset
+; v0.0ac 5 Mar 2025
+    ;24 Add /row_get_instr/
+          ; /phrase_get_row_position/
+
+chung
+  ; 21 Add getters/setters for salo
+           ; instr_set_rows#
+           ; set_flags
+           ; get_flags
+           ; set_vols...
+  ; 20 Song_select_instr: return instr param numbers 
+  ; 17 Add New_instr
+     ; New_instr*: take ID
+     ; Remove get_instrs#: can be infered from index
+phrase
+    ;17 Add /phrase_set_params/
+    ;13 phrase_def: adapt to new header packing, add checks
+instr
+; \\\\\ 2025 ///  
+; -- alpha 1.7 --
+; Dec
+ ; 19 deactivate instr_state
+; -- alpha 1.5 --
+ ;  2 instr_setup: Don't assert if instr doesn't exists (for dev mode)
+; ---- v0at ----
+;Oct
+ ; 16 _instr_end: fix tm
+; ---- v0aq ----
+;Sep  
+ ; 29 _instr_end: must call _fx_end to cut fx
+ ; 27 instr_play: c0 now aligned.
+    ; Fix tm when dev_checks
+; ---- v0an ----
+;Aug
+ ; 25 Fix time instr_play
+; ---- v0am ----
+ ; 23 Move common macro in macro.i
+; ---- v0ad ----   
+;Apr
+ ; 24: Store period in BC (was only in comment!?)
+  ; CHIP_VOL_AND_PNT: remove "if use_volume" -> was doing sheiss
+
+;Mar
+; ---- v0l2 ----
+  ; SIGN: only for ayane = 1
+  ; Use default_use_arp
+      ; default_use_hard_env
+  ; Fix instr_default for kim compiled
+    ;12 Add instr_get_rows# 
+salo
+    ;22 Serialize instr by columns
+    ;19 Disable nest: would actually be a kind of phrase!
+       ; save/load selected assets (to keep UI)
+    ; 11 Reprise! Remove call to ayane rom and orgams rom!
+       ; Clean-up obsolote code base on old api
+
+chung
+; ----- v0i ------
+  ; Mai
+    ;15: fix phrase_get_row_at
+       ; Add /phrase_select_row_at/ Simpler API:
+           ; - Allow to introduce first row at tick > 0
+           ; - Simpler for chip.o to set single row whose duration
+                 ; is the whole phrase (we juste leave duration 0)
+       ; [cosmetic] Remove /va_current_row/: ill defined, and not used!
+       ; [cosmetic] Remove /va_row_bk/, since all phrases in same bank.
+
+; ----- v0h ------
+  ; Apr  
+    ;29: Get_phrase: don't assert for non-existing phrase.
+    ;12: song_select_phrase: clarify API and allow non-existing phrase.
+       ; Get_phrase: idem
+    ;11: Get_phrase: return pointer instead of ID with bank
+       ; song_select_new_phrase: register passed phrase#
+       ; remove va_phrases#: YAGNI.
+    ; 8: Move ayane_init in init.o
+    ; 3: song_select_new_phrase: take A= ID
+       ; is_end_of_phrase: fix test.
+       ; phrase_get_duration: cannot use _postlude as we must return BCD
+    ; 1: Extract from chung
+       ; -> Clearer, notably regarding bank connection
+           ; (we must connect BK_PHRASE, not BK_BASE)
+
+; May
+; ------ For v0k -------
+    ; Add New_instr_chp_down_vib_noise for 4k08.chp
+    ; Add New_instr_chp_down_arp
+    ; Fix New_instr_chp_down_vib? Vol step must be placed first
+
+; ------ For v0h -------
+; Apr
+    ; 29 Reset instr_idx (so compile can skip non-existing instr)
+       ; Add New_instr_chp_down_arp_noise
+       ; Discriminate: instr_chip_append_rows_byte
+                     ; instr_chip_append_rows_word
+; ------ For v0g -------
+    ; 26 instr_get_loop: save hl, de
+    ; 23 Song_select_instr: adapt to new structure                    
+       ; Remove va_instr_pnt (was defined in memmap.i)
+    ; 13 New_instr_*: reset instr_head_rows
+    ; 11 instr_append_row: fix typo! Z vs NZ
+
+; ------ For v0f -------
+; Apr 
+    ;  1 Fix $ at end of source (save_pc)
+; Mar             
+    ; 31 New_instr_chp_down_vib: setup params in instr header.
+    ; 29  ; add Setup_row_r7
+          ; Same pool for tables and instr
+          ; instr_idx: Contain full header
+          ; replace song_select_new_instr by
+              ; New_instr_ayane  
+          ; add New_instr_chp_down_vib  !!WIP!!
+          ; remove register_table, _new_table etc... :
+              ; - was storing tables raw in bank for persistance
+              ; - now we store them only once with linked rows
+          ; row_set_instr: poke id instr (instead of id*2),
+                           ; as instr_idx is now an &200 table.
+    ; 25 vac: add phrase_get_duration
+    ; 24 vab: Re-enable create_arpeggio_0xy and co (for st128)
+            ; phrase_select_new_row: pass duration
+            ; add row_add_duration
+    ; 14 vaa: Follow new instr encoding: only one table (cf instr.o)
+                 ; - Discard instr_set_table_com_ and co 
+                 ; - Introduce instr_append_rows
+    ; 11 vz: Expose Get_phrase (for track.Set_phrase_as_t)
+; Feb
+    ; 25 vy: No more va_jp_set_phrase etc: directly use fx_set_phrase
+                ; -> to next chunk when needed
+                ; -> and to first chunk for automatic loop
+           ; s/clip/phrase (harmonize, phrase is more telling)
+              ; That was a mistake doing it!
+                  ; - neither urgent nor important 
+                  ; - urgl oups, what if other clip types?
+           ; Use new_heap_chunk for table. See rationale in ayane_init
+    ; 21 vx: Use local chunk and memcpc
+
+salo
+; 2024
+  ; Apr  8. Do "ayane_init" part, and Init_track_module        
+      ;  3. ayane_init now lives in phrase.o
+  ; Feb 21. Use local shorcut and chunk.
+
+; //// 2023 /////////////////
+; Nov
+    ; 28 vw: remove spurious end
+; May                   
+    ;  9 vv: song_select_new_phrase: add header info:
+           ; Type, idx, name (null for now), color (idx+1 for now) 
+        ; Duration of 'row' in phrase: use byte instead of word.
+             ; -> Natural for event 'agenda' table
+             ; More optimised (time and space)
+             ; For long duration, needs 24 bits anyway.
+        ; Use new_chunk from chunk.o (consolidation)
+        ; Cleanup chunk_to_idx (not needed, or should be in chunk.o)
+        ; use "memcpc.o"
+        ; Fix: bk_base must be reconnected after append_raw_in_chunk
+             ; (wasn't detected because before: new_chunk was
+               ;in c7. Now they are in c4 since reuse
+               ;orgams's "source chunk", which is another issue 
+               ;altogether but actually nice to reveal such bugs).
+        ; Introduce SKIP_RESERVED
+        ; Switch back to just 1 byte for duration
+
+
+; Apr
+    ; 13 vu: Reprise!!!!! Mem version.
+
+; //// 2021 /////////////////
+
+; Jan 01 vt: Limit @ e500
+           ; Add /fx_append_byte/fx_append_word/fx_append_table/ 
+           ; Refonte gestion instr: /irow_set_type_vol/
+
+; //// 2020 /////////////////
+
+    ; 16 vs: Export/Import.
+           ; Expose register_table.
+; Dec 14 vr: Reprise /register_table/ + refactor /st_make_table/ & co.
+; Oct  5 vq: WIP register_table. Doesn't assemble
+           ; . Shift table type enum. See /type_table_byte/
+           ;    + Introduce empty type
+           ;    . More sensical (1 for byte, 2 for word).
+           ; . Change table header to: type, size in bytes, loop len.
+           ;    + Allow more generic handling
+
+; Sep 27 vp: Add/expose routines for salo
+           ; . chunk_to_idx
+           ; + get_instr#   TODO: must reconnect bank? 
+
+    ; 17 vo: Fix st_make_table (Wasn't covered by test: SP mismatch
+           ; led to early exit). 
+           ; Do not use EXX anymore.
+    ; 13 vn: Export/Import.
+     ; 9 vm: st_make_table/st_make_table_word: 
+             ; Store a persistent version. Needed for... persistence!
+               ; Also ease save (no need to recover loop and length).
+               ; Future-proof (table meta data will also be in bank).
+           ; Move @ d800 (demands new ply, plybc expected chunks at
+                         ;certain places).
+
+     ; 8 vl: st_make_table/st_make_table_word: copy out of bank,
+             ; to facilitate incoming persistent storage.
+             ; That removes dependency to st_bk.
+     ; 7 vj: chunk_to_idx: now returns idx in 16 bit (HL)
+       ; vi: Smarter 'new chunk' management.
+              ; - Detect max chunks
+              ; - Distinguish /chunks_in_base_bk/ and /chunks_per_bk/ 
+           ;  !! copy-pasted  from chunkt.o
+       ; vh: Introduce /append_in_chunk/
+           ; NRT: remove calls to /connect_chunk_from_index/
+       ; vg: Import /st_make_table/ & /st_make_table_word/ (from plybb)
+       ; vf: Introduce /insert_in_chunk/ 
+
+       ; ve: phrases_idx: store directly id.
+           ; new_chunk: Now returns chunk id:
+                      ;    - harmonization with orgams.
+                      ;    - future proof.
+    ;  4 vd: Interface change!
+             ; Old: song_get_phrase_idx -> return chunk idx
+             ; New: song_get_phrase_id  -> return chunk id
+           ; phrases_idx table: make room for 16 bits chunk_id.
+; May  1 vc: new_table: change interface (fix /test_compile/)
+; Apr 23 vb: Put table id at beginning of table. See /new_table/
+             ; -> Ease save.
+
+; Jan 14 va: Leave room (word) for duration
+
+
+; -----------------------------------------------
+
+
+; \/\/ 2018 \/\/\/\/\/\/\/\/\/\
+
+        ; comp_instr: fix idx*2 -> idx (already fine)
+; v8 10/7 New order for data: instr (must fit &100), table, phrase, map
+
+;    22/3 Compile: Store proper phrase idx (buffer offset)
+;    21/3 Compile: Save A when flushing!          
+        ; Burn @db00
+        ; Don't burn nrts in ROM
+; v7  8/2 Compile: fix when fx in another bank
+
+        ; !! Interface change: sign expanded instead of size !!
+        ;      --> impact instr_get_table_com
+        ; Fix: return NC if invalid phrase or row 
+        ; Better naming: song_select_row -> phrase_select_row
+; v6  3/2 Compile: still WIP, nrt ok but fail if fx in another bank
+
+   ; 24/1 !!! BREAKING change: encode instr idx instead of addr
+             ; cf plyaf for rational.
+; v5 23/1 export/import
+
+; !!!! 05/01/2018 !!!! Interface change for fx_ (signature param)
+              ; ---> Impact skip_one_fx
+              ; ---> Impact instr_get_table_com
+; v4 30/12 WIP.  Compile: table+ins copy, with corrections
+
+; v3 17/12       Base bk passed at init,
+                 ;  so no inconsistency possible with PLY.O
+; v2 16/12/2017  Expose ayane_init, _prelude
+
+track
+; --- v0l ---- 
+  ; Jun        
+   ; 28 fix get_event_hook_at: again mistake in t0 <= t < t1 test
+      ; eval: lift flags back to z80
+   ; 19 Subsong_add: take A = id (for consistency)    
+   ; 18 Init_track_module: don't create tracks. Instead: /New_module/
+      ; Song_select_new_track: don't add in subsong
+         ; (because salo loads all track before knowing how to dispatch)
+      ; Add: Song_add_track
+   ; 17 Add: Song_get_first_track
+           ; Song_get_next_track
+      ; For serialisation and future subsong handling.
+      ; Init_track_module/Song_add_map: start track numbering at 1
+           ; instead of 0 (to match usual channel numbering)
+
+   ; 14 Song_select_new_track: Pass ID. - Consistent with phrases etc
+                                      ; - Ease loading (salo.o)
+                             ; Pass mix mode (future proof)
+      ; Add track_get_event_hook_at
+      ; Set_phrase_at_t/Set_transpose_at_t: - call be call in any order
+                                          ; - will replace previous val
+   ; 13 Reserve slot for "mix mode": tf_mix
+; --- For v0h ----
+  ; Apr  
+   ; 24 Set_phrase_at_t: add check (Get_phrase must return NZ)
+      ; Song_add_map: idem
+; --- For v0g ----
+   ; 10 Fix dest_deref16: wasn't adding operand like ind does.
+   ; 09 Put missing signatures for ext_* routines
+      ; prepend_event: replace AUM code by good old z80! 
+      ; Song_add_map.prep was initializing the wrong variable!
+               ; (time instead of timestamp)
+         ; Morale: use local variable instead?
+   ; 08 Introduce eval_init (for tracknrt)
+      ; Finish s/regs/aum_regs
+          ; NOTE: why is "regs" even visible from here?
+      ; Fix another typo
+      ; Song_select_new_track: don't report flags:
+              ; - for now it cannot fail 
+              ; - if at some point we allocate something, we'll use
+                ; assertion mechanisme.
+  ; Mar 
+   ; 31 Add CALL_EXT01()
+   ; 25 Add Song_add_map
+   ; 14 Dismiss track_append_current_phrase (make no more sense with
+             ; RDV based paradigm)
+      ; Introduce Set_phrase_at_t
+      ; Deactive ui (first we must validate new APIs for convertion)
+            ; And, faster to assemble!
+; --- For v0e ----
+   ; 11 Design change: Duration in event node, not in phrase node
+                 ; - new phrase can happen before end of phrase
+                 ; - phrase is auto-looping
+                 ; - !!! actually still useful for drawing track
+                       ; (for optimisation, otherwise we would have to
+                         ;compute duration for each repetition)
+      ; Discard track_get_event_at (doesn't fit new structre very well)
+      ; introduce get_event_hook_at
+                ; set_event_hook_at
+      ; aum: introduce lit20 operand
+   ; 10 Track can have multiple events at given timestamp
+         ; Adapt structure to reflect that
+         ; ONHOLD: Introduce track_get_phrase_at
+                 ; Priority is player and convertion
+  ; Feb            
+   ; 29 Init_track: create 3 tracks with channel A, B, C
+; --- For v0c ----
+   ; 28 shortcut.o, memcpc.o: use local ones
+
+; --- For v0A ----
+;2023
+ ; Dec
+   ; 22 Arrange order of imports to have main sources first
+   ; 21. Rollback previous: multi mode done by ayane,
+               ; so we don't add bandaya dependency        
+   ; 16. Set up multi-mode (under int)
+
+; --- For v09 ----  
+  ; Dec 3. lib/shortcut.o : use the one in ums: for consistency
+
+; --- For v08 ----  
+  ; May 19. Only scroll when reaching screen boundaries (no sub window)
+              ; -> less refresh overfall
+              ; -> simpler for now
+       ; Replace goto_pos by go_left/go_right
+       ; skip: add missing opcode and modifiers, fix skip_fun_com
+
+; --- For v07 ----  
+
+; v9: AUM: Change encoding to allow more modifiers
+        ; - introduce /max/
+        ; - now only 16 registers allowed: more than enough.
+    ; Introduce ui_sequencer (cursor handling for navigation)
+
+; --- For v06 ----
+
+; v8: Introduce track_append_current_phrase (nrt helper)
+    ; track_draw: must follow indirection for actual clip stucture.
+    ; Use memcpc.o (for check_hl_in_bank)
+
+; --- For v05 ----
+
+; v7: track_get_clip_at: Also return starting time
+    ;   (will be useful for navigation) 
+
+; --- For v04 ----
+
+; v6: Reverse part of v5: pointers **MUST** be little endian
+          ; to allow indexing (ind + lit n)
+      ; -> song_select_new_track: store list id little endian
+         ; (liszt routine will have proper CDE id no matter what)
+    ; binary_common: properly set Z flag.
+    ; fun_com: keep aum_af as is.
+
+; v5: --- WIP --- 
+    ;  Extract test in track.nrt
+      ; -> Avoid double ENT issue
+      ; -> Less space and faster to assemble.
+    ; Fix /track_append_clip/
+    ; Set /current_track/ (was readonly!)
+    ; [harmonisation] Set BK, MSB, LSB in that order (expected by liszt)
+    ; Remove cur_bk, set/get_bk: handled by chunk.o via liszt
+    ; call_ext_com: read 24bits regs in c,d,e to match liszt expectation
+
+; v4: API for st128 /track_append_clip/...
+    ; track_draw: Divide time by 64 to show outline.
+
+; v3: Boulet! It's not track that has color, but each clip
+
+; v2: Implement /draw_track/
+    ; + /min/ modifier
+    ; + /call_ext_to_words/
+    ; eval_operand_and_store: must return
+
+; v1: Implement /track_get_event_at/ -> Yeah.
+    ; Restrict AUM registers to 24 bits (see /reg32/)
+       ; - That fits our needs (time, epnt - extended pointeurs)
+       ; - More wouldn't help
+    ; We still align every 4 bytes though, for debugging purpose
+; v0: 4 tests aum ok.
+
+;Note: Using liszt can be error-prone (stateful iteration prevents
+     ; some concurrent use if not careful). Yet we try to use as 
+     ; much orgams code as possible:
+         ; - Exercise the code intensively
+         ; - Not reinventing the wheel
+
+
+; /// 2024 ///
+; ----- v0.0w ------
+  ; 1.
+instrnrt
+      ; Adapt for new instr encoding.
+
+; !!!! make sure "IF 1" in test lib for correct dummy_instr
+
+; Also see cahier! e.g. page 39  
+; ----- v0.0x ------
+ ; Oct
+  ;4 
+instrnrt
+     ; Extract dummy_instr to testlib (less direct dependencies)
+; ----- v0.0w ------
+  ; 1
+instrnrt
+     ; Adapt for new instr encoding.
+
+; ------ v0o ------------------
+; Aug 18
+ ; GED: Rollback optional_readwrite to v0n
+; ------ v0o ------------------
+; Aug 16
+ ; GED: Rewrite optional/refresh/handler to respect invariant 1.
+; ------ v0n ------------------
+; Jul 12
+ ; PLY: Add timing
+ ; GED: Left-justify to solve cursor issue!
+
+; ------ v0m ------------------
+; Jun 29
+; Reprise GED WIP
+
+; ------ v0l ------------------
+; SALO Ok!
+ ; Arrange code for Save/Load (e.g. instrument signature)
+ ; Fix chungnrt
+ ; Fix chipn regression for minimala
+
+; ------ v0k ------------------
+ ; Adaptations for 4k08.chp
+
 ; ------ v0j ------------------
  ; Well, using phrase_set_row_at for clip.o was a bad idea:
     ; then last note of each phrase has duration 0, which means
@@ -318,11 +2062,55 @@ changelog
  ; 24 Yeah. chipnrt.o pass: conversion and replay of minimal.chp
           ; (some vibratos too ample: tolerance 4 on high notes)
 
+chunk
+; \/\/\/ 2025 \/\/\/\/\/\/\/\/\/\
+; -- alpha1 --
+; Dec 26: Use assert.o, remove dead code.
+
+; -- v0au --
+; Nov 11 Next_node: actually return Z if loop node (instead of assert)
+
+; -- v0l2 --
+; Mar 21 Next_node: must return Z if loop node
+
+;design_doc
+; See :lib/chunk.o
+    ; 11 Herica's birthday!
+       ; new_pool_chunk: fix stack issue when NC for mem full.
+       ; new_chunk* : assert in case of memory full
+
+    ; 10 Next_node: mustn't change hl when pnt is zero
+       ; Insert_new_node: add checks
+       ; Disable 'free' code (must be re-viewed)
+
+    ;  8 Introduce v_free5_list, v_free6_list.
+           ; Not used right now, but avoid assert in get_node_list
+
+; --)))
+
+
 ; ------ v0f ------------------
+chunk
+    ;  3 Fix new_chunk_no_init computation:
+            ; Mustn't use static MAX_CHUNKS value   
+            ; -> depends on bank ('HIMEM' can vary)
+       ; Allocate chunks in decreasing order to simplify code.
+       ; __plugtail: fix v_free_chunks handling (now in 8 bits)
+    ;  1 Init_chunk_module: clear banks for easier debugging
+
 ; Mar                            
  ; 28 memmap/chung: Move tables to bank.
       ; - allow persistance
       ; - give more room for code
+chunk
+    ; 21 Init_chunk_module: custom init for BK_BASE
+       ; Introduce Insert_new_node
+       ; New_node_x and co: 'link' now 16 bits instead of 24 bits
+                  ; (since no cross-banks pointers) 
+            ; Note: links for chunks themselve still can be crossbank
+                  ; -> we don't want to change that, as chunks 
+                     ; might become cross banks again (for phrases)
+???
  ; 13 No more "evt_end" as sentinel after list of event.
     ; Instead: null link. CF Design choices
 ; ------ v0e ------------------
@@ -345,6 +2133,16 @@ changelog
     ; 1 bank by kind of chunks (phrase, table)
     ; See rationale in design choice
    ; tracknrt.ok
+
+chunk
+  ; 27 ap. Work bank by bank (since each kind of chunks has dedicated bk
+         ; Replace vo_max_chunks by MAX_CHUNKS (since static)
+         ; Remove orgams-specific variables
+               ; -> less code
+               ; -> 7Cxx is now free
+
+
+
 ; ------ v0b -------------------
  ; 26
    ; Design change:  
@@ -362,6 +2160,12 @@ changelog
    ; Stauts chungnrt: ok.
    ; Status str128nrt: ???
    ; Status plynrt: ko.
+chunk
+  ; 25 ao. Remove orgams-specific header 
+  ; 21 an. Taken from ums:lib/
+         ; Make version ayane specific.
+
+
 ; ------ v0a -------------------
    ; Rapatrie all libs (chunk, liszt). Same rationale:
       ; - Disable unused code
@@ -373,6 +2177,7 @@ changelog
         ; Memory full in chung.register_table, as we reach A000
    ; Status chungnrt: ok.
 
+; \/\/\/ 2023 \/\/\/\/\/\/\/\/\/\
  ; Dec                            
    ;23. Put BK base at c7 as well.
       ; And most code in BK:
@@ -426,12 +2231,21 @@ changelog
        ; init: use ums:lib/shortcut.o (consistent with ayane.o)
        ; ayane: fix help, open...
 
+chunk
+  ; 27 am. [ayane] Connnect bk base in /init_chunk/
+                 ; Don't use vo_basebk (since static: &c6)
+
+
+
    ; 24. Reprise !
      ; chungnrt: didn't even assemble. nrtchlast undefined!
                ; -> For now deactived non-assembling tests.
      ; init.fullinit -> chung.ayane_init ASSERT!
 
- ; Jun     
+ ; Jun 
+chunk
+  ;  5 al. [ayane] /BK_SOURCE/ = bk base - 1
+
    ; 3 v09 ayane.o: Main entry point
             ; CONTROL-O: Open
             ; CONTROL-Space: Play
@@ -459,6 +2273,20 @@ changelog
    ; 9 v05 track.track_get_clip_at: returns both start and end
              ; (will be useful for UI navigation)
          ; chung.song_select_new_phrase: header (type, idx, name, color)
+
+chunk
+  ;  9 ak. Use memcpc.o   (no more OUT (c),x here)
+            ; For orgams: cosmetic change.
+            ; For ayane: consolidation with liszt and chung
+                       ; Hence bk_connected stays up-to-date.
+         ; Cleanup: Remove flag failhard.
+  ;  8 aj. [ayane] /new_chunk/ Don't return chunk_start anymore:
+             ; -> was returning 32 for org, but org didn't use it
+             ; Since it depends on the type of node, it's better
+             ; to let the client set it (or to introduce dedicated
+             ; routine like new_chunk_org).
+  ;  5 ai. [ayane] /new_node_x_no_init/ Also handle 9-sized nodes. 
+
 
    ; 2 v04 st128: Must use new 'track' struct.
 

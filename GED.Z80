@@ -2,20 +2,10 @@
 ; -- alpha1 --
 ; Dec               
   ;29 Fix regression spurious cursor when inserting in w_multiline 
-  ;17 Less strict check on ui pnt, since phrasui is in bank.   
-  ;16 [on_hold] enter_child: propagate both X and Y
 propagate_x = 0
       IF propagate_x
 !! breaks struct_on_enter ; To fix: must reselect child for X pos
       END
-  ;15 Add update_pos_x
-  ; 8 update_pos_y: client must explicitly call enter
-; Nov
-  ;25 enter_child: propagate Y
-  ;24 delegate_width: don't use clone!! a getter shouldn't change state
-  ;19 Add sep1_ui & c0 (used by instrui and phrasui)
-    ; -> Remove check about widget address (hinders more than it helps)
-    ; -> gedeihen_enter: remove check about cursor being at (1,1) """
 do_scroll_multiline = 0 ; 1: too slugish
 
 dev_checks' = 1         ; forced for now
