@@ -59,6 +59,7 @@ iotest_cursor_seq = &9000
 
       IMPORT "const.i"
       IMPORT "macro.i"
+      IMPORT "gedwidid.i"
       IMPORT "ged.o"
 
       MACRO ASSERT_NOT p

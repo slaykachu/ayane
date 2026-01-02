@@ -31,6 +31,7 @@ need_rom = 1
 
       IMPORT "chung.o"  ; Model (instr get/set row)
       IMPORT "song.o"   ; Song_get_instr
+      IMPORT "gedwidid.i"
       IMPORT "ged.o"
 
 instrsel_code

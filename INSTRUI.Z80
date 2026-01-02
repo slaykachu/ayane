@@ -27,6 +27,7 @@ dev_checks' = 1
       IMPORT "assert.o"
       IMPORT "memcpc.o" ; reset_sp
       IMPORT "chung.o"  ; Model (instr get/set row)
+      IMPORT "gedwidid.i"
       IMPORT "ged.o"
       IMPORT "timer.o"  ; for fx_null/sync_buzzer_register
       IMPORT "song.o"   ; Song_get_instr

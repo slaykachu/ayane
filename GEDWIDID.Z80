@@ -1,0 +1,53 @@
+; <<<< GED Widgets ids >>
+
+w_brk = 0               ; for now used as w_null
+w_text = 1
+w_text_dyn = 2
+; getter returns HL= Nt string
+w_deci_99_custom = 3
+; 2-digits decimal value (e.g. for noise)
+w_deci_99_signed = 4
+; Like w_deci_99_custom, but signed (e.g. for arp)
+; Fixed witdh 3, for -99 to 99.
+w_deci_9999_signed = 5
+; Like w_deci_99_custom, but on 4 digits
+; Fixed witdh 4, for -9999 to 9999.
+w_hexa_digit_custom = 6
+; 1 quartet (for volume or hard env type)
+w_hexa_custom = 7       ; (setter byte, getter byte)
+; Rational: 1/ We want to reuse hexa input/output routines, 
+          ;    but client should not have to know them.
+          ; 2/ This widget allows to be notified at validation.
+          ;    Important for e.g. mem editor where an intermediate
+          ;    buffer is used.
+w_struct = 8
+w_multiline = 9
+w_optional = 10
+; param1: embedded ui
+; param2: enabler getter (0: disable, non zero: enable)
+w_optional_readwrite = 11
+; Like w_optional, but we can still modify it even when deactivated
+; E.G. Hard Env Type deactivated when volume <= 15, but we use
+     ; this very field to activated it.
+;!!! Embedded ui must be a concrete widget (rather than another wrapper)
+;!!! as /key_optional_readwrite/ will pass key to immediate child. 
+w_refresh = 12
+; We'll refresh parent when child got validated.
+; !!!BUG:embedded widget may have to 'call validate' and 'refresh_focus'
+; Typical nesting: 
+   ; w_struct   <- also contains "dependent" widget
+   ; w_refresh  <- flag child as trigger
+   ; child      <- triggering refresh on validate
+; param1: child (embedded) ui
+w_toggle_custom = 13    ;
+; Getter: Any non-zero returned in A means "set"
+; Setter: Pass A=0 or &ff
+w_key_handler = 14
+; Pseudo (non-visible) widget to catch keys. Bugged?
+; Params: subwidget, handler
+   ; Note: subwidget always placed first for consistency among wrappers
+; param1: embedded ui
+; param2: handler table
+;!!! If put directy under w_multiline, Y pos won't be propagated to
+;!!! actual concrete widget. 
+;!!! Will fail at e.g.: validate -> force_refresh -> disp_struct 

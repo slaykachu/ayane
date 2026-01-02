@@ -35,6 +35,7 @@ hack  = 1
 
       IMPORT "const.i"
       IMPORT "macro.i"  ; GED_HANDLED
+      IMPORT "gedwidid.i"
       IMPORT "assert.o"
       IMPORT "field.o"
       IMPORT "conv.o"
@@ -246,11 +247,18 @@ state_ = $
       ORG _save_pc
 
 gedeihen_code
-      IF 0
-;Not needed: each ged client should import it
           jr gedeihen_init
+          jr gedeihen_set_hooks
           jr setup_widget
-      END
+          jp gedeihen_disp
+          jp gedeihen_enter
+          jp gedeihen_process
+;For phrasui
+          jp enter
+          jp refresh_nofocus
+          jp validate
+          jp update_pos_y
+
 ; ----------------------------------
 ; Macros + helpers
 
@@ -267,18 +275,6 @@ gedeihen_code
           call _check_address
       ENDM
 
-_check_address
-          push af
-          push hl
-; hooks can be defined externaly (e.g instrui.o or gednrt.o),
-; so we don't know what's the end address
-          ld hl,&4000:scf:sbc hl,bc:jr nc,.ok
-          ld hl,&A200:or a:sbc hl,bc:call c,&BE00
-.ok
-          pop hl
-          pop af
-          ret
-
       MACRO CHECK_KEY_TABLE
 ; Assert keytables <= hl < keytables_
 ; Triggered when e.g. hl = &be00
@@ -286,19 +282,6 @@ _check_address
           call _check_key_table
       END
       ENDM
-
-      IF dev_checks'
-_check_key_table
-          push hl:push de
-          ex de,hl
-   ; external tables, for now all ui < &8000
-          ld hl,&7FFF:or a:sbc hl,de:jr nc,.ok
-          ld hl,keytables:scf:sbc hl,de:call nc,mess
-          ld hl,keytables_:or a:sbc hl,de:call c,mess
-.ok
-          pop de:pop hl
-          ret
-      END
 
       MACRO HL_STATE_PNT field
       IF field/&0100
@@ -329,7 +312,6 @@ _check_key_table
           call _set_state_byte:BYTE field
       ENDM
 
-
       MACRO GET_STATE field
 ; Out: HL = value at field
 ; All registers preserved but F
@@ -338,7 +320,6 @@ _check_key_table
           call _get_state
           pop bc
       ENDM
-
 
       MACRO GET_STATE_BYTE field
 ; All registers preserved but F
@@ -354,194 +335,11 @@ _check_key_table
           pop bc
       ENDM
 
-
-_hl_state_pnt
-          pop hl:inc hl:push hl ; ret address
-          push bc
-          dec hl:ld c,(hl):ld b,0
-          ld hl,(state_sp)
-          add hl,bc
-          pop bc
-          ret
-
-get_view_height
-          push bc
-          ld c,view_height
-          jr _get_state_byte_indirect_pop
-
-get_scroll_offset
-          push bc
-          ld c,scroll_offset
-;enchaine
-_get_state_byte_indirect_pop
-          call _get_state_byte_indirect
-          pop bc
-          ret
-
-_get_state_byte_indirect
-;In: C: field offset
-;Out: HL: pnt to field
-    ;  A: first byte of field
-    ; BC: trashed
-          GET_STATE(param4)
-          ld b,0:add hl,bc
-          ld a,(hl)
-          ret
-
-_get_state_word_indirect
-;In: C: field offset
-;Out: HL: pnt to field + 1
-    ; BC: value of field
-    ; NC, Z if BC=0
-    ; A preserved 
-          push af
-          call _get_state_byte_indirect
-          ld c,a
-          inc hl
-          or (hl)       ; For Z/NZ
-          ld a,c
-          pop bc
-          ld c,a
-          ld a,b
-          ld b,(hl)
-          ret
-
-call_insert_line
-;!! Pass A and DE (unused) to routine, but not flags, BC, HL
-;OUT: NC if field null
-    ; Otherwise, return flags of the routine which **must** return C
-               ; in case of success
-          ld c,insert_line
-          jr _call_state_indirect
-
-call_delete_line
-;like above
-          ld c,delete_line
-_call_state_indirect
-;only if field non null
-          call _get_state_word_indirect
-          ret z         ; NC then
-          jp jp_bc_ext
-
-call_state_on_enter
-          ld c,on_enter
-          jr _call_state
-
-call_state_get_width
-          ld c,get_width
-          jr _call_state
-
-call_state_on_validate
-          ld c,on_validate
-          jr _call_state
-
-call_state_get_line#
-          ld c,get_line#
-          jr _call_state
-
-call_state_select_line
-          ld c,select_line
-;enchaine
-_call_state
-          push hl
-          ld hl,(state_sp)
-          ld b,0
-          add hl,bc
-_jp_hl_pop
-          ld c,(hl):inc hl
-          ld b,(hl)
-          pop hl
-jp_bc
-          ld (dbg_call),bc
-          CHECK_ADDRESS()
-jp_bc_ext               ; Don't check address for external hook.
-          ld (dbg_call'),bc
-          push bc
-          ret
-
-_de_state_pnt
-          pop de:inc de:push de ; ret address
-          push hl
-          ex de,hl
-          dec hl:ld e,(hl):ld d,0
-          ld hl,(state_sp)
-          add hl,de
-          ex de,hl
-          pop hl
-          ret
-
-
-
-_set_state
-          push af
-          push hl
-          ld b,0
-          ld hl,(state_sp)
-          add hl,bc
-          pop bc
-          ld (hl),c:inc hl
-          ld (hl),b
-          ld l,c
-          ld h,b
-          pop af
-          ret
-
-_set_state_byte
-          ex (sp),hl
-          push hl
-          push bc
-          ld c,(hl)
-          ld b,0
-          ld hl,(state_sp)
-          add hl,bc
-          pop bc
-          ld (hl),a
-          pop hl
-          inc hl        ; ret adr
-          ex (sp),hl
-          ret
-
-_get_state
-          ld hl,(state_sp)
-_get_state_
-          ld b,0
-          add hl,bc
-          ld c,(hl):inc hl
-          ld h,(hl)
-          ld l,c
-          ret
-
-
-_get_state_byte
-          ex (sp),hl
-          push hl
-          push bc
-          ld c,(hl)
-          ld b,0
-          ld hl,(state_sp)
-          add hl,bc
-          ld a,(hl)
-          pop bc
-          pop hl
-          inc hl
-          ex (sp),hl
-          ret
-
       MACRO CHECK_IN_FOCUS
       IF dev_checks'
           call _check_in_focus
       END
       ENDM
-
-      IF dev_checks'
-_check_in_focus
-          push hl:push de:push af
-          ld hl,(state_sp)
-          ld de,(state_sp_handler)
-          or a:sbc hl,de:add hl,de:call nz,mess
-          pop af:pop de:pop hl
-          ret
-      END
 
       MACRO LD_BC_STATE field
           push hl
@@ -567,102 +365,33 @@ _check_in_focus
           jp jp_bc
       ENDM
 
-      IF 0
-      MACRO CALL_PARAM idx
-          ld c,idx
-          call call_param_com
-      ENDM
-
-      MACRO JP_PARAM idx
-          ld c,idx
-          jp call_param_com
-      ENDM
-      END
-
-      MACRO CALL_TABLE_PARAM idx
-          ld c,idx
-          call call_table_param_com
-      ENDM
-
-      MACRO JP_TABLE_PARAM idx
-          ld c,idx
-          jp call_table_param_com
-      ENDM
-
-      MACRO READ_PARAM idx
-          ld c,idx
-          call read_param_com
-      ENDM
-
-      MACRO READ_TABLE_PARAM idx
-          ld c,idx
-          call read_table_param_com
-      ENDM
-
-call_param_com
-          push hl
-          GET_STATE(param)
-_cpc
-          call read_param_com_
-          ld c,l:ld b,h ; just for check address
-          CHECK_ADDRESS()
-          ex (sp),hl
-          ret
-
-read_param_com
-          GET_STATE(param)
-read_param_com_
-          ld b,0
-          add hl,bc
-          ld c,(hl):inc hl
-          ld h,(hl):ld l,c
-          ret
-
 ; ---------------------------
 ; Gedeihen entry points
 ; ---------------------------
-gedeihen_disp
-; Display widget..
-; In: gedeihen_init and setup_widget must have been called.
-    ; location for each widget has been set in setup_widget
+gedeihen_init
+;;-----------
+; Init state
+   ; Set hooks with firmware calls
+   ; (can be modified with gedeihen_set_hooks)
+; In: nothing
+; Out: hl preserved
 
-; Temporarily use secondary stack, so that current state isn't touched
-; (state will be updated by e.g. iterating on multiline, which setup 
-  ;new struct hense reseting field position and co)
-      IF todo
-; struct refresh should use this as well?
-; to allow nested struct
-      END
+          push hl
+          ld a,sign_init:ld (flag_init),a
+          xor a:ld (wv_edit_buffer),a ; Mark as none edited
+; Init vars
+          call set_root_state ;!! must be done first
 
-;setup left sp at leaf, we want to display from root
-          ld hl,state_stack
-          call clone_and_set_state_disp
-          call refresh_nofocus ; recursively display
-          jp set_root_state
+          ld hl,txt_set_cursor
+          ld ix,txt_get_cursor
+          ld iy,txt_place_cursor
+          ld de,txt_wr_char
+          ld bc,break   ; todo
+          call gedeihen_set_hooks
 
-refresh_nofocus
-; Redisplay without focus
-          call reset_cursor_from_widget_location
-          xor a
-;TODO: make sure AF is preserved
-          JP_STATE(display)
-
-; ------------------
-refresh
-;See /call_display/ for version without cursor reset
-;TODO? harmonize
-          GET_STATE(focus)
-          inc l:dec l
-          jr z,refresh_nofocus
-refresh_focus
-;Redisplay with focus
-          call reset_cursor_from_widget_location
-          xor a:dec a
-      IF todo
-; make sure AF is preserved?
-      END
-          JP_STATE(display)
-
+          ld hl,0:SET_STATE(parent) ;or: zero whole zone?
+          pop hl
+          ret
 
 gedeihen_set_hooks
 ;-----------------
@@ -688,37 +417,6 @@ gedeihen_set_hooks
           ret
 
 ; --------------------------
-gedeihen_init
-; Init state
-   ; Set hooks with firmware calls
-   ; (can be modified with gedeihen_set_hooks)
-; In: nothing
-; Out: hl preserved
-
-          push hl
-          ld a,sign_init:ld (flag_init),a
-          xor a:ld (wv_edit_buffer),a ; Mark as none edited
-; Init vars
-          call set_root_state ;!! must be done first
-
-      IF need_room
-; use /gedeihen_set_hooks/
-      END
-          ld hl,txt_set_cursor
-          SET_STATE(set_cursor)
-          ld hl,txt_get_cursor
-          SET_STATE(get_cursor)
-          ld hl,txt_place_cursor
-          SET_STATE(place_cursor)
-          ld hl,txt_wr_char
-          SET_STATE(write_char)
-          ld hl,break   ; todo
-          SET_STATE(paint_sprite)
-
-          ld hl,0:SET_STATE(parent) ;or: zero whole zone?
-          pop hl
-          ret
-
 setup_widget
 ;- Save current pos as topleft of widget
 ;- [Reset common fields (just focus for now)]
@@ -761,9 +459,28 @@ _setup_widget           ; <- when location copied for parent
 ;hack? reset focus
           jp _jp_hl_pop
 
-dbg_call WORD 
-dbg_call' WORD 
 
+; --------------------------
+gedeihen_disp
+; Display widget..
+; In: gedeihen_init and setup_widget must have been called.
+    ; location for each widget has been set in setup_widget
+
+; Temporarily use secondary stack, so that current state isn't touched
+; (state will be updated by e.g. iterating on multiline, which setup 
+  ;new struct hense reseting field position and co)
+      IF todo
+; struct refresh should use this as well?
+; to allow nested struct
+      END
+
+;setup left sp at leaf, we want to display from root
+          ld hl,state_stack
+          call clone_and_set_state_disp
+          call refresh_nofocus ; recursively display
+          jp set_root_state
+
+; --------------------------
 gedeihen_enter
 ; Give the focus to leaf widget 
    ; - Setup field_editor with widget's model (via on_enter method)
@@ -1161,7 +878,7 @@ widgets
           ; wc_init_word
           ; wc_init_double_word
 
-w_brk = 0               ; for now used as w_null
+          ASSERT(w_brk == 0) ; for now used as w_null
 virt_start
       WORD 0
       WORD noevent
@@ -1175,7 +892,7 @@ virt_start
 !! error must correct widget_virt_size
       END
 
-w_text = 1
+          ASSERT(w_text == 1)
       WORD 0
       WORD disp_text
       WORD text_width
@@ -1185,7 +902,7 @@ w_text = 1
       WORD h_null
       WORD wc_text
 
-w_text_dyn = 2
+          ASSERT(w_text_dyn == 2)
 ; getter return 
       WORD 0
       WORD disp_text_custom
@@ -1196,7 +913,7 @@ w_text_dyn = 2
       WORD h_null
       WORD wc_text_custom
 
-w_deci_99_custom = 3
+          ASSERT(w_deci_99_custom == 3)
 ; 2-digits decimal value (e.g. for noise)
       WORD flag_readwrite
       WORD disp_deci_padded
@@ -1207,7 +924,7 @@ w_deci_99_custom = 3
       WORD h_deci_field
       WORD wc_init_double_word
 
-w_deci_99_signed = 4
+          ASSERT(w_deci_99_signed == 4)
 ; Like w_deci_99_custom, but signed (e.g. for arp)
 ; Fixed witdh 3, for -99 to 99.
       WORD flag_readwrite
@@ -1219,7 +936,7 @@ w_deci_99_signed = 4
       WORD h_deci_field_signed
       WORD wc_init_double_word
 
-w_deci_9999_signed = 5
+          ASSERT(w_deci_9999_signed == 5)
 ; Like w_deci_99_custom, but on 4 digits
 ; Fixed witdh 4, for -9999 to 9999.
       WORD flag_readwrite
@@ -1231,7 +948,7 @@ w_deci_9999_signed = 5
       WORD h_deci_field_signed
       WORD wc_init_double_word
 
-w_hexa_digit_custom = 6
+          ASSERT(w_hexa_digit_custom == 6)
 ; 1 quartet (for volume or hard env type)
       WORD flag_readwrite
       WORD disp_hexa_digit_custom
@@ -1242,7 +959,7 @@ w_hexa_digit_custom = 6
       WORD h_hexa_digit
       WORD wc_init_double_word
 
-w_hexa_custom = 7       ; (setter byte, getter byte)
+          ASSERT(w_hexa_custom == 7) ; (setter byte, getter byte)
 ; Rational: 1/ We want to reuse hexa input/output routines, 
           ;    but client should not have to know them.
           ; 2/ This widget allows to be notified at validation.
@@ -1257,7 +974,7 @@ w_hexa_custom = 7       ; (setter byte, getter byte)
       WORD h_hexa
       WORD wc_hexa_custom
 
-w_struct = 8
+          ASSERT(w_struct == 8)
       WORD flag_readwrite ; in case one of field is rw
       WORD disp_struct
       WORD struct_width
@@ -1267,7 +984,7 @@ w_struct = 8
       WORD h_kstruct
       WORD wc_struct
 
-w_multiline = 9
+          ASSERT(w_multiline == 9)
 ; Multi_line view
       WORD flag_readwrite ; in case wrapped is rw
       WORD disp_multiline
@@ -1278,7 +995,7 @@ w_multiline = 9
       WORD h_kmultiline
       WORD wc_multiline
 
-w_optional = 10
+          ASSERT(w_optional == 10)
 ; param1: embedded ui
 ; param2: enabler getter (0: disable, non zero: enable)
       WORD flag_readwrite_dynamic
@@ -1290,7 +1007,7 @@ w_optional = 10
       WORD h_koptional
       WORD wc_optional
 
-w_optional_readwrite = 11
+          ASSERT(w_optional_readwrite == 11)
 ; Like w_optional, but we can still modify it even when deactivated
 ; E.G. Hard Env Type deactivated when volume <= 15, but we use
      ; this very field to activated it.
@@ -1305,7 +1022,7 @@ w_optional_readwrite = 11
       WORD h_koptional_readwrite
       WORD wc_optional  ; same: only change how 
 
-w_refresh = 12
+          ASSERT(w_refresh == 12)
 ; We'll refresh parent when child got validated.
 ; !!!BUG:embedded widget may have to 'call validate' and 'refresh_focus'
 ; Typical nesting: 
@@ -1323,7 +1040,7 @@ w_refresh = 12
       WORD h_krefresh
       WORD wc_refresh
 
-w_toggle_custom = 13    ;
+          ASSERT(w_toggle_custom == 13) ;
 ; Getter: Any non-zero returned in A means "set"
 ; Setter: Pass A=0 or &ff
       WORD flag_readwrite
@@ -1335,7 +1052,7 @@ w_toggle_custom = 13    ;
       WORD h_toggle
       WORD wc_toggle_custom
 
-w_key_handler = 14
+          ASSERT(w_key_handler == 14)
 ; Pseudo (non-visible) widget to catch keys. Bugged?
 ; Params: subwidget, handler
    ; Note: subwidget always placed first for consistency among wrappers
@@ -1463,6 +1180,7 @@ wc_multiline
 ; -------------------------------------
 struct_on_enter
 ; (re)enter current field (concrete widget that must catch events)
+key_handler_on_enter
 enter_child
 ; Go to child (already setup)
 ; HACK!! must re-propagate X/Y (needed when coming from update_pos_x/y)
@@ -1626,8 +1344,29 @@ _ml_refresh
       END
 
 
-key_handler_on_enter
-          jp enter_child
+refresh_nofocus
+; Redisplay without focus
+          call reset_cursor_from_widget_location
+          xor a
+;TODO: make sure AF is preserved
+          JP_STATE(display)
+
+; ------------------
+refresh
+;See /call_display/ for version without cursor reset
+;TODO? harmonize
+          GET_STATE(focus)
+          inc l:dec l
+          jr z,refresh_nofocus
+refresh_focus
+;Redisplay with focus
+          call reset_cursor_from_widget_location
+          xor a:dec a
+      IF todo
+; make sure AF is preserved?
+      END
+          JP_STATE(display)
+
 
 optional_on_enter
 ;Same. Difference is how we handle key
@@ -3451,6 +3190,224 @@ get_len
           sub l
           ret
 
+read_param_com
+          GET_STATE(param)
+read_param_com_
+          ld b,0
+          add hl,bc
+          ld c,(hl):inc hl
+          ld h,(hl):ld l,c
+          ret
+
+_hl_state_pnt
+          pop hl:inc hl:push hl ; ret address
+          push bc
+          dec hl:ld c,(hl):ld b,0
+          ld hl,(state_sp)
+          add hl,bc
+          pop bc
+          ret
+
+get_view_height
+          push bc
+          ld c,view_height
+          jr _get_state_byte_indirect_pop
+
+get_scroll_offset
+          push bc
+          ld c,scroll_offset
+;enchaine
+_get_state_byte_indirect_pop
+          call _get_state_byte_indirect
+          pop bc
+          ret
+
+_get_state_byte_indirect
+;In: C: field offset
+;Out: HL: pnt to field
+    ;  A: first byte of field
+    ; BC: trashed
+          GET_STATE(param4)
+          ld b,0:add hl,bc
+          ld a,(hl)
+          ret
+
+_get_state_word_indirect
+;In: C: field offset
+;Out: HL: pnt to field + 1
+    ; BC: value of field
+    ; NC, Z if BC=0
+    ; A preserved 
+          push af
+          call _get_state_byte_indirect
+          ld c,a
+          inc hl
+          or (hl)       ; For Z/NZ
+          ld a,c
+          pop bc
+          ld c,a
+          ld a,b
+          ld b,(hl)
+          ret
+
+call_insert_line
+;!! Pass A and DE (unused) to routine, but not flags, BC, HL
+;OUT: NC if field null
+    ; Otherwise, return flags of the routine which **must** return C
+               ; in case of success
+          ld c,insert_line
+          jr _call_state_indirect
+
+call_delete_line
+;like above
+          ld c,delete_line
+_call_state_indirect
+;only if field non null
+          call _get_state_word_indirect
+          ret z         ; NC then
+          jp jp_bc_ext
+
+call_state_on_enter
+          ld c,on_enter
+          jr _call_state
+
+call_state_get_width
+          ld c,get_width
+          jr _call_state
+
+call_state_on_validate
+          ld c,on_validate
+          jr _call_state
+
+call_state_get_line#
+          ld c,get_line#
+          jr _call_state
+
+call_state_select_line
+          ld c,select_line
+;enchaine
+_call_state
+          push hl
+          ld hl,(state_sp)
+          ld b,0
+          add hl,bc
+_jp_hl_pop
+          ld c,(hl):inc hl
+          ld b,(hl)
+          pop hl
+jp_bc
+          ld (dbg_call),bc
+          CHECK_ADDRESS()
+jp_bc_ext               ; Don't check address for external hook.
+          ld (dbg_call'),bc
+          push bc
+          ret
+
+_de_state_pnt
+          pop de:inc de:push de ; ret address
+          push hl
+          ex de,hl
+          dec hl:ld e,(hl):ld d,0
+          ld hl,(state_sp)
+          add hl,de
+          ex de,hl
+          pop hl
+          ret
+
+
+
+_set_state
+          push af
+          push hl
+          ld b,0
+          ld hl,(state_sp)
+          add hl,bc
+          pop bc
+          ld (hl),c:inc hl
+          ld (hl),b
+          ld l,c
+          ld h,b
+          pop af
+          ret
+
+_set_state_byte
+          ex (sp),hl
+          push hl
+          push bc
+          ld c,(hl)
+          ld b,0
+          ld hl,(state_sp)
+          add hl,bc
+          pop bc
+          ld (hl),a
+          pop hl
+          inc hl        ; ret adr
+          ex (sp),hl
+          ret
+
+_get_state
+          ld hl,(state_sp)
+_get_state_
+          ld b,0
+          add hl,bc
+          ld c,(hl):inc hl
+          ld h,(hl)
+          ld l,c
+          ret
+
+
+_get_state_byte
+          ex (sp),hl
+          push hl
+          push bc
+          ld c,(hl)
+          ld b,0
+          ld hl,(state_sp)
+          add hl,bc
+          ld a,(hl)
+          pop bc
+          pop hl
+          inc hl
+          ex (sp),hl
+          ret
+
+
+
+_check_address
+          push af
+          push hl
+; hooks can be defined externaly (e.g instrui.o or gednrt.o),
+; so we don't know what's the end address
+          ld hl,&4000:scf:sbc hl,bc:jr nc,.ok
+          ld hl,&A200:or a:sbc hl,bc:call c,&BE00
+.ok
+          pop hl
+          pop af
+          ret
+
+      IF dev_checks'
+_check_key_table
+          push hl:push de
+          ex de,hl
+   ; external tables, for now all ui < &8000
+          ld hl,&7FFF:or a:sbc hl,de:jr nc,.ok
+          ld hl,keytables:scf:sbc hl,de:call nc,mess
+          ld hl,keytables_:or a:sbc hl,de:call c,mess
+.ok
+          pop de:pop hl
+          ret
+
+_check_in_focus
+          push hl:push de:push af
+          ld hl,(state_sp)
+          ld de,(state_sp_handler)
+          or a:sbc hl,de:add hl,de:call nz,mess
+          pop af:pop de:pop hl
+          ret
+      END
+
+
+
 esc_code = &FC
 
 ; 1/ Firmware version
@@ -3475,7 +3432,7 @@ sep3_ui
 ;-------------
 ; Variables
 ;-------------   
-      SKIP -$ AND &1F   ; easier debugging
+      SKIP -$ AND &0F   ; easier debugging
 
 flag_init BYTE 0        ; For sanity check
 sign_init = &BB         ; arbitrary marker
@@ -3486,7 +3443,7 @@ is_modified BYTE 0
 state_sp WORD state_stack
 state_sp_handler WORD 0
 
-wv_tmp_buffer SKIP 80
+wv_tmp_buffer FILL 80,0
 wv_tmp_buffer_
 
 ; stack ------
@@ -3501,16 +3458,14 @@ state_stack_disp FILL state_stack_size,0 ; reset for easier dbg
 state_stack_disp_end
 
 ; --------------
-dummy_row WORD          ; Exported for external nrt
-dummy_col WORD 
+wv_text_pnt WORD 0
+wv_byte_pnt WORD 0
+wv_edit_buffer FILL 8,0
 
-wv_text_pnt WORD 
-wv_byte_pnt WORD 
-wv_edit_buffer SKIP 8
+dbg_call WORD 
+dbg_call' WORD 
+
+
 
 ged_end
-
-
-
-
 

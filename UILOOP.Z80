@@ -21,6 +21,7 @@ todo  = 1
       IMPORT "const.i"
       IMPORT "macro.i"
       IMPORT "import.i"
+      IMPORT "gedwidid.i"
 
 ho
           IMPORT_UILOOP_DEPS()
