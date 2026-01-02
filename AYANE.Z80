@@ -43,6 +43,7 @@ r2'   = 50              ; sequence
 
       IF 1
           IMPORT_CORE()
+          ASSERT(conv_code == conv)
       IF release
       LOAD "ayalib0r.bin"
       ORG phrase

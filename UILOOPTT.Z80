@@ -88,7 +88,7 @@ hi
       SAVE "ayapianr.bin",pianoui,pianoui_end-&8000-pianoui
       ELSE
       SAVE "ayalib0d.bin",post_core,uiloop_end-post_core
-      SAVE "ayagedd.bin",ged,ged_end-ged
+      SAVE "ayagedd.bin",field_module,ged_end-ged
       BANK BK_DISP
       SAVE "ayapiand.bin",pianoui,pianoui_end-&8000-pianoui
       END

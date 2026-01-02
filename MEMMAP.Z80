@@ -42,10 +42,10 @@ chunk_module = &0432
 ;periods_module = &057F
 ;timer = &0A61
 instr_module = &0DD8
-;chung f19 - &13b0
+chung = &0F19
 ;13b0 "AYA!  " what's that
 ;then free?
-; -- uiloop, phrasui, salo (via playsong.o)
+; -- uiloop, salo (via playsong.o)
 ppi   = &1400
 piano = &145F
 ; --  uiloop
@@ -57,7 +57,6 @@ uiloop = &1A50
 ;padding
 phrase = &1AE0
 track_module = &2200
-; -- salo
 fx_module = &3000
 ply   = &3004           ;needed for events signatures
 fx_set_phrase_jp = ply+5
@@ -65,10 +64,12 @@ evt_set_transpose_lsb = ply+&68 AND &FF ; track
 evt_change_phrase_lsb = ply+&79 AND &FF ; track 
 
 playsong_module = &33A2
+; -- salo
 shortcut = &3400
 init_module = &3491
 
-code_main = &3C20       ; ayane.o
+; -- Ayane
+code_main = &3C20
 
 ramlimit = &3FF0
 phrasui_shared_vars = &3FF0
@@ -197,9 +198,9 @@ fx_by_track = workzone + &0100 ; MAX_TRACKS*track_fx_size
 ; n**(type, event pnt)
 
 salo
-ged   = &8BA0
-field_module = ged
-free_ram_for_nrt = ged  ; used by salo-nrt, tracknrt
+field_module = &8BA0
+ged   = &8C6C
+free_ram_for_nrt = field_module ; used by salo-nrt, tracknrt
 ;free room &9e70-&9eff
 bandaya = &9F00
 

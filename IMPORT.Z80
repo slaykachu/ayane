@@ -4,16 +4,13 @@ todo  = 1
 
 ; 2025
    ; -- Alpha 1 --
-   ; Dec 26: Import assert.o
-       ; 24: track.o must skip instrsel.o
-       ; 19: Remove uiloopt -> ply dependency
 
       IMPORT "memmap.i"
       IMPORT "macro.i"
 
 ;-----------------------------
       MACRO PAD
-; Let all modules start at a round address
+; Let module start at a round address
       FILL -$ AND &0F,&F7 ; for debug, and no holes for save
       ENDM
 
@@ -26,24 +23,10 @@ todo  = 1
       IMPORT "conv.o"   ; out of bank for disp
       IMPORT "tracknub.o" ; get_track_header 
       IMPORT "song.o"   ; Song_get_first_track, Subsong_add ...
-
-; Handier than disp itself: do the connection
-; NO!!! ayane.o's clients of disp already in disp bank
-      ; 
-   ;   IMPORT "disp-jp.o" 
-      IF todo
-; See why "double defined" from ayane.o when uncommented
-;post_core    
-      END
-;!!! needed at the end, otherwise out of sync 
-;!!! when IMPORT_CORE is used twice (ayalib: directly and transitively)
-;!!! vs once (salo-nrt)
-;          PAD()
       ENDM
 
 ;-----------------------------
       MACRO IMPORT_SHARED_DEPS_ALL
-; Used by uiloop, salo and phrasui
           IMPORT_CORE()
       IMPORT "chunk.o"  ; salo:Next_node
       IMPORT "instr.o"  ; salo:because of ply
@@ -68,10 +51,16 @@ todo  = 1
       MACRO IMPORT_SHARED_DEPS''
 ; Used by salo, phrasui 
 .savepc
+          IMPORT_PIANO() ; needed by playsong below
       ORG phrase        ; needed to skip instrui, piano...
       IMPORT "phrase.o"
       ORG track_module  ; skip instrsel
       IMPORT "track.o"
+      IMPORT "periods.o" ; set_diapason
+      ORG fx_module     ; fx.o imported by ply
+      IMPORT "ply.o"    ; needed for events signature
+      IMPORT "playsong.o" ; not used by salo, but needed for ayalib2
+;put here since we import ply anyway
       ORG .savepc
       ENDM
 
@@ -104,22 +93,15 @@ todo  = 1
           IMPORT_SHARED_DEPS_ALL()
           IMPORT_SHARED_DEPS'()
           IMPORT_SHARED_DEPS''()
-      ORG save
+      ORG .save
       ENDM
 
 ;-----------------------------
       MACRO IMPORT_SALO_DEPS
-.savepc
-          IMPORT_SHARED_DEPS_ALL()
-          IMPORT_SHARED_DEPS()
-          IMPORT_PIANO() ; needed by playsong below
-          IMPORT_SHARED_DEPS''()
-      IMPORT "periods.o" ; set_diapason
-      ORG fx_module     ; fx.o imported by ply
-      IMPORT "ply.o"    ; needed for events signature
-      IMPORT "playsong.o" ; not used by salo, but needed for ayalib2
+; Same than phrasui
+          IMPORT_PHRASUI_DEPS()
+; not used by salo, but needed for ayalib2
 ;put here since we import ply anyway
-      ORG .savepc
       ENDM
 
 ;-----------------------------
@@ -179,19 +161,14 @@ status_off = bandaya +8
       ORG .save
       ENDM
 
-      MACRO IMPORT_PHRASUI
-.save
-      ORG phrasui
-      IMPORT "phrasui.o"
-          ASSERT($ <= disp_ayane)
-      ORG .save
-      ENDM
-
-
-      MACRO LOAD_PIANOUI
+      MACRO LOAD_PIANOUI release
 .save
       ORG pianoui
-      LOAD "ayapianu.bin"
+      IF release
+      LOAD "ayapianr.bin"
+      ELSE
+      LOAD "ayapiand.bin"
+      END
       ORG .save
       ENDM
 

@@ -1,7 +1,6 @@
 ; ----- Manual test of phrase editor -----
 do_nrt = 1              ; 0: manual test
 dev_checks' = 1
-use_testlib = 0         ; 1: with instr, but mem full with track
 short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 
 ; 2025
@@ -21,6 +20,7 @@ nrtfail = &BE00
       IMPORT "const.i"  ; kesc
       IMPORT "macro.i"
       IMPORT "import.i"
+          ASSERT(release == 0) ; To BRK if assert failure
 
       ORG code_start
       IF do_nrt
@@ -31,20 +31,19 @@ nrtfail = &BE00
 
 ;to do first    
           IMPORT_PHRASUI_DEPS()
-      ORG shortcut
-      IMPORT "shortcut.o" ; setup_keys
-
-      IF use_testlib
+;Not used by phrasui, but needed for Init_chung (via testlib)
+;Imported here to optimize ram
+      ORG chung
+      IMPORT "chung.o"
+      ORG instrui       ; reuse space
       IMPORT "testlib.o" ; for dev test
-      END
+
       BANK BK_DISP
     ;      LOAD_FONTS()  ; no need all fonts RN
-.save
       ORG fonte_small:LOAD "fntsmall.bin"
       ORG phrasui:IMPORT "phrasui.o"
-      ORG .save
           IMPORT_DISP() ; phradisp expect deps to be imported
-;      ORG bandaya_end
+      ORG shortcut
 
 ;---------------------------
 
@@ -65,14 +64,9 @@ dev_setup
 nrt_phrase0_dur = delai_ui_default*4
 nrt_phrase1_dur = delai_ui_default*8
 
-      IF use_testlib
           call init_for_test
-          call dummy_instr_ui
-      ELSE
-          call setup_keys
-          call Init_chunk_module
           call Init_track_module
-      END
+          call dummy_instr_ui
           call phrase_reset
       IF 1 AND [1-do_nrt]
           call dummy_phrase_64_rows
@@ -636,18 +630,17 @@ time6     TIME(6)
 ho
           LIMIT(ramlimit)
 
-; Ensure sync with ayalib
+; Ensure sync with uiloop
           ASSERT(memcpc_code == memcpc)
           ASSERT(scankey_code == scankey)
           ASSERT(conv_code == conv)
           ASSERT(chunk_code == chunk_module)
           ASSERT(instr_code == instr_module)
           ASSERT(piano_code == piano)
-          ASSERT(phrase_code == phrase)
 ; Ensure sync with ayane
-          ASSERT(field_editor == field_module)
           ASSERT(phrasui_code == phrasui)
 ; Ensure sync with salo
+          ASSERT(phrase_code == phrase)
           ASSERT(track_code == track_module)
 
       BANK BK_DISP

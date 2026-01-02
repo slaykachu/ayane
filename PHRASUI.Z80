@@ -2,23 +2,7 @@
 todo  = 1
 ; 2025
 ; -- Alpha1 --
-  ; Dec 
-    ; 16 IMPORT_PHRADISP: in BK_DISP
-       ; Fix display of non-aligned row at end of page.
-         ; (switch pages by 32 rows instead of 33)
-    ; 15 Handle all tracks
-       ; Handle deletion note/vol/instr
-       ; Clone when modifying repetition (pre_modif)
-    ; 13 Refresh all instances of repeated phrase       
-    ; 12 Handle page change
-       ; Handle kcup/kcdwn
-    ; 10 Clean-up code: - All vars infered from time_at_top & time_cur
-                          ; See /state/
-                      ; - Better naming
-
-  ; Nov
-    ; 27 
-    ; 19 1st version
+  ; Dec 31. Use ged binary.
 
 dev_checks' = 1
 
@@ -26,9 +10,27 @@ dev_checks' = 1
       IMPORT "memmap.i" ; BK_DISP
       IMPORT "macro.i"
       IMPORT "import.i"
-.savepc                 ; needed since "ORG" used for IMPORT_PIANO
+      IMPORT "gedwidid.i"
           IMPORT_PHRASUI_DEPS() ; other deps below
+.savepc
+      ORG field_module
+      IF release
+      LOAD "ayagedr.bin"
+      ELSE
+      LOAD "ayagedd.bin"
+      END
       ORG .savepc
+
+gedeihen_init = ged
+gedeihen_set_hooks = ged+2
+setup_widget = ged+4
+gedeihen_disp = ged+6
+gedeihen_enter = ged+9
+gedeihen_process = ged+12
+enter = ged+15
+refresh_nofocus = ged+18
+validate = ged+21
+update_pos_y = ged+24
 
 phrasui_code
           jp phrase_cold_refresh
@@ -555,9 +557,12 @@ track_wid = 20
           ASSERT(track_wid == 20)
           ld c,a:2 ** add a:add c:2 ** add a ; * 20
           inc a         ;ged cursor 1-based
+          push af
+          call ph_get_cursor
+          pop af
           ld h,a
-          GET_STATE_BYTE(widget_pos_y)
-          ld l,a
+;         GET_STATE_BYTE(widget_pos_y)
+;         ld l,a
 ; we don't use update_pos_x, which would require ged.propagate_x = 1
 ; also, setup_phrase_ui rewind to 1st field, 
 ; which is what we want for next_track
