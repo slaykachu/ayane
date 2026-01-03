@@ -1,23 +1,76 @@
 ; <<< Play song >>>
 
+;2026 Jan 2: play_song_cpt: must scope bk (when called for PHRASUI)
+        ; 1: Add set_track_stack for replay from arbitrary point
+
+dev_checks' = 0
+
       IMPORT "memmap.i"
       IMPORT "macro.i"
 
 .refpc
+      IMPORT "memcpc.o" ; scope_bk_base
       IMPORT "ppi.o"
       IMPORT "piano.o"  ; reuse code
       IMPORT "ply.o"
       IMPORT "timer.o"
           ASSERT($ == .refpc) ; deps must have been imported beforehand
 
+playsong_code
+          jr play_song
+
+set_track_stack
+;--------------
+; In: A = track # (1-based)
+    ; B = transpose
+    ;HL = pnt in phrase 
+    ;DE = delai before row (0 if immediate)
+    ;Amorce_song called
+          push hl
+          push de
+      IF dev_checks'
+          or a:call z,mess
+          cp 4:call nc,mess ; tmp. TO be replaced by MAX_TRACKS
+      END
+;stack pnt (1 -> track_stack itself)
+          ld hl,track_stack+1 - size_per_track
+          ld de,size_per_track
+.mul      add hl,de
+          dec a
+          jr nz,.mul
+;rdv track event = &ffxx (none as we won't play past row)
+          dec a         ; &ff
+          ld (hl),a:inc hl ; MSB suffice
+;no pnt event then
+          inc hl
+          inc hl
+          ASSERT(track_rdv_row == 4)
+          pop de
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+          ASSERT(track_phrase_pnt == 6)
+          pop de        ; was hl: pnt
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+          ASSERT(track_transpose == 9)
+          inc hl
+          ld (hl),b
+;The rest (max vol, instr_null ...) already set by Amorce_song
+          ret
+
 play_song
 ;--------
-; In: Amorce_song called
+; In: Amorce_song or set_track_stack called
 ; Out: N/A (We loop until ESC pressed)
-
+          xor a
+play_song_cpt
+;------------
+; A = nb iter (0 = inf)
+; Out: N/A (We loop until ESC pressed or cpt exhausted)
+          ld (play_cpt+1),a
+          call scope_bk_base ; For return to PHRASUI
           call _prelude
           xor a:ld (.keyprev+1),a ; consider space pressed
-          call play_prelude
           call play     ; prepare regs
           call play_prelude'
           jr .play_song_entry
@@ -51,6 +104,14 @@ play_song
 
           call play     ; regs for next frame
 
-          SUB_TM_CALL(5+3)
+          SUB_TM_CALL(12+4)
+          ex af,af
+.play_cpt ld a,0
+          or a:jr z,.ok ; already 0: until key press
+          dec a:ld (.play_cpt+1),a
+          jp z,_stop_play
+          SUB_TM''(8-1)
+.ok
+          ex af,af
           jr .play_song_lp
 

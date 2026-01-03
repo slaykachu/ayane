@@ -63,10 +63,10 @@ fx_set_phrase_jp = ply+5
 evt_set_transpose_lsb = ply+&68 AND &FF ; track 
 evt_change_phrase_lsb = ply+&79 AND &FF ; track 
 
-playsong_module = &33A2
+playsong_module = &34A2
 ; -- salo
-shortcut = &3400
-init_module = &3491
+shortcut = &3530
+init_module = &35C1
 
 ; -- Ayane
 code_main = &3C20
@@ -177,7 +177,7 @@ fonte_small = &4800
 disp  = &48C8           ; start of code after fonts
 pianoui = &4F00
 phrasui = &5620
-disp_ayane = &5C60      ; other modules imported by ayane.o
+disp_ayane = &5CC0      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
 
@@ -196,8 +196,8 @@ fx_by_track = workzone + &0100 ; MAX_TRACKS*track_fx_size
 ; Reserve &100 so we can easily go from one track to the next
 ; (8100, 8110, 8120, 8130 ...)
 ; n**(type, event pnt)
-
-salo
+salo                    ; &8200
+tmp_buf_nrt SKIP &0100  ; well except salo-nrt!
 field_module = &8BA0
 ged   = &8C6C
 free_ram_for_nrt = field_module ; used by salo-nrt, tracknrt

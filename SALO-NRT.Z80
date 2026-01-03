@@ -556,7 +556,7 @@ vampire_size = &1110
           ASSERT(phrase_code == phrase)
           ASSERT(track_code == track_module)
 ; Sync with ayane             
-          ASSERT(play_song == playsong_module)
+          ASSERT(playsong_code == playsong_module)
           ASSERT(init_code == init_module)
 
       IF 0              ; dev_checks (ambiguous)

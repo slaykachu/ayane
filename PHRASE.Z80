@@ -676,8 +676,7 @@ phrase_get_row_at
              ; BC = t - t0
              ;  Z if t = t0 (row exactly at t)
              ; NZ otherwise
-    ; Otherwise, NC (empty phrase or past 
-             ; 
+    ; Otherwise, NC (empty phrase or past eoc)
     ; DE preserved in any case.
 
           call connect_phrase_begin
@@ -1122,6 +1121,9 @@ ld_hl_bc
           ld (hl),b:inc hl
           ret
 
+skip_all_ext
+; When called from bank (e.g. phraseui)
+          call scope_bk_phrase
 skip_all
 ; See /goto_next_row/ to follow eoc as well
 ;In:  HL: start of row

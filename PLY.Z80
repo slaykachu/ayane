@@ -17,6 +17,13 @@ need_room = 1
 
  ; See /track_stack/
 
+; \/\/\/ 2026 \/\/\/\/\
+; ----- Alpha1 -----
+  ; Jan
+   ;02 Amorce_song: must scope bk (when called from PHRASUI)
+   ;01 read_vol: Must add track volume, since it will be sub in instr.o
+               ; (track volume cannot be set right now, so the bug
+                 ;didn't manifest)
 ; \/\/\/ 2025 \/\/\/\/\
 ; ----- v0au -----
   ; Nov
@@ -298,8 +305,6 @@ update_instr_tm = 61
 
       MACRO UPDATE_NOTE phrase_in_de
       IF phrase_in_de
-; l: note+transpose (aka current note)
-; h: transpose
           ld a,(de):INC_DE()
 ; Periods in word, so we multiply*2 before storing.
   ; - More optimised (don't have to redo it for next ticks)
@@ -312,6 +317,8 @@ update_instr_tm = 61
           call c,mess   ; >= 128: reserved
       END
           pop hl
+; l: note+transpose (aka current note)
+; h: transpose
           add h:ld l,a
           push hl
       ELSE
@@ -664,17 +671,17 @@ tm_read_vol = 11 + 17   ; when .okvol taken
           pop de
 ; d: row volume+track volume (aka current volume) 
    ; In MSB since we want it in B ultimately
-; e: track volume (to subtract)
+; e: track volume 
           bit bit_vol-nb_fx,b:jr z,.okvol
 
       IF use_track_volume
           ld a,(hl)
           INC_HL()
-          sub d:jr nc,$+3:xor a
-          ld e,a
-          SUB_TM''(8-1) ; -1 compensate jr
+          add e         ; no need to clip. If >=&10 will mute non-hard.
+          ld d,a
+          SUB_TM''(5-1) ; -1 compensate jr
       ELSE
-          ld e,(hl)
+          ld d,(hl)
           INC_HL()
           SUB_TM''(3-1)
       END
@@ -898,15 +905,15 @@ psg
 Amorce_song
 ; Setup internal variables and stacks.
 ; + init period table
-
+;In:
       IF ayane
-;In: N/A (subsong selected)
+   ; N/A (subsong selected)
       ELSE
-;IN HL= tracks (determines which sub_song)
+   ; HL= tracks (determines which sub_song)
       END
-
           ld de,track_stack
       IF ayane
+          call scope_bk_track ; when called from PHRASUI
           call Song_get_first_track
 .tracklp
           push hl
@@ -1052,7 +1059,7 @@ track_stack_init_size = $-track_stack_init + 2
  !! unexpected
       END
 save_org = $
-hi
+ho
 ; We can eat into psg_regs: init routine overwritten, nevermind.
 ;      FILL compiled_periods - $,0
       SKIP compiled_periods + &30 - $
@@ -1070,7 +1077,7 @@ track_phrase_pnt = 6
  ; Word     ; Phrase pnt
 track_transpose = 9
  ; word Note : LSB: row (current note) MSB: track (aka transpose)
- ; word Volume:LSB: track              MSB: row
+ ; word Volume:LSB: track (0: max)     MSB: row   (0: max)
       IF use_volume
 track_fx = 12
       ELSE
@@ -1104,8 +1111,9 @@ USED_TRACKS = 3
       FILL track_stack_size2,0
           ]
 
+size_per_track = track_stack_size0 + track_stack_size2 + [nb_fx+1]*4
 track_stack_
-
+hi
       IF 1-ayane
       ORG save_org
       END

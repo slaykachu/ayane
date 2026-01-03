@@ -1,10 +1,14 @@
 ; <<<< Phrase Editor >>>>
-todo  = 1
-; 2025
+todo  = 0
 ; -- Alpha1 --
+; 2026
+  ; Jan 1. Add consume_row (for CTRL-SPACE and when entering note)
+; 2025
   ; Dec 31. Use ged binary.
 
 dev_checks' = 1
+
+          ASSERT($ AND &C000 == &4000) ; must be imported
 
       IMPORT "const.i"  ; kclr
       IMPORT "memmap.i" ; BK_DISP
@@ -52,6 +56,15 @@ phrase_cold_refresh
  ; -- ad-hod display
           call refresh_page
  ; -- gedeihen 
+          call gedeihen_init
+
+          ld hl,ph_set_cursor
+          ld ix,ph_get_cursor
+          ld iy,ph_place_cursor
+          ld de,ph_write_char
+          ld bc,_paint_sprite
+          call gedeihen_set_hooks
+
           ld hl,&0101
           call setup_phrase_ui
  ; -- focus on current row
@@ -165,6 +178,7 @@ k_ml
       BYTE kcrgt:WORD next_track
       BYTE klft:WORD prev_track
       BYTE kclft:WORD prev_track
+      BYTE " ":WORD space
       BYTE "R"-&40:WORD refresh_page ; debug
 ;!! put at this level, so that /refresh_row/ update widget's Y at 
   ; the right level (struct)
@@ -252,28 +266,21 @@ is_empty
 ;-------------------------
 edit_row_com
 ;-----------
-          call play_piano
+          call consume_row
+;Drop hl as we'll skip exactly "step" 
           ld a,1:ld (is_modified),a
           scf
           ret
 
+space
+;----          
+;Play row and "row_dwn"
+          call consume_row
+          jr refresh_row
+
 row_dwn
-;------
-; Go to next delai-aligned row or non-empty row
-; whichever comes first
-; -- next row
-          call get_time_row
-          call phrase_seek_row_at
-          ld hl,(row_t1)
-          push hl
-; -- next delai aligned
-          call get_delai_aligned
-          jr nz,$+3:add hl,bc ; already aligned -> add delai
-; -- take min
-          pop bc
-          or a:sbc hl,bc:add hl,bc:jr c,.ok
-          ld l,c:ld h,b
-.ok
+;------      
+          call get_next_row
           jr refresh_row
 
 row_ctrl_dwn
@@ -360,15 +367,35 @@ _rr_entered ld a,0
       END
           jr refresh_row__
 
+get_next_row
+; Get offset next delai-aligned row or non-empty row
+; whichever comes first.
+; -- next row
+          call get_time_row
+          call phrase_seek_row_at
+          ld hl,(row_t1)
+          push hl
+; -- next delai aligned
+          call get_delai_aligned
+          jr nz,$+3:add hl,bc ; already aligned -> add delai
+; -- take min
+          pop bc
+          or a:sbc hl,bc:add hl,bc
+          ret c
+          ld l,c:ld h,b
+          ret
+
 get_time_row
 ;-----------
 ; Out: DE = relative time in phrase
      ;  Z if 0  (!! cannot use sub_ade_ibc_ihl as is)
 ; Assume offset <= &ffff
+          push hl
           ld hl,(time_cur)
           ld de,(fetched_t0)
           or a:sbc hl,de
           ex de,hl
+          pop hl
           ret
 
 select_row_ui
@@ -725,20 +752,70 @@ get_page_shift
 setup_phrase_ui
 ;IN: hl = cursor (1-based)
           call _set_cursor
-
-          call gedeihen_init ;needed before (re)calling setup_widget
-
-          ld hl,ph_set_cursor
-          ld ix,ph_get_cursor
-          ld iy,ph_place_cursor
-          ld de,ph_write_char
-          ld bc,_paint_sprite
-          call gedeihen_set_hooks
-
           ld hl,phrase_ui
           jp setup_widget
 ; ----------------------
+consume_row
+;----------
+; Play current row and go to next one
+; Out: HL: offset next row in phrase
 
+          call get_next_row ; to compute duration
+          push hl
+          call get_time_row
+          or a:sbc hl,de ; duration
+          push hl
+          call Amorce_song ; for sane default
+;fast forward
+          ld a,1
+.tracklp
+          push af
+          call Song_select_track
+          ld hl,time_cur
+          call track_select_phrase_at
+          call get_time_row
+          call phrase_seek_row_at
+          ld de,&FFFF   ; flag no row
+          jr nc,.done
+; if  Z: row starts here (set de = 0)
+          ld e,c:ld d,b
+          jr z,.done
+; if NZ: program nxt row 
+          ex de,hl
+          ld hl,(row_t1) ; time nxt row
+          or a:sbc hl,bc ; - offset cur
+          ex de,hl
+          call skip_all_ext
+.done
+          push hl
+          push de
+          ld hl,time_cur
+          call track_get_state_at
+          ld b,a
+          pop de
+          pop hl
+          pop af
+          push af
+          call set_track_stack
+          pop af
+          inc a
+          cp 4
+          jr c,.tracklp
+
+          pop bc        ; duration to play
+          ld a,c        ; only LSB 
+          call play_song_cpt
+; restore
+          ld a,(track_cur)
+          call Song_select_track
+; Necessary for ged refresh when leaving field
+          call refresh_state_cur
+          call select_row_ui
+          pop hl
+          ret
+
+
+; ----------------------
 note_empty BYTE "---",0
 buf_note_text FILL 4,0
 

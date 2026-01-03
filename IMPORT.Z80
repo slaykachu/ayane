@@ -58,7 +58,7 @@ todo  = 1
       IMPORT "track.o"
       IMPORT "periods.o" ; set_diapason
       ORG fx_module     ; fx.o imported by ply
-      IMPORT "ply.o"    ; needed for events signature
+      IMPORT "ply.o"    ; salo: events signature phrasui: Amorce_song
       IMPORT "playsong.o" ; not used by salo, but needed for ayalib2
 ;put here since we import ply anyway
       ORG .savepc
@@ -69,8 +69,9 @@ todo  = 1
 ; Must be imported first (well after IMPORT_CORE),
 ; so instrui & co use this instance
 .save
+      ORG field_module
+      IMPORT "field.o"  ; to pull field_editor      
       ORG ged
-      IMPORT "field.o"  ; to pull field_editor
       IMPORT "ged.o"
           LIMIT(bandaya)
       ORG .save
@@ -91,17 +92,20 @@ todo  = 1
       MACRO IMPORT_PHRASUI_DEPS
 .save
           IMPORT_SHARED_DEPS_ALL()
-          IMPORT_SHARED_DEPS'()
+          IMPORT_PIANO()
           IMPORT_SHARED_DEPS''()
       ORG .save
       ENDM
 
 ;-----------------------------
       MACRO IMPORT_SALO_DEPS
-; Same than phrasui
-          IMPORT_PHRASUI_DEPS()
-; not used by salo, but needed for ayalib2
-;put here since we import ply anyway
+;same as phrasui + chung
+.save
+          IMPORT_SHARED_DEPS_ALL()
+          IMPORT_SHARED_DEPS()
+          IMPORT_PIANO()
+          IMPORT_SHARED_DEPS''()
+      ORG .save
       ENDM
 
 ;-----------------------------

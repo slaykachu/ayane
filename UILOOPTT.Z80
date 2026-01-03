@@ -83,12 +83,12 @@ hi
       ELSE
       IF release
       SAVE "ayalib0r.bin",post_core,uiloop_end-post_core
-      SAVE "ayagedr.bin",ged,ged_end-ged
+      SAVE "ayagedr.bin",field_module,ged_end-field_module
       BANK BK_DISP
       SAVE "ayapianr.bin",pianoui,pianoui_end-&8000-pianoui
       ELSE
       SAVE "ayalib0d.bin",post_core,uiloop_end-post_core
-      SAVE "ayagedd.bin",field_module,ged_end-ged
+      SAVE "ayagedd.bin",field_module,ged_end-field_module
       BANK BK_DISP
       SAVE "ayapiand.bin",pianoui,pianoui_end-&8000-pianoui
       END
