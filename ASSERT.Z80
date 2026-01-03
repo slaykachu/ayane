@@ -9,7 +9,7 @@
 
 _to_be_implemented
           xor a:jr com_error
-_memory_full
+memory_full
           ld a,1:jr com_error
 _mess
           ld a,2
@@ -23,12 +23,10 @@ com_error
 ;fail  = &BE00
 mess  = &BE00
 to_be_implemented = &BE00
-memory_full = &BE00
 
       ELSE
 mess  = _mess
 to_be_implemented = _to_be_implemented
-memory_full = _memory_full
       END
 
 
