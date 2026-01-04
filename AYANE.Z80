@@ -5,6 +5,7 @@
 ; 2026
  ;--- alpha 1 ---
   ; Jan
+   ; 3: Pre-load "instr.aya"
    ; 2: Dedicated help page
 ; 2025
   ; Dec
@@ -177,7 +178,7 @@ start
           call full_init
           CALL_DISP_BK(start_disp_bk)
 
-      IF 1
+      IF 0
 ; Empty module, but with phrases so tracks aren't empty
           call New_module ; wasn't done by full init!? maybe for salo
           call Song_attach_empty_phrases
@@ -185,7 +186,7 @@ start
       ELSE
 ; load module 
           call io_prelude
-          ld hl,name_module
+          ld hl,instr_lib
           ld de,tmp_buf
           push de
 ;routine is not in DISK_BK, but name_module is
@@ -521,8 +522,7 @@ start_disp_bk
     ;       call help_init ; Move in full_init? Doesn't matter!
           jp firm2shift ; from BASIC 
 
-;vampire BYTE "testdata/vampire1.aya",0
-vampsync BYTE "vampsync.aya",0
+instr_lib BYTE "instr.aya",0
 
 ;---------------------
 welcome
