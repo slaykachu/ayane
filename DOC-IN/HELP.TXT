@@ -12,7 +12,7 @@ Cursor keys:  Navigate. With CTRL: Navigate faster
 
 --- In phrase editor -------------------
 Space: Play row and goto next row
-CLR:   Delete note (resp. instr, vol)
+DEL:   Delete note (resp. instr, vol)
 
 --- In instrument editor ---------------
 CTRL+f0/f.:   First/Last row
