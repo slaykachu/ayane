@@ -5,7 +5,9 @@
 ; 2026
  ;--- alpha 1 ---
   ; Jan
-   ; 3: Pre-load "instr.aya"
+   ; 3: Open/Save: update display
+      ; field_refresh_wait_key: handle field out of bank
+      ; Pre-load "instr.aya"
    ; 2: Dedicated help page
 ; 2025
   ; Dec
@@ -184,18 +186,15 @@ start
           call Song_attach_empty_phrases
 ;          call dummy_instr_ui ; TMP test
       ELSE
-; load module 
-          call io_prelude
+; load module
           ld hl,instr_lib
-          ld de,tmp_buf
-          push de
-;routine is not in DISK_BK, but name_module is
-          CALL_DISP_BK(copy_nt)
+          push hl
+          CALL_DISP_BK(copy_filename) ; for display
           pop hl
-          ld bc,0
-          call load_file
+          ld de,tmp_buf
+          CALL_DISP_BK(copy_nt) ; for open_file
+          jp open_file
       END
-          jp io_postlude
 
 ;----------
 ayane_entry
@@ -336,7 +335,8 @@ io_prelude
 ; Switch to classical display for proper display of amsdos messages
 ; Also, allow to use page C0:4000       
 ;Out: HL= tmp_buf
-    ; BC= 0 (meta size)
+    ; BC= meta size (0 for now)
+metadata_size = 0
           call status_off ; first so that cls is faster!
        ;   CALL_DISP_BK(cls)
           ld a,2:call &BC0E ; For amsdos error message
@@ -347,7 +347,9 @@ io_prelude
           ld bc,io0_
           ldir
           ld hl,tmp_buf
-;          ld bc,0   ; already at 0
+      IF metadata_size  ; bc at 0 here
+          ld bc,metadata_size
+      END
           ret
 
 _error
@@ -383,8 +385,10 @@ open_command
 ;-----------                        
           CALL_DISP_BK(edit_filename)
           ret nc
-;Out of bank: save_file doesn't reconnect bk. 
+open_file
+;Out of bank: open_file doesn't reconnect bk. 
 ; AND: io_prelude must connect C1 to install io0
+;IN: tmp_buf contains filename
           call io_prelude
           call load_file
           jp io_postlude
@@ -624,11 +628,16 @@ field_refresh_wait_key
          ; NZ: all other keys
 
           push de
+          push hl
+; fix address 4xxx -> cxxx if field in bank (field_refresh in c1)
+          ld a,h:cp &40:jr c,.okh
+          cp &80:jr nc,.okh
+          set 7,h
+.okh
           ld a,e
           ld e,y_pos_last_line
-          set 7,h       ; +&8000 (c1)
           CALL_STATUS(field_refresh)
-          res 7,h
+          pop hl
           pop de
 
           call km_wait_key
@@ -641,15 +650,19 @@ field_refresh_wait_key
 edit_filename
 ;in bk disp for name handling    
           ld hl,name_module
-          ld d,5
+          ld de,tmp_buf
+          push de
+          call copy_nt
+          pop hl
+          ld d,x_pos_command
           call saisie_champ
           push af
           call clear_status_last_line
           pop af
           ret nc
-
-          ld hl,name_module
-          ld de,tmp_buf
+;enchaine
+copy_filename
+          ld de,name_module
           call copy_nt
           scf
           ret
