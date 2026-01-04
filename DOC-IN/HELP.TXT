@@ -1,0 +1,22 @@
+--- Main shortcuts/keys ----------------
+CTRL-f1:    Welcome page
+CTRL-f2:    Phrase editor
+CTRL-f3:    Instrument editor
+CTRL-I:     Select instrument
+CTRL-O/S:   Open/Save 
+CTRL-Space: Play song from start
+Press "piano key" (Z,S,X, Q,2,W,...) to play instrument
+
+--- In both editors --------------------
+Cursor keys:  Navigate. With CTRL: Navigate faster
+
+--- In phrase editor -------------------
+Space: Play row and goto next row
+CLR:   Delete note (resp. instr, vol)
+
+--- In instrument editor ---------------
+CTRL+f0/f.:   First/Last row
+CTRL-DEL:     Delete row
+ENTER/RETURN: Insert row
+Space:        Toggle on-off 
+

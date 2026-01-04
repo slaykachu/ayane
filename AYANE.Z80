@@ -2,8 +2,11 @@
 ; Ayane main entry point / ui
 ; ---------------------------
 
-; 2025
+; 2026
  ;--- alpha 1 ---
+  ; Jan
+   ; 2: Dedicated help page
+; 2025
   ; Dec
    ;25: CTRL-O to open .aya
       ; plug phrase editor 
@@ -199,7 +202,7 @@ ayane_entry
           ENTER(ayane_entry)
           call ui_init_ged_null
           call clear_status_last_line
-          CALL_DISP_BK(help)
+          CALL_DISP_BK(welcome)
 
 ui_loop_no_exit
 ;Common loop for all screens. Well, except phrase editor below
@@ -217,6 +220,9 @@ _ui_process_com
           call scan_key
           ret nc
           jp hl
+
+help
+          JP_DISP(_help)
 
 phrase_ed_entry
 ;--------------
@@ -403,10 +409,11 @@ clear_status_last_line
 
 shortcuts
 ;"screens" -> no return
-      BYTE "H"-&40:WORD ayane_entry
+      BYTE kcf+1:WORD ayane_entry
       BYTE kcf+2:WORD phrase_ed_entry
       BYTE kcf+3:WORD instr_ed_entry
 ;commands
+      BYTE "H"-&40:WORD help
       BYTE "I"-&40:WORD instr_selector_entry
       BYTE kcspc:WORD play_song
       BYTE "O"-&40:WORD open_command
@@ -469,6 +476,8 @@ init_disp_bk
 
 text_welcome LOAD "doc-in/welcome.txt"
       BYTE 0
+text_help LOAD "doc-in/help.txt"
+      BYTE 0
 text_instred LOAD "doc-in/instred.txt"
       BYTE 0
 
@@ -496,39 +505,44 @@ messages_error
       BYTE "message 1",0
       BYTE "message 2",0
 
-
-
 _txt_open BYTE "Open:",0
 
 start_disp_bk
           call init_disp_bk
           ld hl,text_welcome
           ld de,text_welcome
-          call conv_protext
+          call conv_protext ; not protext anymore, still needed
           ld hl,text_instred
           ld de,text_instred
           call conv_protext
+          ld hl,text_help
+          ld de,text_help
+          call conv_protext
     ;       call help_init ; Move in full_init? Doesn't matter!
-          ld hl,vampsync
-          ld de,name_module
-          call copy_nt
           jp firm2shift ; from BASIC 
 
 ;vampire BYTE "testdata/vampire1.aya",0
 vampsync BYTE "vampsync.aya",0
 
 ;---------------------
-help
+welcome
 ;---------------------
-;Welcome message / help: same thing for now  
+;Welcome message
           ld a,2:call mc_set_mode
-          xor a:ld b,a:ld c,a:call scr_ink_set
-          ld a,1:ld bc,&1A1A:call scr_ink_set
           call cls
           ld bc,text_welcome
           ld de,screen
           call display_page
           ret
+
+_help
+          ld a,2:call mc_set_mode
+          call cls
+          ld bc,text_help
+          ld de,screen
+          call display_page
+          call &BB06
+          jp reenter_last
 
 ;-----------------------------------------------
 ; Common helpers
