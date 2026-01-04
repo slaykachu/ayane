@@ -49,9 +49,9 @@ chung = &0F19
 ppi   = &1400
 piano = &145F
 ; --  uiloop
-instrui = &157A
-instrsel = &1989
-uiloop = &1A50
+instrui = &1580
+instrsel = &198F
+uiloop = &1A56
 ; ---- uiloop end ----
 ; -- phrasui, salo
 ;padding
@@ -177,7 +177,7 @@ fonte_small = &4800
 disp  = &48C8           ; start of code after fonts
 pianoui = &4F00
 phrasui = &5620
-disp_ayane = &5CC0      ; other modules imported by ayane.o
+disp_ayane = &5CE0      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
 

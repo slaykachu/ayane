@@ -5,6 +5,9 @@ tmp_rast = 0
 ; <<<< Handling cpc keyboard as piano >>>>
 ; -> Using hardware keycode: locale agnostic (azerty/qwerty)
 
+;2026 Jan 3 Handle ^ (qwerty) / - (azerty) for period 0 (note_c_10)
+
+      IMPORT "const.i"  ; note_c_10
       IMPORT "memmap.i"
       IMPORT "macro.i"
 
@@ -257,18 +260,18 @@ scan_keys_tm1 = 11      ; until jr pressed (taken)
           ret
 
 .pressed
-          SUB_TM(scan_keys_tm0 + scan_keys_tm1 + 20)
+          SUB_TM(scan_keys_tm0 + scan_keys_tm1 + 25)
           ex af,af
           ld d,0:ld hl,map:add hl,de
           ld a,(hl)
 nn    = &FF             ; No note
-      IF nn < &80
-  !! review that
-      END
+          ASSERT(nn >= &80)
+          ASSERT(note_c_10 < &80)
           or a
           ret m         ;  TM shorter. Nevermind since we stop playing
 octave_shift = $+1      ; Set by uiloop from pianoui.octave
-          add 4*12      ; give proper index in /periods/
+          ld e,4*12     ; give proper index in /periods/
+          cp note_c_10:jr z,$+3:add e ; leave as-is
           scf
           ret
 
@@ -341,7 +344,6 @@ mute_psg BYTE &3F,0,0,0
 map
 ; Note (in demi-tone. C=0 C#=1 ...) for each keycode
 
-
 ; In comments: keys on qwerty
 
 ; 0-7 : no notes (numeric pad)
@@ -349,7 +351,7 @@ map
 ; 16-23: clr [ ?? ] f4 shift \ ???
       BYTE nn,31,nn,18,nn,nn,17,nn
 ; 24-31: ^ - @ P ; : / . 
-      BYTE 30,nn,29,28,nn,15,16,14
+      BYTE note_c_10,nn,29,28,nn,15,16,14
 ; 32-39:   0  9  O  I  L  K  M  ,
       BYTE 27,25,26,24,13,nn,11,12
 ; 40-47:   8  7  U  Y  H J  N Space
