@@ -1,5 +1,8 @@
 ; Tests ply.o            
 do_profile = 1
+; 2026
+; --- alpha1 --
+  ; Jan  4 Add test_clr
 ; 2025 
 ; --- v0.0au ---
   ; Nov  9 Add test_endoftrack
@@ -24,12 +27,11 @@ do_profile = 1
 
  ; ensure same location than in ayane.o 
           IMPORT_SHARED_DEPS_ALL()
+          IMPORT_SHARED_DEPS() ; Init_chung, New_instr_ayane
  ; For Init_track_module, phrase_select_new_row
           IMPORT_SHARED_DEPS''()
-      ORG fx_module     ; fx.o imported by ply
-      IMPORT "ply.o"    ; needed for events signature
-
       IMPORT "timer.o"  ; for fx_end, SUB_TM_CALL
+      ORG playsong_module
       IMPORT "testlib.o"
 
 track1 = tracks+4       ; track 0 empty (reserved)
@@ -39,7 +41,6 @@ track1 = tracks+4       ; track 0 empty (reserved)
 fail  = &BE00
 
 tests
-
       IF do_profile
           call test_profiling
           call test_timer_nop
@@ -51,6 +52,7 @@ tests
       END
           call test_empty_phrase
           call test_note_instr
+          call test_clr
           call test_sync_buzzer
           call test_endoftrack
           ret
@@ -167,6 +169,7 @@ test_note_instr
 ;simple note with simple instrument
           call nrt_init
           call nrt_dummy_song
+check_note_instr
       IF do_profile
           call tm_play_from_start
       ELSE
@@ -178,11 +181,43 @@ test_note_instr
           call compare_sized
           ret
 
-.ref  WORD &EEE4+pitch
+.ref
+      WORD &EEE4+pitch
       FILL 5,untouched
       BYTE &3E
       BYTE 15
       FILL 2,untouched
+
+test_clr
+;-------
+; Check instr is propely cut
+; Prerequisite: test_note_instr
+          call nrt_init
+          call nrt_dummy_song
+          ld b,0:call instr_set_loop
+          ld de,1:call phrase_select_row_at
+          call row_clr
+;Sanity: replay test for first iter
+          call check_note_instr
+;Check: volume must be 0
+      IF do_profile
+          call tm_play
+      ELSE
+          call nrt_play
+      END
+          ld hl,.ref
+          ld de,psg_regs
+          ld b,8
+          call compare_sized
+          ret
+
+.ref
+      WORD &EEE4+pitch
+      FILL 5,untouched
+      BYTE &3F
+      BYTE 0
+      FILL 2,untouched
+
 
 test_sync_buzzer
 ;---------------
@@ -414,11 +449,12 @@ MAX_TM = &80
 ;      BRK:call play
           ld a,MAX_TM   ;reload for profile
           call profile_ix
-
           neg
           add a
-          add MAX_TM*2-3 ;-3: final 'ret' not counted by profile
-          exx:jr c,$+3:dec d:exx ; propagate carry to MSB
+          add MAX_TM*2-3
+; !! review this, wrong when A was 0. time = &80*2 - 3 = &fd,
+   ; d musn't be dec in this case
+      ;    exx:jr c,$+3:dec d:exx ; propagate carry to MSB
           cp l:call nz,fail
           ld a,h:exx:cp d:call nz,fail:exx
           ret

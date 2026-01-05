@@ -303,15 +303,16 @@ put_note
 ; 0 -> C-0
 ; 1 -> C#0
 ;...
-; Exception: C-10 special note
+; Exception: C-10 and clr special notes
 ;in a: Encoded note
   ;de: Buffer
 ;out: de past written note
     ;  a preserved
     ; bc thrashed
           push af:push hl
-          cp note_c_10
-          jr z,.c_10
+          cp note_c_10:jr z,.c_10
+          ld hl,txt_clr
+          cp note_clr:jr z,.special
           call convert_note
           add a
           add notes_text AND &FF
@@ -327,10 +328,10 @@ put_note
 
 .c_10
           ld hl,period_0
+.special
           ld bc,3
           ldir
           jr .exit
-
 
 convert_note
 ;in a: Encoded note
@@ -362,5 +363,5 @@ notes_text
  !! error align
       END
 period_0 BYTE "0  "
-
+txt_clr BYTE "CHI"      ; CLR in small font!
 

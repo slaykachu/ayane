@@ -20,6 +20,7 @@ need_room = 1
 ; \/\/\/ 2026 \/\/\/\/\
 ; ----- Alpha1 -----
   ; Jan
+   ;04 play: reset volumes (see rationale there)
    ;02 Amorce_song: must scope bk (when called from PHRASUI)
    ;01 read_vol: Must add track volume, since it will be sub in instr.o
                ; (track volume cannot be set right now, so the bug
@@ -378,13 +379,18 @@ play
 ; DI Needed since SP used 
 ; Better to do it ourself to avoid crash in case of oversight.
           di
-tm0   = 1+15            ; until track_loop
+tm0   = 1+26            ; until track_loop
           ld hl,r7
       IF use_flag_channel
           ld (hl),&3F
       ELSE
           ld (hl),&38
       END
+; Reset volumes:
+    ; - instr_null becomes enough for CLR
+    ; - more importantly: will ease virtual track mixing.
+          ld b,0
+      3 ** [inc l:ld (hl),b]
 ;r13 : keep value from previous iter to detect if retrig needed
 ;r14 : sentinelle set in instr.o
           ld (savesp+1),sp

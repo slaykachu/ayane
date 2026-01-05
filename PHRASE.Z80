@@ -4,8 +4,16 @@ do_add_empty_row = 0
  !! A bit inconvenient. must fix phrasnrt, chipn, salo ... 
       END
 
-; 2025    
+; 2026    
  ; -- alpha 1 --
+  ; Jan 4: Add row_clr/row_is_clr
+         ; [cleanup] Remove dead code: 
+                       ; row_set_byte_param_fx and co
+                       ; irow_set_type_vol
+                       ; fx_append_byte
+                       ; phrase_get_row_position
+                       ; is_start_of_phrase
+                       ; insert_in_chunk
 dev_checks' = 1
 todo  = 1
 makeroom = 1
@@ -65,15 +73,10 @@ phrase_start = chunk_start + clip_header_size
       END
 
 ;-- Tables -----------------
-;!! in new table: fix chunks_in_base_bk
 ;7000-...: free 
-      IF phrases_ - &7600
- !!! inconsistent
-      END
+          ASSERT(phrases_ == &7600)
 phrases_idx = &7600     ; start chunk for each phrase &100 ** word 
-      IF phrases_idx AND &01FF
- !! must be multiple of #200
-      END
+          ASSERT(phrases_idx AND &01FF == 0) ; &200-aligned
 phrases_rows = &7800    ; nb rows for each phrase
 ;nb: for now, no discrimination between tables (arp, instr, ...)
 ;-> we should keep it that way (more flexible, less ram & code needed)
@@ -110,15 +113,13 @@ phrase_code
 
 phrase_reset
 ;-----------
-          call connect_bk_phrase
-          ld a,delai_ui_default
-          call set_delai_ui
-
+          call connect_bk_base ; !! var in bk base
           ld hl,def:ld de,var:ld bc,def_size:ldir ; non-zero vars
           ex de,hl
           ld b,zero_size:xor a:call fillb
 ; Reset index. Easier to see if phrase already allocated or not.
 ; song_select_new_phrase relies on that for checks.
+          call connect_bk_phrase
           ld hl,phrases_idx
           call fill
           inc h
@@ -414,10 +415,21 @@ _unpack_row_com
           ld b,(hl):inc l
           ld c,-1
 ;instr encoded first, but put 2nd in buf
-          ld a,c:bit bit_instr,b:jr z,$+4:ld a,(hl):inc l
+          ld a,c:bit bit_instr,b:jr z,.okinstr
+          ld a,(hl):inc l
+          cp instr_clr:jr nz,.okinstr
+;-- fake note "CLR" for ui
+          ld a,note_clr:ld (de),a:inc e
+          ld a,c:ld (de),a
+          jr .vol
+.okinstr
           inc e:ld (de),a:dec e
-          ld a,c:bit bit_note,b:jr z,$+4:ld a,(hl):inc l
-          ld (de),a:inc e:inc e
+          ld a,c:bit bit_note,b:jr z,.oknote
+          ld a,(hl):inc l
+.oknote
+          ld (de),a:inc e
+.vol
+          inc e
           ld a,c:bit bit_vol,b:jr z,.okvol
           ld a,15:sub (hl):inc l
 .okvol
@@ -468,14 +480,6 @@ phrase_select_row_at
           pop hl
           ret
 
-      IF 0
-phrase_get_row_position
-;----------------------
-          call scope_bk_phrase
-          ld hl,(va_position)
-          ret
-      END
-
 phrase_set_blank_row_at
 ;----------------------
 ; Create a new row at t (if not existing)
@@ -486,7 +490,6 @@ phrase_set_blank_row_at
 ; factorize with add_duration?
       END
           call scope_bk_phrase
-          ld (va_position),de
 .retry
           call phrase_get_row_at
           jr nc,.new_row
@@ -829,7 +832,6 @@ row_get_note
 row_del_note
 ;-----------
 ; in: N/A
-
           call scope_bk_phrase
           call connect_current_row_skip_length
           bit bit_note,(hl)
@@ -905,6 +907,13 @@ row_del_vol
           call skip_fx_ins_note
           jr delete_byte
 
+row_clr
+;------
+; Set 'clr' flag (instr 127 so no special test to make
+          call row_del_note
+          call row_del_vol
+          ld a,instr_clr
+;enchaine
 row_set_instr
 ;------------
 ; in: A= ins
@@ -929,7 +938,9 @@ row_set_instr
 row_get_instr
 ; Out: If instr: NZ, A=instr id
      ; otherwise Z, A trashed
+;Note: If CLR, will return instr_clr (for salo)
           call scope_bk_phrase
+row_get_instr_
           call connect_current_row_skip_length
           bit bit_instr,(hl)
 ;If Z, read garbage: nevermind 
@@ -940,6 +951,7 @@ row_get_instr
           ret
 
 row_del_instr
+row_del_clr             ; same rout
 ;------------
           call scope_bk_phrase
           call connect_current_row_skip_length
@@ -949,178 +961,23 @@ row_del_instr
           call skip_fx
           jp delete_byte
 
-
-      IF 0
-row_set_no_param_fx_
+row_is_clr
+;---------
+; Out: Z if no clr
+     ;NZ if clr
           call scope_bk_phrase
-row_set_no_param_fx
-;.......................
-; in: BK connected
-    ;  A: fx nb (0, 1, 2, 3)
-    ; DE: fx routine
-
-          push de
-          call connect_current_row_skip_length'
-;on se place sur bon fx
-          ld b,a
-          call skip_nfx
-          rra
-          jr c,_change_fxnoparam
-;insert 
-          push bc
-          ld c,2:call shift_in_row
-          pop bc
-
-          SKIP_LENGTH_DE()
-          ld a,(de):or c:ld (de),a ;cannot be done before
-          pop de:call ld_hl_de
+          call row_get_instr_
+          ret z
+          cp instr_clr
+flip_z
+          jr z,.nz
+          cp a
           ret
-
-_change_fxnoparam
-      BRK               ; todo: remove previous fx!
+.nz
+          or a          ; here we know a<>0
           ret
-
-row_set_byte_param_fx_
-          call scope_bk_phrase
-row_set_byte_param_fx
-;..................
-; in: BK connected
-    ;  A: fx nb (0, 1, 2, 3)
-    ; DE: fx routine
-    ;  C: param
-
-          push bc:push de
-;on se place sur bon fx
-          call connect_current_row_skip_length'
-          ld b,a
-          call skip_nfx
-          rra
-          jr c,_change_fx0
-;insert     
-          push bc
-          ld c,3:call shift_in_row
-          pop bc
-          SKIP_LENGTH_DE()
-          ld a,(de):or c:ld (de),a ;cannot be done before
-          pop de:call ld_hl_de
-          pop bc:ld (hl),c
-          ret
-
-_change_fx0
-      BRK               ; todo: remove previous fx!
-          ret
-
-
-row_set_word_param_fx_
-          call scope_bk_phrase
-row_set_word_param_fx
-;.......................
-; in: BK connected
-    ;  A: fx nb (0, 1, 2, 3)
-    ; DE: fx routine
-    ; BC: adr table/param
-
-          push bc:push de
-          call connect_current_row_skip_length'
-;on se place sur bon fx
-          ld b,a
-          call skip_nfx
-          rra
-          jr c,_change_fx
-;insert     
-          push bc
-          ld c,4:call shift_in_row
-          pop bc
-          SKIP_LENGTH_DE()
-          ld a,(de):or c:ld (de),a ;cannot be done before
-          pop de:call ld_hl_de
-          pop bc:call ld_hl_bc
-          ret
-
-_change_fx
-      BRK               ; todo: remove previous fx!
-          ret
-
-
-row_set_3_param_fx
-;.......................
-; in: BK connected
-    ;  A: fx nb (0, 1, 2, 3)
-    ; DE: fx routine
-    ; C,B,L: parameter
-
-          push hl:push bc:push de
-          call connect_current_row_skip_length'
-;on se place sur bon fx
-          ld b,a
-          call skip_nfx
-          rra
-          jr c,_change_fx3
-;insert     
-          push bc
-          ld c,5:call shift_in_row
-          pop bc
-          SKIP_LENGTH_DE()
-          ld a,(de):or c:ld (de),a ;cannot be done before
-          pop de:call ld_hl_de
-          pop bc:call ld_hl_bc
-          pop bc:ld (hl),c
-          ret
-
-_change_fx3
-      BRK               ; todo: remove previous fx!
-          ret
-
-      END
-
-      IF 0
-;-------------------------------
-irow_set_type_vol
-;----------------
-; in: A= type + vol   ttttvvvv
-;out: A preserved
-
-          call scope_bk_phrase
-          call connect_current_irow
-          ld (hl),a
-          ret
-
-irow_set_period
-; in: de= period (abs or rel depending on type)
-          call scope_bk_phrase
-          call connect_current_irow
-; !! wip !! todo: reflechir comment set/update/sera fait + in bank.
-      END
-
-      IF 0
-;-------------------------------
-fx_append_byte
-; For incremental fx construction (cf salo.o)
-; In: row_set_fx (in fx.o) called previously
-    ; A= byte   
-
-          push af
-          call connect_current_row
-          ex de,hl      ; de=start for shift_in_row
-          ld hl,(va_instr_pnt)
-          ld a,l:or h:call z,mess
-;insert     
-          ld c,1:call shift_in_row
-          pop af:ld (hl),a
-          ret
-      END
 
 ;-------------------------------
-ld_hl_de
-          ld (hl),e:inc hl
-          ld (hl),d:inc hl
-          ret
-
-ld_hl_bc
-          ld (hl),c:inc hl
-          ld (hl),b:inc hl
-          ret
-
 skip_all_ext
 ; When called from bank (e.g. phraseui)
           call scope_bk_phrase
@@ -1154,14 +1011,6 @@ skip_fx_ins_note
 ;Out: HL: post skip. BC, DE preserved.
           call skip_fx_ins
           jr _skip_byte ; note
-
-      IF 0
-_skip_word
-; In   A: flag in bit 0
-          rra:jr nc,$+3:inc l
-          jr nc,$+3:inc l
-          ret
-      END
 
 skip_fx
           push bc
@@ -1615,18 +1464,6 @@ new_phrase_chunk
           ld bc,phrase_def_ ;last word below
           jp _install_com
 
-      IF 0
-!! not needed
-is_start_of_phrase
-; IN: hl points on row
-; OUT: Z if start of phrase
-     ;NZ otherwise
-     ; HL preserved in both case
-          ld a,l
-          cp phrase_start
-          ret nz
-      BRK
-      END
 
 is_end_of_phrase
 ; IN: hl points on row
@@ -1713,16 +1550,6 @@ connect_phrase_from_id
       END
           ld l,phrase_start-1:inc l ; NZ without changing A.
           ret
-
-      IF 0
-connect_phrase_from_bhl
-;---------------------
-          push hl
-          ld l,b
-          call connect_phrase_from_id
-          pop hl
-          ret
-      END
 
 ;-------------- generic chunk operation
 append_raw_in_chunk
@@ -1816,32 +1643,6 @@ _append
           ld e,b
           pop af
           ret
-
-      IF 0
-insert_in_chunk
-; In:  hl= source !! out of bank
-    ; bde= dest    (ie B= bank  DE= pos in chunk)
-    ;   c= size    (0 = BRK)    
-    ;  ix= routine new_chunk (returning HL:id, A:start)
-    ;  iy= pointer to sentinel 'end of chunk' (size then data).
-    ; Bank agnostic.
-; Out: If ok: Carry, bde= past post dest (possibly new chunk)
-            ; Chunk bde connected.
-            ; HL= HL+c    
-
-; See comments in shift_in_chunk below
-          ex de,hl
-          call shift_in_chunk
-          ex de,hl
-          ret nc
-
-          ld a,b
-          ld b,0
-          ldir
-          ld b,a
-          scf
-          ret
-      END
 
 
 shift_in_chunk
@@ -2186,24 +1987,24 @@ sentinel_phrase_eoc_ = $ - sentinel_phrase_eoc - 1
 vars
 ; Private/tmp vars alongside code (out of bank: no persistence needed)
 
-row_t0 WORD             ; tmp
-row_t1 WORD             ; tmp
+row_t0 WORD 0           ; tmp
+row_t1 WORD 0           ; tmp
 
-va_savesp WORD 
+va_savesp WORD 0
 
-dbg1  WORD 
-dbg2  WORD 
+dbg1  WORD 0
+dbg2  WORD 0
 
 ; ----------------------------       
 ; Vars in bank
-save_pc = $
 
 def
 ; Doesn't use org va,$$
 ; otherwise orgams set high $ = 7cxx, which is inconvenient
-      BYTE 
+      BYTE delai_ui_default
 def_size = $-def
 
+save_pc = $
       ORG phrase_vars
 var
 delai_ui BYTE           ; root value
@@ -2218,7 +2019,6 @@ zero_start              ; Not loaded, must follow def (see check below)
       END
 va_current_phrase BYTE 
 va_row_pnt WORD         ;address of currently selected row 
-va_position WORD        ; position in phrase (in ticks)
 zero_size = $-zero_start
 
 pnt_next_row WORD 

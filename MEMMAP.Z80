@@ -37,7 +37,7 @@ code_start = &40
 memcpc = &40
 scankey = &0211
 conv  = &0222
-chunk_module = &0432
+chunk_module = &043C
 ;dispjp = &1900   ; not a dep anymore
 ;periods_module = &057F
 ;timer = &0A61
@@ -50,18 +50,18 @@ ppi   = &1400
 piano = &145F
 ; --  uiloop
 instrui = &1580
-instrsel = &198F
+instrsel = &1999
 uiloop = &1A56
 ; ---- uiloop end ----
 ; -- phrasui, salo
 ;padding
 phrase = &1AE0
-track_module = &2200
+track_module = &221E
 fx_module = &3000
 ply   = &3004           ;needed for events signatures
 fx_set_phrase_jp = ply+5
-evt_set_transpose_lsb = ply+&68 AND &FF ; track 
-evt_change_phrase_lsb = ply+&79 AND &FF ; track 
+evt_set_transpose_lsb = ply+&6F AND &FF ; track 
+evt_change_phrase_lsb = ply+&80 AND &FF ; track 
 
 playsong_module = &34A2
 ; -- salo
@@ -174,10 +174,10 @@ chunk_var_ = &8000
 fonte_gris = &4000
 fonte = &4400
 fonte_small = &4800
-disp  = &48C8           ; start of code after fonts
-pianoui = &4F00
-phrasui = &5620
-disp_ayane = &5CE0      ; other modules imported by ayane.o
+disp  = &48D8           ; start of code after fonts
+pianoui = &4F10
+phrasui = &5630
+disp_ayane = &5D10      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
 

@@ -1,7 +1,10 @@
 ; ---- Tests for phrase.o ----
 
+; 2026
+; -- alpha1 -- 
+; Jan
+   ; 4: Add check row_clr/row_is_clr in test_row_set
 ; 2025
-; -- alpha1 --
 ; Dec  
   ; 25: Add test_phrase_get_row_mid_64
       ; Add test_unpack_row_mid_64
@@ -467,25 +470,32 @@ check_row_set
           call phrase_get_rows#:cp 1:call nz,fail
 ; --- With fx
  ;  TODO
-; --- With note
+; --- With note 
+          call row_is_clr:call nz,fail
           ld a,43
           call row_set_note
           call row_get_note:cp 43:call nz,fail
+          call row_is_clr:call nz,fail
           call phrase_get_rows#:cp 1:call nz,fail
 ; --- With vol            
           ld a,&0E
           call row_set_vol
           call row_get_vol:cp &0E:call nz,fail
+          call row_is_clr:call nz,fail
           call phrase_get_rows#:cp 1:call nz,fail
 ; --- With instr
 ; (instr isn't defined: that shouldn't matter)
           ld a,1
           call row_set_instr
           call row_get_instr:cp 1:call nz,fail
+          call row_is_clr:call nz,fail
           call phrase_get_rows#:cp 1:call nz,fail
 ; -- Other fields still ok?
           call row_get_vol:cp &0E:call nz,fail
           call row_get_note:cp 43:call nz,fail
+; -- Set clr
+          call row_clr
+          call row_is_clr:call z,fail
           ret
 
 test_remove_note

@@ -6,6 +6,7 @@ short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 ; 2026
   ; -- Alpha 1 --
   ; Jan
+      ; 5: Add test_clr
       ; 3: Add test_note_2nd_row
       ; 2: Move keys_buffer @ 8200 (since we now uses ply for playback) 
 ; 2025
@@ -186,6 +187,7 @@ tests
           call test_next_page
           call test_prev_page
           call test_note_2nd_row
+          call test_clr
           call test_fuzz
           ret
 
@@ -275,6 +277,15 @@ test_note_2nd_row
 ; Verified manually instead.
 ;"                            02 "
    ;   BYTE nrtend
+
+test_clr
+          call dev_setup
+          TEST_RUN(.seq)
+          ret
+
+.seq  BYTE kclr
+          END_OF_NRT_SEQUENCE()
+      BYTE "CHI",nrtend
 
 test_up_at_top
 ;If already at top: no-op 

@@ -2,17 +2,18 @@
 todo  = 0
 ; -- Alpha1 --
 ; 2026
-  ; Jan 1. Add consume_row (for CTRL-SPACE and when entering note)
+  ; Jan 3. Handle CLR (stop sound)
+      ; 1. Add consume_row (for CTRL-SPACE and when entering note)
 ; 2025
   ; Dec 31. Use ged binary.
 
 dev_checks' = 1
 
-          ASSERT($ AND &C000 == &4000) ; must be imported
 
       IMPORT "const.i"  ; kclr
       IMPORT "memmap.i" ; BK_DISP
       IMPORT "macro.i"
+          ASSERT($ AND &C000 == &4000) ; must be imported
       IMPORT "import.i"
       IMPORT "gedwidid.i"
           IMPORT_PHRASUI_DEPS() ; other deps below
@@ -128,6 +129,7 @@ note_ui''
       BYTE w_text_dyn
       WORD note_as_text
 note_handler
+      BYTE kclr:WORD _clr_note
       BYTE kdel:WORD _del_note
       BYTE 0:WORD 0
 
@@ -186,9 +188,13 @@ k_ml
 ; -------------------------------------
 
 note_as_text
-          call has_note
+          call is_empty
           jr z,.nonote
+          call row_is_clr
+          jr nz,.clr
           call row_get_note
+          jr z,.nonote
+.comnote
           ld de,buf_note_text
           push de
           call put_note
@@ -197,16 +203,27 @@ note_as_text
 .nonote
           ld hl,note_empty
           ret
+.clr
+          ld a,note_clr ; handled by put_note
+          jr .comnote
 
-has_note
+_clr_note
+          call pre_modif
+          call row_clr
+          jp edit_row_com
+
+_del_note
           call is_empty
           ret z
-          call row_get_note
-          jr z_to_val
-_del_note
+          call row_is_clr
+          jr z,._del_note_
+          call row_del_clr
+          jr ._del_note_com
+._del_note_
           call row_get_note
           scf
-          ret z         ; no modif if no instr
+          ret z         ; no modif if no note
+._del_note_com
           call pre_modif
           call row_del_note
           jr edit_row_com
@@ -214,10 +231,10 @@ _del_note
 has_instr
           call is_empty
           ret z
-          call row_get_instr
+          call row_get_instr_ui
           jr z_to_val
 _get_instr
-          call row_get_instr
+          call row_get_instr_ui
           scf
           ret
 _set_instr
@@ -225,12 +242,20 @@ _set_instr
           call row_set_instr
           jr edit_row_com
 _del_instr
-          call row_get_instr
+          call is_empty
+          ret z
+          call row_get_instr_ui
           scf
           ret z         ; no modif if no instr
           call pre_modif
           call row_del_instr
           jr edit_row_com
+
+row_get_instr_ui
+          call row_get_instr
+          ret z
+          cp instr_clr  ; CLR: no instr for ui perspective
+          ret
 
 has_vol
           call is_empty
@@ -247,9 +272,13 @@ _get_vol
           ret
 _set_vol
           call pre_modif
+;remove_clr done here to keep row_set_vol fast enough for salo
+          call remove_clr
           call row_set_vol
           jr edit_row_com
 _del_vol
+          call is_empty
+          ret z
           call row_get_vol
           scf
           ret z         ; no modif if no instr
@@ -263,6 +292,12 @@ is_empty
           or a
           ret
 
+remove_clr
+          push af
+          call row_is_clr
+          call nz,row_del_clr
+          pop af
+          ret
 ;-------------------------
 edit_row_com
 ;-----------
