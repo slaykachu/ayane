@@ -339,80 +339,6 @@ _select_new_instr
 .raz      ld (hl),0:inc hl:djnz .raz
           jp _select_instr
 
-      IF use_instr_chip_down_vib
-;Temp hack to fit all instr in &100
-      IF todo
-;Anyway: should just have one version with noise
-       ; -> pick/build the right routine at compile time 
-          ; if noise never used
-      END
-New_instr_chp_down_vib
-;---------------------
-; Create ad-hoc instr reproducing chipnsfx intsrument with
-    ; - Volume going down
-    ; - No noise
-    ; - Vibrato
-; In  A = ID
-   ;  b = initial volume (8 bits)
-   ;  c = step volume to be substracted (8 bits) 
-          ld e,instr_chip_down_vib AND &FF
-      END
-_new_instr_chp
-; use generic routine to gain space
-          ld d,c:ld c,b
-          ld b,0        ; 3rd param: unused 
-          jr New_instr_chp
-
-      IF use_instr_chip_down_arp
-New_instr_chp_down_arp
-;---------------------
-; Create ad-hoc instr reproducing chipnsfx intsrument with
-    ; - Volume going down
-    ; - No noise
-    ; - Arpegio
-; In  a = ID
-   ;  b = initial volume (8 bits)
-   ;  c = step volume to be substracted (8 bits) 
-          ld e,instr_chip_down_arp AND &FF
-          jr _new_instr_chp
-      END
-
-      IF use_instr_chip_down_vib_noise
-New_instr_chp_down_vib_noise
-;---------------------------
-; Create ad-hoc instr reproducing chipnsfx intsrument with
-    ; - Volume going down
-    ; - Constant noise (can be off = 0)
-    ; - Vibrato
-; In  a = ID
-   ;  b = initial volume (8 bits)
-   ;  c = step volume to be substracted (8 bits) 
-   ;  d = noise (set first)
-          ld e,instr_chip_down_vib_noise AND &FF
-          jr New_instr_chp
-      END
-
-      IF use_instr_chip_down_arp_noise
-New_instr_chp_down_arp_noise
-;---------------------------
-; Create ad-hoc instr reproducing chipnsfx intsrument with
-    ; - Volume going down
-    ; - Constant noise (can be off = 0)
-    ; - Arpegio
-; In  a = id
-   ;  b = initial volume (8 bits)
-   ;  c = step volume to be substracted (8 bits) 
-   ;  d = noise (set first)
-          ld e,instr_chip_down_arp_noise AND &FF
-      END
-New_instr_chp
-          call _select_new_instr
-          call get_instr_pnt
-          instr_head_ext ** inc hl
-          ld (hl),d:inc hl
-          ld (hl),c:inc hl
-          ld (hl),b
-          ret
 
 instr_ayane_append_rows
 ;----------------------
@@ -443,31 +369,6 @@ instr_ayane_append_rows
           ld (hl),fx_end AND &FF:inc hl
           ld (hl),fx_end / &0100
           pop hl
-          djnz .rowlp
-
-          jr _postlude
-
-
-instr_chip_append_rows_byte
-;--------------------------
-; chip version: 1 byte per row (e.g. arpegio)
-          ld a,1
-          jr instr_append_rows
-
-instr_chip_append_rows_word
-;--------------------------
-; chip version: 1 word per row (e.g. vibrato)
-          ld a,2
-;enchaine
-instr_append_rows
-;----------------
-; Set all rows in bulk (typically when importing from other tracker)
-; In: hl: table with A-sized rows 
-    ;  a: row size
-    ;  b: nb rows
-          call _prelude
-.rowlp
-          call instr_append_row_
           djnz .rowlp
 _postlude
           scf
