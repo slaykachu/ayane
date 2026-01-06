@@ -5,6 +5,8 @@ dev_checks' = 1         ; new checks
 ; Routine for each type of intruments:
       ; - instr_default
 
+;2026 Jan 5: instr_null must cut fx
+
 ; Limitations:
    ; - only works for fixed /regs/ address XX00. 
 
@@ -105,7 +107,13 @@ instr_null
           pop hl
       END
           pop hl        ; consume regs+vol
+      IF sfx
+;Needd to cut fx, as instr_null is used for 'CLR'
+          SUB_TM(9+3-3) ;-3: no ld sp,0 (from fx_end)
+          jp fx_end_
+      ELSE
           RET_ROUT(9)
+      END
 
       IF use_instr_end
 _instr_end
@@ -507,4 +515,5 @@ trash WORD
       END
 
 hi
+
 

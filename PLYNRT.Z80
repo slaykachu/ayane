@@ -2,7 +2,9 @@
 do_profile = 1
 ; 2026
 ; --- alpha1 --
-  ; Jan  4 Add test_clr
+  ; Jan
+      ; 5 Add test_clr_fx  
+      ; 4 Add test_clr
 ; 2025 
 ; --- v0.0au ---
   ; Nov  9 Add test_endoftrack
@@ -53,6 +55,7 @@ tests
           call test_empty_phrase
           call test_note_instr
           call test_clr
+          call test_clr_fx
           call test_sync_buzzer
           call test_endoftrack
           ret
@@ -218,6 +221,26 @@ test_clr
       BYTE 0
       FILL 2,untouched
 
+test_clr_fx
+;----------
+; Check fx is propely cut
+          call nrt_init
+          call dummy_instr_sync
+          call nrt_dummy_phrase
+          ld b,0:call instr_set_loop
+          ld de,3:call phrase_select_row_at ; sync is at row 2
+          call row_clr
+      IF do_profile
+          call tm_play_from_start
+          3 ** call tm_play
+      ELSE
+          call nrt_play_from_start
+          3 ** call nrt_play
+      END
+          ld a,(cut_list)
+          or a:call z,fail
+          ret
+
 
 test_sync_buzzer
 ;---------------
@@ -231,8 +254,10 @@ test_sync_buzzer
           push bc
       IF do_profile
           call tm_play_from_start
+          2 ** call tm_play
       ELSE
           call nrt_play_from_start
+          2 ** call nrt_play
       END
           pop bc
           djnz .lp
@@ -260,8 +285,6 @@ test_endoftrack
           pop bc
           djnz .lp
           ret
-
-
 
 
 nrt_dummy_song
