@@ -2,7 +2,8 @@
 todo  = 0
 ; -- Alpha1 --
 ; 2026
-  ; Jan 3. Handle CLR (stop sound)
+  ; Jan 5. Del: must go to next line even if empty
+      ; 3. Handle CLR (stop sound)
       ; 1. Add consume_row (for CTRL-SPACE and when entering note)
 ; 2025
   ; Dec 31. Use ged binary.
@@ -78,20 +79,30 @@ phrase_cold_refresh
 phrase_ui_process
 ;----------------
           ld b,a
-          xor a:ld (is_modified),a
+          xor a
+          ld (is_modified),a
+          ld (auto_skip),a
           ld a,b
           call gedeihen_process
           ret nc
           ld a,(is_modified)
           or a
-          scf
-          ret z
+          jr z,.skip_or_next
  ; Must we refresh repeated phrase?
           call song_get_current_phrase
           ld hl,phrase_dup:call bs_get
           call nz,refresh_page
+.skip_or_next
+do_next_id = 1
+do_skip_id = 2
+          ld a,(auto_skip)
+          or a
+          scf
+          ret z
+          dec a
+          jp z,row_dwn
  ; After row edited: skip exactly delai
-          call refresh_nofocus ; needed for env
+          call refresh_nofocus ; needed for ?
           call get_time_row
           call get_delai_ui
           ld l,a:ld h,0:add hl,de
@@ -210,23 +221,22 @@ note_as_text
 _clr_note
           call pre_modif
           call row_clr
-          jp edit_row_com
+          jp edit_row_skip
 
 _del_note
           call is_empty
-          ret z
+          jp z,consume_goto_next
           call row_is_clr
           jr z,._del_note_
           call row_del_clr
           jr ._del_note_com
 ._del_note_
           call row_get_note
-          scf
-          ret z         ; no modif if no note
+          jp z,consume_goto_next
 ._del_note_com
           call pre_modif
           call row_del_note
-          jr edit_row_com
+          jr edit_row_next
 
 has_instr
           call is_empty
@@ -240,16 +250,16 @@ _get_instr
 _set_instr
           call pre_modif
           call row_set_instr
-          jr edit_row_com
+          jr edit_row_skip
 _del_instr
           call is_empty
-          ret z
+          jp z,consume_goto_next
           call row_get_instr_ui
           scf
-          ret z         ; no modif if no instr
+          jp z,consume_goto_next
           call pre_modif
           call row_del_instr
-          jr edit_row_com
+          jr edit_row_next
 
 row_get_instr_ui
           call row_get_instr
@@ -275,16 +285,16 @@ _set_vol
 ;remove_clr done here to keep row_set_vol fast enough for salo
           call remove_clr
           call row_set_vol
-          jr edit_row_com
+          jr edit_row_skip
 _del_vol
           call is_empty
-          ret z
+          jp z,consume_goto_next
           call row_get_vol
           scf
-          ret z         ; no modif if no instr
+          jp z,consume_goto_next
           call pre_modif
           call row_del_vol
-          jr edit_row_com
+          jr edit_row_next
 
 is_empty
 ;Needed to avoid inserting empty rows when just navigating
@@ -299,24 +309,23 @@ remove_clr
           pop af
           ret
 ;-------------------------
-edit_row_com
-;-----------
+edit_row_next
+          ld a,do_next_id
+          jr _edit_row_com
+edit_row_skip
+          ld a,do_skip_id
+;enchaine
+_edit_row_com
           call consume_row
-;Drop hl as we'll skip exactly "step" 
           ld a,1:ld (is_modified),a
           scf
           ret
 
-space
-;----          
-;Play row and "row_dwn"
-          call consume_row
-          jr refresh_row
 
 row_dwn
-;------      
+;------     
           call get_next_row
-          jr refresh_row
+          jp refresh_row
 
 row_ctrl_dwn
 ;-----------
@@ -647,7 +656,7 @@ piano_keys
 ;          ld bc,&0404:call &BC38
 ;          call &BB06
 ;          ld bc,&0606:call &BC38
-          jp edit_row_com
+          jp edit_row_skip
 
 ; ----------------------
 _set_cursor = ph_set_cursor
@@ -790,15 +799,20 @@ setup_phrase_ui
           ld hl,phrase_ui
           jp setup_widget
 ; ----------------------
+space
+;----          
+;Play row and "row_dwn"
+consume_goto_next
+          ld a,do_next_id
+;enchaine
 consume_row
-;----------
 ; Play current row and go to next one
-; Out: HL: offset next row in phrase
-
-          call get_next_row ; to compute duration
-          push hl
+; IN: A: skip mode 
+          ld (auto_skip),a
+; compute duration
+          call get_next_row
           call get_time_row
-          or a:sbc hl,de ; duration
+          or a:sbc hl,de
           push hl
           call Amorce_song ; for sane default
 ;fast forward
@@ -846,7 +860,7 @@ consume_row
 ; Necessary for ged refresh when leaving field
           call refresh_state_cur
           call select_row_ui
-          pop hl
+          scf
           ret
 
 
@@ -860,6 +874,7 @@ buf_note_text FILL 4,0
 is_first_iter BYTE 0    ; 0 = implicit repeat
 row_exists BYTE 0       ; 0 = empty
 is_modified BYTE 0
+auto_skip BYTE 0        ; see do_next_id/do_skip_id
 cur_y BYTE 0
 
 _savepc
