@@ -2,8 +2,12 @@
 todo  = 1
 do_brittle = 0
 
+; ----- 2026 ----------
+; -- alpha 1.07 --     
+ ; Jan   
+     ; 7 track_get_state_at returns transpose in A
+       ; remove ply dependency
 ; ----- 2025 ----------
-; -- alpha 1.07 --
  ; Dec       
      ; 30 Add test_track_get_state_at
      ; 25 Add test_Song_attach_empty_phrases
@@ -67,27 +71,27 @@ chunk0 = track_events_/&0100 - 1
 
       IMPORT "const.i"
       IMPORT "import.i"
+      IMPORT "macro.i"
+          ASSERT(dev==1) ; other use assert mecanism, not init
 
 ; Ensure proper alignement (and consistent addresses for easier dbg)
           IMPORT_SHARED_DEPS_ALL()
-      IMPORT "song.o"   ; Subsong_add, Song_get_first_track ...
-     ;  IMPORT "tracknub.o" ; get_track_header
       IMPORT "chung.o"  ; before ply/testlib to leave some room
       IMPORT "timer.o"
       IMPORT "heap.o"   ; "
-      IMPORT "track.o"
+      ORG phrase
       IMPORT "phrase.o" ; song_select_new_phrase
+      ORG track_module
+      IMPORT "track.o"
       ORG fx_module
-      IMPORT "ply.o"    ; for evt_* (evt_set_transpose & co)
+   ;   IMPORT "ply.o"    ; for evt_* (evt_set_transpose & co)
+    ;  ORG ppi
       IMPORT "testlib.o"
 
 tests
           call nrt_init
 
 ; ---- Recent
-          call test_track_get_state_at
-      BRK
-          call test_Song_attach_empty_phrases
 
 ; ---- UI (manual)
       IF enable
@@ -1141,7 +1145,7 @@ test_prepend_event
               ; test_get_event_hook_at
           call nrt_init
 
-          ld a,evt_set_transpose AND &FF
+          ld a,evt_set_transpose_lsb
           ld hl,.time0
           ld de,&CABE   ; Normally transpose value in 8 bits
           call prepend_event
@@ -1179,7 +1183,7 @@ test_prepend_event
 
 ; --- Now try to set hook past "default duration" which is arbitrary
 ; anyway (see init at Song_select_new_track)
-          ld a,evt_set_transpose AND &FF
+          ld a,evt_set_transpose_lsb
           ld hl,.time1
           ld de,&CABF   ; Normally transpose value in 8 bits
           call prepend_event
@@ -1199,7 +1203,7 @@ test_prepend_event
 
 ; --- Now try to set hook before duration
 dur1  = 1
-          ld a,evt_set_transpose AND &FF
+          ld a,evt_set_transpose_lsb
           ld hl,.time2
           ld de,&CAC0   ; Normally transpose value in 8 bits
           call prepend_event
@@ -1225,7 +1229,7 @@ dur1  = 1
 ; No linked hook, duration at init, pointer adress not checked
           TRACK_HOOK(0,last_duration,&F7F7) ; 
 .ref_evt
-          TRACK_EVENT(0,evt_set_transpose,&CABE)
+          TRACK_EVENT(0,evt_set_transpose_lsb,&CABE)
       END
 
 test_track_get_hook_at
@@ -1255,7 +1259,7 @@ test_track_get_event_at
 
 ; No such event yet
           ld hl,time0
-          ld a,evt_set_transpose AND &FF
+          ld a,evt_set_transpose_lsb
           call track_get_event_at:call nz,fail
 
           ld a,val1
@@ -1264,7 +1268,7 @@ test_track_get_event_at
 
 ; Before evt: return Z
           ld hl,time13
-          ld a,evt_set_transpose AND &FF
+          ld a,evt_set_transpose_lsb
           call track_get_event_at:call nz,fail
 
 ; Start of evt: NZ 
@@ -1508,15 +1512,15 @@ test_track_get_state_at
           ld a,42:ld hl,time14:call Set_transpose_at_t
 
           ld hl,time6:call track_get_state_at
-          ld a,(last_transpose):cp 0:call nz,fail
+          cp 0:call nz,fail
           ld hl,time7:call track_get_state_at
-          ld a,(last_transpose):cp 24:call nz,fail
+          cp 24:call nz,fail
           ld hl,time13:call track_get_state_at
-          ld a,(last_transpose):cp 24:call nz,fail
+          cp 24:call nz,fail
           ld hl,time14:call track_get_state_at
-          ld a,(last_transpose):cp 42:call nz,fail
+          cp 42:call nz,fail
           ld hl,time_far:call track_get_state_at
-          ld a,(last_transpose):cp 42:call nz,fail
+          cp 42:call nz,fail
           ret
 
 
@@ -1539,7 +1543,7 @@ check_transpose
           add a         ; stored value is pre-multiplied
           ld e,a
           ld d,0
-          ld a,evt_set_transpose AND &FF
+          ld a,evt_set_transpose_lsb
           jr check_
 
 check_phrase
@@ -1558,7 +1562,7 @@ check_phrase
           ex de,hl
           ld e,phrase_start ;post header
 
-          ld a,evt_change_phrase AND &FF
+          ld a,evt_change_phrase_lsb
           call check_
 
 ; --- Now via proper API
@@ -1830,8 +1834,8 @@ _test_event_list2
           TRACK_HOOK(_test_ev1',ev0_dur,evt_1)
 _test_ev1'
           TRACK_HOOK(0,ev1_dur,0)
-evt_1     TRACK_EVENT(0,evt_set_transpose,&F7FF)
+evt_1     TRACK_EVENT(0,evt_set_transpose_lsb,&F7FF)
 
 hi
-      SKIP ramlimit' - $
+          LIMIT(ramlimit)
 
