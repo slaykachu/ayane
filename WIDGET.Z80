@@ -21,7 +21,7 @@ fail  = &BE00
 
    ;      IMPORT "memmap.i" ; for rgb? No, keep rgb private here.
       IMPORT ":lib/rgb256.o"
-
+      IMPORT "track.o"  ; SIGN, NO_FLAGS
 ;---------------------------
       MACRO SANITIZE_OFFSET_HL
           set 7,h
@@ -32,13 +32,6 @@ fail  = &BE00
           ld bc,&BC00+reg:out (c),c
           ld bc,&BD00+val:out (c),c
       ENDM
-
-      MACRO SIGN in#,out#,flags
-;Signatures.
-;'flags' indicate which flags are returned by the routine.
-      BYTE in#,out#,flags
-      ENDM
-NO_FLAGS = 0
 
 ;--------------------------- 
 init_widget

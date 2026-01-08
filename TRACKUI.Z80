@@ -1,0 +1,495 @@
+; <<<< GUI for sequencer >>>>
+; !!! not used right now
+
+!!! fix too strick check in track.o (aum pc vs bytecode_start)
+
+ ; 2026 Jan 7: Extracted from track.o
+
+dev_checks' = 1
+
+      IMPORT "const.i"  ; tf_struct_size
+      IMPORT "track.o"
+      IMPORT "widget.o"
+
+; -------------------------
+;   Track constants
+; -------------------------
+
+; We center box on char line: 14 = 3 + 8 + 3
+; So that text can be displayed on a regular char line (easier, faster)
+TRACK_Y0 = 4            ; For cursor
+TRACK_Y0' = 5           ; For box (don't display border) 
+TRACK_BOX_HEIGHT = 14
+TRACK_INTERLINE = 16    ; Distance between 2 tracks
+CURSOR_HEIGHT = 16
+TICKS_PER_PIXEL = 64    ; For sequencer
+
+; --------------------------
+;   Misc constants
+; --------------------------
+
+SCREEN_WIDTH = 192
+TIME_WIDTH = SCREEN_WIDTH * TICKS_PER_PIXEL
+
+
+track_draw'
+;----------
+;Like track_draw, but in2 = width
+          LD3(t_end,t_lft + add,in2)
+          JP(track_draw)
+
+          SIGN(2,2,NO_FLAGS)
+track_draw
+;---------
+; Draw one box per clip.
+; 1 pix = 64 ticks, so tack 1 standard 64*6 pattern tacks 6 pixels,
+; enough to display number#
+
+track = in0
+t_lft = in1             ; time at left
+t_end = in2             ; time at right
+topleft = in3           ; points to (x0, y0) corner
+top   = in3             ; Reuse register
+; note: x0 might be >0 when we redraw just part of the stuff
+xlft  = r0
+!!! fix ambiguity AUM vs CRTC
+clip  = r1
+t_cur = r2
+t_nxt = r3
+          LD2(t_cur,t_lft) ; t0
+          LD3(xlft,topleft + ind,lit + 0) ; x0
+          LD3(top,topleft + ind,lit + 2) ; top
+.while
+          LD3(out2,t_cur + sub,t_end) ; out2: void
+          RET_NC()
+          FUN2(_track_get_event_at,track,t_cur)
+          JP_Z(.past_clip)
+;assert t < t of next clip                              
+;As for now, we don't accept clip with duration 0
+;It helps detecting mistakes and breaking out infinite loop
+          LD3(void,t_cur + sub,t1)
+          BRK_NC()
+
+          LD3(clip,out0 + ind,lit + idsz + evt0_link)
+
+;Clipping at t_end 
+          LD3(t_nxt,t1 + min,t_end)
+;Convert time to x
+          FUN2(time_to_x,t_nxt,t_lft)
+xrgt  = out0            ; 
+      BYTE call_ext50':WORD draw_box
+      BYTE clip + ind,lit + fc_color ; color
+      BYTE xlft
+      BYTE top
+      BYTE xrgt
+      BYTE top + add,lit + TRACK_BOX_HEIGHT
+
+          LD2(xlft,xrgt)
+          LD2(t_cur,t_nxt)
+          JP(.while)
+
+.past_clip
+; - No more event: clear with color 0 
+;Convert time to x
+          FUN2(time_to_x,t_end,t_lft)
+
+      BYTE call_ext50':WORD draw_box
+      BYTE lit + 0      ; color
+      BYTE xlft
+      BYTE top
+      BYTE xrgt
+      BYTE top + add,lit + TRACK_BOX_HEIGHT
+          RET0()
+
+          SIGN(2,1,NO_FLAGS)
+time_to_x
+;--------
+;Given time and offset, return X position
+time  = in0
+rtime_at_left = in1
+          LD3(out0,time + sub,rtime_at_left)
+          BRK()         ; To be recovered!
+;          LD3(out0,xrgt + shift,lit + 6)
+          RET0()
+
+          SIGN(4,1,NO_FLAGS) ; 4 params for goto_pos
+left
+;---
+time  = in0
+;in1 ... in3 as for goto_pos
+; ret if t = 0
+          LD3(void,time + sub,lit + 0)
+          RET_Z()
+          FUN1(collect_pred_succ_at,time)
+; Retry from t-1 if:
+; - same pos: we were already at a beginning of a clip, for each track
+; - pos 0: we were past end, so routine didn't collect anything
+          LD3(void,out0 + sub,time)
+          LD3_NZ(void,out0 + sub,lit + 0)
+          FUN1_Z'(collect_pred_succ_at,time + sub,lit + 1)
+          LD2(in0,out0)
+;enchaine
+go_left
+; Refresh if new cursor position out of screen
+time  = in0             ; new time pos
+rtime_at_left = in1
+time_width = in2        ; window width (constant)
+time_overlap = in3      ; how much to repeat when "scrolling" (constant)
+tmp   = r0
+void  = r1
+          LD3(tmp,time + sub,rtime_at_left)
+          JP_NC(norefresh)
+; Refresh so that cursor is at right of screen (minus overlap)
+          LD3(tmp,time_width + sub,time_overlap)
+; Enchaine
+dorefresh
+;time_at_left = max(0, time - cursor target)
+          LD3(rtime_at_left,time + sub,tmp)
+          LD2_C(rtime_at_left,lit + 0)
+      IF todo
+; use CALL_EXT00 when introduced, as (2) regs are copied implicitly
+      END
+          CALL_EXT11(ext_refresh,rtime_at_left)
+          RET0()
+
+norefresh
+;We still have to copy back new time pos
+;(it cannot be done in /ui_loop), as ext_refresh overwrites in0)
+      IF todo
+; use CALL_EXT00 when introduced, as (2) regs are copied implicitly
+      END
+          CALL_EXT11(ext_set_time,time)
+          RET0()
+
+
+          SIGN(4,1,NO_FLAGS) ; 4 params for goto_pos
+right
+;----
+time  = in0
+          FUN1(collect_pred_succ_at,time)
+; ret if pos = +inf
+          LD3(void,out1 + sub,lit -1)
+          RET_Z()
+          LD2(time,out1)
+;Enchaine
+goto_right
+;-------  
+; Refresh if new cursor position out of threshold window 
+; Same input as goto_left
+          LD3(tmp,time + sub,rtime_at_left)
+          BRK_C()       ; going right, shouldn't be < left pos
+          LD3(void,tmp + sub,time_width)
+          JP_C(norefresh)
+; Refresh so that cursor is at left (plus overlap)
+          LD2(tmp,time_overlap)
+          JP(dorefresh)
+
+aum_cursor_on
+;--------
+          FUN2(time_to_x,time,rtime_at_left)
+;Reuse opcode, but actually no return value
+          CALL_EXT11(ext_cursor_locate,out0)
+          RET0()
+
+          SIGN(1,2,FLAG_Z)
+collect_pred_succ_at
+;-------------------
+; Given t, return out0: max of starting point for all clips (can be t)
+                ; out1: min of end point (can be infinite) 
+;t     = in0
+track# = r0
+maxstart = r1
+minnext = r2
+
+          LD2(track#,lit + 0)
+          LD2(maxstart,lit + 0) ; init max = 0
+          LD2(minnext,lit + -1) ; init min = +inf (comparision is unsigned)
+.while
+          CALL_EXT11(ext_get_track,track#)
+          JP_Z(.retparams)
+          FUN2(_track_get_event_at,out0,in0)
+          JP_Z(.next)
+
+          LD3(maxstart,maxstart + max,t0)
+          LD3(minnext,minnext + min,t1)
+.next
+          LD3(track#,track# + add,lit + 1)
+          JP(.while)
+
+.retparams
+          LD2(out0,maxstart)
+          LD2(out1,minnext)
+          RET0()
+
+          SIGN(1,0,NO_FLAGS)
+ext_cursor_locate
+;----------------
+; CDE= pos x. Must be < SCREEN_WIDTH
+      IF dev_checks
+          ld a,c:or a:call nz,mess
+          or d:call nz,mess
+          ld a,e:cp SCREEN_WIDTH:call nc,mess
+      END
+          push de
+          call get_cursor_y
+          call y_to_offset
+          pop de
+          ld a,&AA      ; mask pixel lft
+          srl e
+          jr nc,$+3:cpl
+          add hl,de
+          set 7,h:set 6,h ; sanity 
+          ld (cursor_screen_pos),hl
+          ld de,cursor_backup
+          ld b,CURSOR_HEIGHT
+          ld c,a
+.lp
+          ld a,(hl):ld (de),a:inc de
+          or c:ld (hl),a
+          call bc26
+          djnz .lp
+          ret
+
+
+cursor_off
+;---------
+          ld hl,(cursor_screen_pos)
+          ld a,l:or h
+          ret z
+          ld de,cursor_backup
+          ld b,CURSOR_HEIGHT
+.lp
+          ld a,(de):inc de
+          ld (hl),a
+          call bc26
+          djnz .lp
+          ld hl,0
+          ld (cursor_screen_pos),hl
+          ret
+
+
+get_cursor_y
+;-----------
+      IF TRACK_INTERLINE - 16
+  !! review that
+      END
+          ld a,(current_track)
+          4 ** add a
+          add TRACK_Y0
+          ret
+
+bc26
+;---
+;Works for &c000
+          ld a,h:add 8:ld h,a
+          ret nc
+          ld a,l:add crtc_r1 * 2:ld l,a
+          ld a,h:adc &C0:ld h,a
+          ret
+
+          SIGN(1,0,NO_FLAGS)
+ext_refresh
+;----------
+;Update time_cursor and /time_at_left/ and refresh consequently
+;Note: time_at_left passed as CDE, but we it's cheaper to copy both
+     ; variables. We only used CALL_EXT11 as it was the only signature
+     ; available at that time.
+          call copy_regs_ui
+;enchaine
+refresh_all_tracks
+;----------------- 
+          ld hl,TRACK_Y0':ld (track_y0),hl
+          ld hl,tracks
+          ld a,(used_tracks)
+          or a
+          ret z
+          ld b,a
+.lp
+          push bc
+;Copy pnt
+          ld (aum_regs + in0*4),hl
+          xor a
+          ld (aum_regs + in0*4+2),a
+
+;All active tracks are keept contiguous, they should be initialised.
+          ld a,(hl):or a:call z,mess
+
+          push hl
+          ld hl,time_at_left
+          ld de,aum_regs + in1*4
+          ld b,1
+          call setup_regs'
+          ld hl,.input
+          ld b,2
+          call setup_regs'
+
+          ld hl,track_draw'
+          call eval
+
+; Go to next track Y pos
+          ld hl,(track_y0)
+          ld bc,TRACK_INTERLINE
+          add hl,bc
+          ld (track_y0),hl
+
+          pop hl
+          tf_struct_size ** inc hl
+          pop bc
+          djnz .lp
+          ret
+
+.input
+          TIME(TIME_WIDTH)
+          PNT(track_x0)
+
+          SIGN(1,0,NO_FLAGS)
+ext_set_time
+;-----------
+; it is ok to also copy rtime_at_left (which hasn't changed)
+; Enchaine
+copy_regs_ui
+;-----------
+; updates time_cursor and time_at_left
+          ld hl,aum_regs
+          ld de,time_cursor
+          ld b,2
+;enchaine
+copy_regs
+;--------    
+; Recopy regs (skip padding due to 32bits alignment)
+; That's the inverse fonction of setup_regs'
+; in: hl = source (regs)
+    ; de = dest 
+    ;  b = nb regs
+.lp
+          push bc
+          push hl
+          ld bc,reg_size
+          ldir
+          pop hl
+          ld a,l:add 4:call z,mess
+          ld l,a
+          pop bc
+          djnz .lp
+          ret
+
+setup_regs_ui
+;------------
+; Common preparation for left, right, up, down
+          ld hl,time_cursor
+          ld b,4
+          jp setup_regs
+
+setup_one_reg
+;-------------
+          ld b,1
+setup_regs
+;---------
+; Loop input registers
+; IN: hl: source
+    ;  b: nb register 
+          ld de,aum_regs + in0*4
+setup_regs'
+;---------
+.lp
+          push bc
+          push de
+          ld bc,reg_size
+          ldir
+          pop de
+          ld a,e:add 4:call z,mess
+          ld e,a
+          pop bc
+          djnz .lp
+          ret
+
+; -----------------------------
+;    Sequencer ui main loop 
+; -----------------------------
+      IF 0
+ui_sequencer
+; Refresh + cursor
+          call refresh_all_tracks
+          call cursor_on
+ui_loop
+; Invariant: in0..in3 contains time_cursor etc...
+          call km_wait_key ; use km_read_key for no wait
+          cp kesc
+          ret z
+
+          push af
+          call cursor_off
+;Setup each time, as e.g. in0 is overwritten with track pnt. 
+;The invert operation (var update) is done in /ext_refresh/
+          call setup_regs_ui
+          pop af
+          ld c,a
+          ld hl,shortcuts
+          call SCAN_KEY
+          jr nc,.nokey
+
+          call jp_hl
+
+.nokey
+          call cursor_on
+          jr ui_loop
+
+
+cursor_on
+          call setup_regs_ui
+          ld hl,aum_cursor_on ; setup+call ext_cursor_locate
+          jp eval
+
+
+ui_left
+          ld hl,left
+          jp eval
+
+ui_right
+          ld hl,right
+          jp eval
+
+ui_up
+          ld hl,current_track
+          ld a,(hl)
+          or a
+          ret z         ; Exit if top already 
+          call m,mess   ; still &ff? Must have been init in some way
+          dec (hl)
+          ret
+
+ui_down
+          ld hl,current_track
+          ld a,(used_tracks)
+          ld c,(hl)
+          inc c
+          cp c:ret z    ; Exit if at bottom already
+          ld (hl),c
+          ret
+
+refresh_sequencer
+;refresh_all_tracks 
+          ld hl,dorefresh
+          jp eval
+
+shortcuts
+      BYTE kleft:WORD ui_left
+      BYTE kright:WORD ui_right
+      BYTE kup:WORD ui_up
+      BYTE kdown:WORD ui_down
+      BYTE 0
+
+      END
+
+track_x0 WORD 0
+track_y0 WORD 0
+
+;---- Keep this order for /goto_pos/
+time_cursor TIME(0)     ; Position in sequencer
+time_at_left TIME(0)    ; Position at left of screen
+          TIME(TIME_WIDTH) ; Constant: screen width in ticks
+          TIME(6*64)    ; Constant: overlap when "scrolling"
+
+cursor_screen_pos WORD 0
+cursor_backup SKIP CURSOR_HEIGHT ; save background
+
