@@ -1,5 +1,5 @@
 ; ----- Manual test of phrase editor -----
-do_nrt = 0              ; 0: manual test
+do_nrt = 1              ; 0: manual test
 dev_checks' = 1
 short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 
@@ -225,15 +225,15 @@ test_row_dwn_to_repeated_phrase
 ;Prerequisite: test_time_at_top_updated
           call dev_setup
           TEST_RUN(.seq)
-          CHECK_CURSOR(4,nrt_phrase0_dur + 1)
+          CHECK_CURSOR(4+wid_row#,nrt_phrase0_dur + 1)
 ;goto 2nd row 
           TEST_RUN(.seq')
-          CHECK_CURSOR(4,nrt_phrase0_dur + delai_ui_default + 1)
+          CHECK_CURSOR(4+wid_row#,nrt_phrase0_dur+delai_ui_default + 1)
           call row_get_note:call z,nrtfail
           cp note1+1:call nz,nrtfail
 ;goto 1st row of next repetition
           TEST_RUN(.seq'')
-          CHECK_CURSOR(4,nrt_phrase0_dur*2 + 1)
+          CHECK_CURSOR(4+wid_row#,nrt_phrase0_dur*2 + 1)
           call row_get_note:call z,nrtfail
           cp note1:call nz,nrtfail
           ret
@@ -291,7 +291,7 @@ test_up_at_top
 ;If already at top: no-op 
           call dev_setup
           TEST_RUN(.seq)
-          CHECK_CURSOR(4,1)
+          CHECK_CURSOR(4+wid_row#,1)
           call row_get_note:call z,nrtfail
           cp note1:call nz,nrtfail
           ret
@@ -305,7 +305,7 @@ test_up_to_prev_phrase
 ;Prerequisite: test_row_dwn_to_repeated_phrase
           call dev_setup
           TEST_RUN(.seq)
-          CHECK_CURSOR(4,delai_ui_default*3 + 1)
+          CHECK_CURSOR(4+wid_row#,delai_ui_default*3 + 1)
           ld a,(row_exists):or a:call nz,nrtfail
           ret
 
@@ -317,7 +317,7 @@ test_kcdwn
 ;DOWN+CONTROL-DOWN: go 17*delai_ui down
           call dev_setup
           TEST_RUN(.seq)
-          CHECK_CURSOR(4,delai_ui_default*17 + 1)
+          CHECK_CURSOR(4+wid_row#,delai_ui_default*17 + 1)
           ld a,(row_exists):or a:call z,nrtfail
           ld a,(is_first_iter):or a:call nz,nrtfail
           call row_get_note:call z,nrtfail
@@ -332,7 +332,7 @@ test_kcdwn'
 ;2 * CONTROL-DOWN
           call dev_setup
           TEST_RUN(.seq)
-          CHECK_CURSOR(4,delai_ui_default*32 + 1)
+          CHECK_CURSOR(4+wid_row#,delai_ui_default*32 + 1)
           ld a,(row_exists):or a:call z,nrtfail
           ld a,(is_first_iter):or a:call nz,nrtfail
           call row_get_note:call z,nrtfail
@@ -348,7 +348,7 @@ test_kcup
 ;DOWN + CTRL-DOWN + CTRL-UP: go delai_ui down
           call dev_setup
           TEST_RUN(.seq)
-          CHECK_CURSOR(4,delai_ui_default + 1)
+          CHECK_CURSOR(4+wid_row#,delai_ui_default + 1)
           ld a,(row_exists):or a:call z,nrtfail
           ld a,(is_first_iter):or a:call z,nrtfail
           call row_get_note:call z,nrtfail
@@ -364,7 +364,7 @@ test_next_page
           call dev_setup
           TEST_RUN(.seq)
 ; View shift: 32 rows. 
-          CHECK_CURSOR(4,[3*16 MOD 32]*delai_ui_default + 1)
+          CHECK_CURSOR(4+wid_row#,[3*16 MOD 32]*delai_ui_default + 1)
           ld a,(row_exists):or a:call z,nrtfail
           ld a,(is_first_iter):or a:call nz,nrtfail
           call row_get_note:call z,nrtfail
@@ -380,7 +380,7 @@ test_next_page
 test_prev_page
           call dev_setup
           TEST_RUN(.seq)
-          CHECK_CURSOR(4,1)
+          CHECK_CURSOR(4+wid_row#,1)
           ld a,(row_exists):or a:call z,nrtfail
           ld a,(is_first_iter):or a:call z,nrtfail
           call row_get_note:call z,nrtfail
@@ -616,8 +616,9 @@ compare_display
 _compare
 ; Check our fake screen is filled with expected strings.
 ; (Focus isn't checked)
-; In: DE = ref
-          ld hl,iotest_screen
+; In: DE = ref                    
+wid_row# = 3
+          ld hl,iotest_screen + wid_row# ; skip row#
 ; Compare zone at HL and DE until nrt_end met in expected
 ; Ie don't check the rest
 .comp
@@ -630,7 +631,7 @@ _compare
   !! must be power of 2
       END
           and &FF XOR [nrt_width-1] ; go to start of line
-          add nrt_width ; next_line
+          add nrt_width + wid_row# ; next_line, skip row#
           ld l,a
           jr nc,$+3:inc h
           inc de

@@ -2,6 +2,9 @@
 dev_checks' = 1
 
 ; 2025
+; -- Alpha2 -- 
+  ; Jan
+    ;  7 Display row number
 ; -- Alpha1 --
   ; Dec
     ; 25 disp_rows: fix buffer not reloaded
@@ -32,6 +35,7 @@ disp_rows
     ;  a = (minimum) step for zoom correction
     ; ixh = pos x
     ; ixl = pos y
+    ; iyh = row#
     ; phrase selected   
 ; Out: hl = time at end of view
      ;  a = pos y at end of slice
@@ -44,39 +48,42 @@ disp_rows
           ld de,row_buf
           call unpack_row_at
           jr nc,.pastphrase
-          jr z,.rowlp   ; will display empty row
+          jr nz,.entry
 
-          ld a,l:sub iyl ; pos_y = time - time at top
-          call disp_row
-          jr .next
-
+; will display empty row
 .rowlp
 ; Vars:
 ; iyl = lsb time at top
 ; hl = current time, delai-aligned
-; bc = time next row     
+; bc = time next row
+          ld a,c:sub iyl
           or a:sbc hl,bc:add hl,bc:jr c,.empty
 ; HL reached next row (z) or past it (nz)
           push af
-          ld a,c:sub iyl:ld iyh,a ; compute pos_y before BC is updated
+          push bc
           ld de,row_buf
           call unpack_next_row
+          pop de        ; was bc: time next row
           jr nc,.pastphrase
       IF dev_checks'
 ;Only existing row or pastphrase possible
           call z,mess
       END
-          ld a,iyh
-          call disp_row
           pop af
-          jr z,.next
-; Unaligned to delay (row at BC < HL) 
+          jr z,.entry
+; Unaligned to delay (row at DE < HL) 
 ;Mustn't advance HL to next delai, as there might be another row before
+          ld a,e:sub iyl
+          call disp_row_without_row#
           jr .rowlp
 
 .empty
           ld a,l:sub iyl
           call disp_empty
+          jr .next
+.entry
+          ld a,l:sub iyl
+          call disp_row
 .next
 ; time
           call get_delai_ui
@@ -104,19 +111,37 @@ disp_rows
 .pastphrase
 ;Shouldn't happen: client must provide valid range
 ;We put marker for visual debug
+          pop af
           ld a,&F0
           call sepcom
           or a
           ret
 
 ;---------------------------------
+disp_row_without_row#
+; In: like disp_row
+          push bc:push hl
+          push ix
+wid_row# = 3
+          wid_row# ** inc ixh
+          call set_cursor_dh
+          pop ix
+          ld hl,phradisp_buf+wid_row#:push hl
+          jr _disp_row_com
+
 disp_row
 ; In: ixl : pos x
+    ; iyh = row#
     ; a : pos y        
           push bc:push hl
           call set_cursor_dh
+          ld hl,phradisp_buf:push hl
+          call put_row#
+          ex de,hl
+          ld (hl)," "   ; put_hexa_a put 0
+          inc l
+_disp_row_com
           ld de,row_buf
-          ld hl,phradisp_buf
           ld c,"-"
           ld a,(de):inc de:or a:jp p,.note
 ;-1 : empty 
@@ -146,7 +171,7 @@ disp_row
           ex de,hl
           call put_hexa_ql
 .okvol
-          ld bc,phradisp_buf
+          pop bc
           call dh_text
           pop hl:pop bc
           ret
@@ -155,11 +180,18 @@ disp_empty
 ; Ad-hoc display of "--- -- -" (only one scanline)
    ; - faster
    ; - doesn't overwrite for unaligned delai
-; In: ixl : pos x
-    ;   a : pos y
+; In: ixl: pos x
+    ; iyh: row#
+    ;   a: pos y
           push bc:push hl
           call set_cursor_dh
-          ld de,(dh_scrpos)
+          call put_row#
+          ld bc,phradisp_buf
+          call dh_text
+      IF dev_checks'
+          ld a,d:and &C0:cp &C0:call nz,mess
+      END
+          inc de
           call bc26_de
           call bc26_de
           ld hl,empty_row
@@ -171,6 +203,12 @@ disp_empty
           djnz .xlp
           pop hl:pop bc
           ret
+
+put_row#
+          ld de,phradisp_buf
+          ld a,iyh
+          inc iyh       ; for next time
+          jp put_hexa_a
 
 set_cursor_dh'
 ; For phrasui: 
@@ -217,7 +255,7 @@ zoom_hook = $+1
           ret
 
 sepcom
-          ld b,9
+          ld b,12
           ld de,(dh_scrpos)
 ;enchaine
 separator
@@ -298,7 +336,7 @@ ph_write_char
 
 ;---------------------------------
           PAD()         ; for confine
-phradisp_buf FILL 8," ":BYTE 0 ; C-4 11 F
+phradisp_buf FILL 11," ":BYTE 0 ; 00 C-4 11 F
           CHECK_CONFINE(phradisp_buf)
 empty_row
            ; "--- -- -"

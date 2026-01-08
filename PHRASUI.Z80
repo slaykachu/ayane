@@ -2,7 +2,8 @@
 todo  = 0
 ; -- Alpha1 --
 ; 2026
-  ; Jan 5. Del: must go to next line even if empty
+  ; Jan 7 Display row number
+      ; 5. Del: must go to next line even if empty
       ; 3. Handle CLR (stop sound)
       ; 1. Add consume_row (for CTRL-SPACE and when entering note)
 ; 2025
@@ -67,12 +68,13 @@ phrase_cold_refresh
           ld bc,_paint_sprite
           call gedeihen_set_hooks
 
-          ld hl,&0101
+          ld hl,[1+wid_row#]*&0100 + 1
           call setup_phrase_ui
  ; -- focus on current row
           call gedeihen_disp
  ; -- enter        
-          ld hl,&0101:call _set_cursor
+          ld hl,[1+wid_row#]*&0100 + 1
+          call _set_cursor
           ld hl,phrase_ui
           jp gedeihen_enter
 
@@ -627,7 +629,7 @@ switch_track
 track_wid = 20
           ASSERT(track_wid == 20)
           ld c,a:2 ** add a:add c:2 ** add a ; * 20
-          inc a         ;ged cursor 1-based
+          add wid_row#+1 ;ged cursor 1-based
           push af
           call ph_get_cursor
           pop af
@@ -679,27 +681,31 @@ refresh_page
           ld ixl,0      ; cursor y
 .slice_lp
           call refresh_state
-
+          ld e,l:ld d,h ; save cur time
+; Set iyh: row#
+          call get_delai_ui
+          ld c,a
+          xor a
+          ld b,a
+.div_hl_bc inc a
+          sbc hl,bc
+          jr nc,.div_hl_bc
+          dec a
+          ld iyh,a
+          ld a,c        ; step
 ; Set DE: time end   
-          ex de,hl      ; save hl
           ld hl,(time_end)
           ld bc,(fetched_t0)
           or a:sbc hl,bc
-          ex de,hl
-          call get_delai_ui
+          ex de,hl      ; hl = cur time, de = time end
           call disp_rows
           ex de,hl      ; de : cur time
 
 ; --flag repeated phrase
           push af
           call song_get_current_phrase
-          ld hl,phrase_met:call bs_get
-          jr z,.nodup
-          push hl
-          ld hl,phrase_dup:call bs_set
-          pop hl
-.nodup
-          call bs_set
+          ld hl,phrase_met:call bs_get:call bs_set
+          ld hl,phrase_dup:call nz,bs_set
           pop af
 
           ld ixl,a

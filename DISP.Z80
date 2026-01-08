@@ -6,6 +6,9 @@ dev_checks' = 1
 
 screen' = &4000         ; for status
 
+; -- Alpha 2 --
+ ; Jan 7: dh_text: fix update dh_scrpos
+
       IF todo
 ; !!!! remove is_ei
 ; Harmonize naming (e.g. status_char_at takes de=cursor
@@ -656,7 +659,7 @@ dh_text_at
           ld a,(bc):inc bc
           or a
           jr nz,.lp
-          ld (dh_scrpos),hl
+          ld (dh_scrpos),de
           ret
 
 dh_chr
@@ -738,6 +741,7 @@ dh_locate_x
           ld (dh_scrpos),hl
           pop hl
           ret
+
 
 
 dh_locate_y
@@ -1102,7 +1106,7 @@ vo_status_tmp SKIP &80  ; buffer tmp
       END
 
       ORG $$            ; restore
-
+hi
       IF $ > pianoui
    !! overlap
       END
