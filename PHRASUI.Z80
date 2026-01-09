@@ -2,7 +2,9 @@
 todo  = 0
 ; -- Alpha1 --
 ; 2026
-  ; Jan 7 Display row number
+  ; Jan
+      ; 8 Display phrase id and transpose
+      ; 7 Display row number
       ; 5. Del: must go to next line even if empty
       ; 3. Handle CLR (stop sound)
       ; 1. Add consume_row (for CTRL-SPACE and when entering note)
@@ -626,9 +628,9 @@ switch_track
           call refresh_state_cur
           pop af
           dec a
-track_wid = 20
-          ASSERT(track_wid == 20)
-          ld c,a:2 ** add a:add c:2 ** add a ; * 20
+track_wid = 24
+          ASSERT(track_wid == 24)
+          ld c,a:add a:add c:3 ** add a ; * 24
           add wid_row#+1 ;ged cursor 1-based
           push af
           call ph_get_cursor
@@ -684,6 +686,7 @@ refresh_page
           ld e,l:ld d,h ; save cur time
 ; Set iyh: row#
           call get_delai_ui
+          push af
           ld c,a
           xor a
           ld b,a
@@ -692,12 +695,17 @@ refresh_page
           jr nc,.div_hl_bc
           dec a
           ld iyh,a
-          ld a,c        ; step
 ; Set DE: time end   
           ld hl,(time_end)
           ld bc,(fetched_t0)
           or a:sbc hl,bc
           ex de,hl      ; hl = cur time, de = time end
+          push hl
+          call song_get_current_phrase
+          pop hl
+          ld b,a
+          ld a,(cur_transpose):ld c,a
+          pop af        ; step
           call disp_rows
           ex de,hl      ; de : cur time
 
@@ -721,7 +729,6 @@ refresh_page
           call refresh_state_cur
           jp select_row_ui
 
-
 refresh_state_cur
 ;----------------
           ld hl,time_cur
@@ -734,6 +741,9 @@ refresh_state
     ; phrase selected
     ; time_end set to nxt phrase in track or end of selected one,
              ; whichever comes first
+    ; (cur_transpose) updated
+          call track_get_state_at
+          ld (cur_transpose),a
           call track_select_phrase_at
           push hl
           sbc a:ld (is_first_iter),a
@@ -826,6 +836,11 @@ consume_row
 .tracklp
           push af
           call Song_select_track
+      IF todo
+; reuse refresh_state_cur? 
+    ; - less code
+    ; - give current transpose
+      END
           ld hl,time_cur
           call track_select_phrase_at
           call get_time_row
@@ -882,9 +897,9 @@ row_exists BYTE 0       ; 0 = empty
 is_modified BYTE 0
 auto_skip BYTE 0        ; see do_next_id/do_skip_id
 cur_y BYTE 0
+cur_transpose BYTE 0
 
 _savepc
-
       ORG phrasui_shared_vars
 ; Time passed to track.o must be out of bank
 state

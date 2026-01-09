@@ -4,10 +4,17 @@ dev_checks' = 1
 ; 2025
 ; -- Alpha2 -- 
   ; Jan
-    ;  7 Display row number
+     ; 8 Display phrase id and transpose
+     ; 7 Display row number
 ; -- Alpha1 --
   ; Dec
     ; 25 disp_rows: fix buffer not reloaded
+
+wid_row# = 3
+wid_separator = 21
+x_pos_phrase = 15
+view_hei = 200
+view_rows = view_hei-4  ; in scanlines
 
       IMPORT "memmap.i" ; BK_DISP
       IMPORT "macro.i"
@@ -19,9 +26,6 @@ ref_pc
           IMPORT_DISP()
 ho
           ASSERT($ == ref_pc) ; deps must have been imported by host
-
-view_hei = 200
-view_rows = view_hei-4  ; in scanlines
 
 disp_rows
 ; Display phrase    
@@ -36,6 +40,8 @@ disp_rows
     ; ixh = pos x
     ; ixl = pos y
     ; iyh = row#
+    ;   b = phrase id
+    ;   c = transpose
     ; phrase selected   
 ; Out: hl = time at end of view
      ;  a = pos y at end of slice
@@ -44,6 +50,24 @@ disp_rows
           call get_zoom
           ld (zoom_hook),de
           ld a,l:ld iyl,a
+
+; Display phrase and transpose
+          ld de,phraseid_buf
+          push de
+          ld a,b:call put_deci_a_pad_space
+          ld a,c:or a:jr z,.oktranspose
+          ld a," ":ld (de),a:inc e
+          ld a,c:call put_deci_a_signed
+
+.oktranspose
+          push ix
+          ld a,ixh:add x_pos_phrase:ld ixh,a
+          ld a,l:call set_cursor_dh
+          pop ix
+          pop bc
+          push hl
+          call dh_text
+          pop hl
 
           ld de,row_buf
           call unpack_row_at
@@ -73,16 +97,16 @@ disp_rows
           jr z,.entry
 ; Unaligned to delay (row at DE < HL) 
 ;Mustn't advance HL to next delai, as there might be another row before
-          ld a,e:sub iyl
+          ld a,e
           call disp_row_without_row#
           jr .rowlp
 
 .empty
-          ld a,l:sub iyl
+          ld a,l
           call disp_empty
           jr .next
 .entry
-          ld a,l:sub iyl
+          ld a,l
           call disp_row
 .next
 ; time
@@ -122,7 +146,6 @@ disp_row_without_row#
 ; In: like disp_row
           push bc:push hl
           push ix
-wid_row# = 3
           wid_row# ** inc ixh
           call set_cursor_dh
           pop ix
@@ -132,7 +155,7 @@ wid_row# = 3
 disp_row
 ; In: ixl : pos x
     ; iyh = row#
-    ; a : pos y        
+    ; a: time lsb
           push bc:push hl
           call set_cursor_dh
           ld hl,phradisp_buf:push hl
@@ -182,7 +205,7 @@ disp_empty
    ; - doesn't overwrite for unaligned delai
 ; In: ixl: pos x
     ; iyh: row#
-    ;   a: pos y
+    ;   a: shift y
           push bc:push hl
           call set_cursor_dh
           call put_row#
@@ -227,11 +250,12 @@ set_cursor_dh'
           ret
 
 set_cursor_dh
-; In: A = shift Y
+; In: A = time lsb
     ; IXL = pos Y (at phrase start or top)
     ; IXH = pos X
 ; Out: Carry if ok
      ; NC if out of view port
+          sub iyl       ; pos y
           call correct_y
 set_cursor'
           call dh_locate_y ; first, as reset x
@@ -255,7 +279,7 @@ zoom_hook = $+1
           ret
 
 sepcom
-          ld b,12
+          ld b,wid_separator
           ld de,(dh_scrpos)
 ;enchaine
 separator
@@ -338,8 +362,9 @@ ph_write_char
           PAD()         ; for confine
 phradisp_buf FILL 11," ":BYTE 0 ; 00 C-4 11 F
           CHECK_CONFINE(phradisp_buf)
-empty_row
-           ; "--- -- -"
+phraseid_buf FILL 6," ":BYTE 0 ; 01 +12
+          CHECK_CONFINE(phraseid_buf)
+empty_row               ; "--- -- -"
 ._    = %01010100
       BYTE ._,._,._,0,._,._,0,._
 empty_row_ = $ - empty_row
