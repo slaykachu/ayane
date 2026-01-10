@@ -1,11 +1,14 @@
 ; ----- Manual test of phrase editor -----
-do_nrt = 1              ; 0: manual test
+do_nrt = 0              ; 0: manual test
 dev_checks' = 1
 short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 
 ; 2026
+  ; -- Alpha 2 --
+  ; Jan    
+      ; 9: test_refresh_state: add check for unaligned transpose
+      ; 8: Adapt refs, accounting for row# column
   ; -- Alpha 1 --
-  ; Jan
       ; 5: Add test_clr
       ; 3: Add test_note_2nd_row
       ; 2: Move keys_buffer @ 8200 (since we now uses ply for playback) 
@@ -99,6 +102,7 @@ note2 = &26             ; D-2
       END
           ld a,1:call Song_select_new_track
           xor a:ld hl,time0:call Set_phrase_at_t
+          ld a,12:ld hl,time24:call Set_transpose_at_t
 
           ld a,1:call song_select_new_phrase
 note3 = &34
@@ -121,6 +125,8 @@ note4 = &43
       END
           ld a,3:call Song_select_new_track
           ld a,2:ld hl,time0:call Set_phrase_at_t
+
+          ld a,-12:ld hl,time96:call Set_transpose_at_t
 
           ld a,BK_DISP:call connect_a ; for checks against phrasui's var
           CALL_DISP_BK(phrase_cold_refresh)
@@ -177,6 +183,7 @@ sentinelle = 0
 tests
           ld a,&F7:ld (0),a
           call test_refresh_state
+      BRK
           call test_refresh_page
           call test_row_dwn_to_repeated_phrase
           call test_up_at_top
@@ -198,7 +205,16 @@ test_refresh_state
           ld hl,(time_end)
           ld de,nrt_phrase0_dur
           or a:sbc hl,de:add hl,de:call nz,nrtfail
+
+;Check time_end properly setup after transpose
+          ld a,6:ld hl,time6:call Set_transpose_at_t
+          ld hl,time6
+          CALL_DISP_BK(refresh_state)
+          ld hl,(time_end)
+          ld de,delai_ui_default*4
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
           ret
+
 
 test_refresh_page
 ; Test when time_at_top > 0
@@ -663,6 +679,8 @@ iotest_screen SKIP nrt_screen_
 
 time0     TIME(0)
 time6     TIME(6)
+time24    TIME(24)
+time96    TIME(96)
 
 ho
           LIMIT(ramlimit)

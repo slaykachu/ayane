@@ -10,8 +10,10 @@ use_widget = 0          ; 1 for trackui
 
 ; 2026
 ; -- alpha 2 --
- ; Jan
-    ;  7: [cleanup] Remove ui related code
+ ; Jan 
+     ; 9: track_select_phrase_at: Respect invariant fetched_t1 > t
+     ; 8: track_get_state_at: save hl, ix. Preserve transpose sign!
+     ; 7: [cleanup] Remove ui related code
 ; 2025 
 ; -- alpha 1.07 --
  ; Dec     
@@ -1679,8 +1681,22 @@ track_select_phrase_at
       IF dev_checks
           call z,mess
       END
+; -- Invariant fetched_t1 > t
+; Correction needed when e.g transpose in middle of phrase
+          pop de        ; was hl = t
+          push de
+          ld hl,fetched_t1
+          call cp_ide_ihl
+          jr c,.okt1
+          push hl
+          ex de,hl      ; hl = t
+          call track_get_hook_at
+          ld hl,aum_regs + t1*4
+          pop de        ; was hl: fetched_t1
+          call copy_time
+.okt1
 ; -- AHL = t-t0
-          pop bc        ; was hl = t
+          pop bc        ; t
           ld hl,fetched_t0
           call sub_ade_ibc_ihl
           ex de,hl
@@ -1724,13 +1740,16 @@ track_get_state_at
 ; For now, state consists on only transpose
 ; In: hl = pnt to t
 ; Out: A = transpose
+     ; hl preserved
           call scope_bk_track
+          push hl:push ix
           ld a,evt_set_transpose_lsb
           call track_get_event_at
+          pop ix:pop hl
           ld a,0
           ret z
           ld a,e
-          srl a
+          sra a
           ret
 
 ;-----------------------------------------
@@ -1743,7 +1762,14 @@ dec_ihl
           dec (hl)
           ret
 
-;cp_ide_ihl
+cp_ide_ihl
+          push de:push hl
+          2 ** inc de
+          2 ** inc hl
+          call cp_ide_ihl_end
+          pop hl:pop de
+          ret
+
 cp_ide_ihl_end
           ld a,(de):cp (hl):ret c:ret nz
           dec de:dec hl
@@ -1809,7 +1835,7 @@ add_ihl_cde
           ret
 
 add_ihl_ibc_de
-; (hl) = (bc) + de
+; (hl) = (bc) + de 
           ld a,(bc):add e:ld (hl),a:inc bc:inc hl
           ld a,(bc):adc d:ld (hl),a:inc bc:inc hl
           ld a,(bc):adc 0:ld (hl),a
@@ -1849,7 +1875,7 @@ track_get_event_at
                   ; hl = event structure
                   ; de = param (for convenience)
     ; Otherwise, Z
-    ; AF, BC trashed
+    ; AF, BC, IX? trashed
           call setup_track_t
           ld (aum_regs + reg_event*4),a
           ld hl,0:ld (fetched_event),hl
@@ -1915,6 +1941,9 @@ Set_track_loop
 ; Set loop 
 ;!!! if no hook at expected timestamp (hl), will point to
    ; first hook before that
+      IF todo
+; to fix that, set a null event at time (hl)
+      END
 ; In; hl = pnt to loop timestamp
 
           call track_get_hook_at
@@ -2379,14 +2408,14 @@ time_inf FILL 3,&FF
 
 ;for phrasui
           ASSERT($ AND &C000 != &4000) ; out of bank for sharing
+fetched_event WORD 0
 fetched_t0 TIME(0)
 fetched_t1 TIME(0)
           ASSERT(fetched_t1 == fetched_t0+3)
 
 timestamp TIME(0)
 previous_timestamp TIME(0)
-
-fetched_event WORD 0
+time_param TIME(0)
 
 ;-----------------
 ; AUM Variables     

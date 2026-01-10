@@ -3,8 +3,12 @@ todo  = 1
 do_brittle = 0
 
 ; ----- 2026 ----------
+; -- alpha 2 --
+ ; Jan
+     ; 9 Add test_track_get_hook_t1
+       ; Add test_t1_with_transpose
+
 ; -- alpha 1.07 --     
- ; Jan   
      ; 7 track_get_state_at returns transpose in A
        ; remove ply dependency
 ; ----- 2025 ----------
@@ -92,6 +96,8 @@ tests
           call nrt_init
 
 ; ---- Recent
+          call test_track_get_hook_t1
+          call test_t1_with_transpose
 
 ; ---- UI (manual)
       IF enable
@@ -142,6 +148,7 @@ tests
           call test_prepend_event
       END
           call test_track_get_hook_at
+          call test_track_get_hook_t1
           call test_track_get_event_at
           call test_set_transpose
           call test_set_phrase_after
@@ -149,6 +156,7 @@ tests
           call test_get_phrase_implicit_repeat
           call test_track_select_phrase_far
           call test_t0_when_repeat
+          call test_t1_with_transpose
           call test_track_get_state_at
 
 ; ---- Test subsong -----
@@ -1252,6 +1260,20 @@ test_track_get_hook_at
           ld a,(hl):or a:call nz,fail
           ret
 
+test_track_get_hook_t1
+          call nrt_init
+          call nrt_dummy_phrase
+          xor a:ld hl,time0:call Set_phrase_at_t
+          ld a,12:ld hl,time6:call Set_transpose_at_t
+          ld a,-12:ld hl,time6:call Set_transpose_at_t
+
+          ld hl,time6
+          call track_get_hook_at
+          ld hl,(aum_regs + t1*4)
+          ld de,last_duration
+          or a:sbc hl,de:add hl,de:call nz,fail
+          ret
+
 test_track_get_event_at
 ;----------------------
 ; Filter against particular event (here, transpose, easier to test)
@@ -1451,6 +1473,8 @@ test_track_select_phrase_far
 
 .time_post_last TIME(.evts# * .dur + 42)
 
+
+
 test_t0_when_repeat
 ; The variable /fetched_t0/ is used by phraseui as start point
 ; When a phrase is repeated, it must be adjusted at start of repetition
@@ -1498,6 +1522,31 @@ test_t0_when_repeat
           ld a,(fetched_t0+2):or a:call nz,nrtfail
           ret
 
+test_t1_with_transpose
+;---------------------
+; Prerequisite: test_track_get_hook_t1
+; With 0: phrase 0 + transpose
+     ; 6: transpose 
+; When asking at time 6, t1 must be end of phrase, not 6
+; E.g. invarient t1 > time_input
+          call nrt_init
+          call nrt_dummy_phrase
+          xor a:ld hl,time0:call Set_phrase_at_t
+          ld a,12:ld hl,time6:call Set_transpose_at_t
+          ld a,-12:ld hl,time6:call Set_transpose_at_t
+
+;Sanity: at 0, return 6
+          ld hl,time0:call track_select_phrase_at:call z,nrtfail
+          ld hl,(fetched_t1)
+          ld de,6
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+
+          ld hl,time6:call track_select_phrase_at:call z,nrtfail
+          ld hl,(fetched_t1)
+          ld de,last_duration
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ret
+
 test_track_get_state_at
 ;----------------------
 ; For now, state consists on only transpose
@@ -1522,6 +1571,8 @@ test_track_get_state_at
           ld hl,time_far:call track_get_state_at
           cp 42:call nz,fail
           ret
+
+
 
 
 time0     TIME(0)
