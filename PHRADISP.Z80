@@ -172,9 +172,12 @@ _disp_row_com
           jr .oknote
 .note
           ex de,hl
+          ld c,a
+          ld a,(cur_transpose)
+          add c
           call put_note
           ex de,hl
-          ld c,"-"      ; was trashed by put_note
+          ld c,"-"
 .oknote
           inc l         ; space    
           ld a,(de):inc de:or a:jp p,.instr
@@ -359,6 +362,8 @@ ph_write_char
           ret
 
 ;---------------------------------
+cur_transpose BYTE 0
+
           PAD()         ; for confine
 phradisp_buf FILL 11," ":BYTE 0 ; 00 C-4 11 F
           CHECK_CONFINE(phradisp_buf)

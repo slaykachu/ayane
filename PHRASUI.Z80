@@ -3,6 +3,7 @@ todo  = 0
 ; -- Alpha1 --
 ; 2026
   ; Jan
+      ; 9 Display notes with transposition
       ; 8 Display phrase id and transpose
       ; 7 Display row number
       ; 5. Del: must go to next line even if empty
@@ -209,6 +210,8 @@ note_as_text
           jr nz,.clr
           call row_get_note
           jr z,.nonote
+          ld hl,cur_transpose
+          add (hl)
 .comnote
           ld de,buf_note_text
           push de
@@ -652,14 +655,12 @@ piano_keys
           call is_piano_key_pressed
           ret nc
           call pre_modif
+          ld hl,cur_transpose
+          sub (hl)
           call row_set_note
           call Song_get_instr
           call row_set_instr
           call validate ; needed to activate w_refresh
-;          call refresh_nofocus
-;          ld bc,&0404:call &BC38
-;          call &BB06
-;          ld bc,&0606:call &BC38
           jp edit_row_skip
 
 ; ----------------------
@@ -897,7 +898,6 @@ row_exists BYTE 0       ; 0 = empty
 is_modified BYTE 0
 auto_skip BYTE 0        ; see do_next_id/do_skip_id
 cur_y BYTE 0
-cur_transpose BYTE 0
 
 _savepc
       ORG phrasui_shared_vars

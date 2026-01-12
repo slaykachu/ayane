@@ -177,7 +177,7 @@ fonte_small = &4800
 disp  = &48D8           ; start of code after fonts
 pianoui = &4F10
 phrasui = &5630
-disp_ayane = &5DA0      ; other modules imported by ayane.o
+disp_ayane = &5DB0      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
 
