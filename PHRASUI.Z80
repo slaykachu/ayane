@@ -3,7 +3,8 @@ todo  = 0
 ; 2026
   ; Jan
 ; -- Alpha2 --
-      ;13 CTRL-DEL, ENTER
+      ;13 CTRL-f0/f.
+        ; CTRL-DEL, ENTER
 ; -- Alpha1 --
       ; 9 Display notes with transposition
       ; 8 Display phrase id and transpose
@@ -14,7 +15,7 @@ todo  = 0
 ; 2025
   ; Dec 31. Use ged binary.
 
-dev_checks' = 1
+dev_checks' = 1 - release
 
 
       IMPORT "const.i"  ; kclr
@@ -199,6 +200,8 @@ k_ml
       BYTE kcdwn:WORD row_ctrl_dwn
       BYTE kup:WORD row_up
       BYTE kcup:WORD row_ctrl_up
+      BYTE kcf+0:WORD goto_top
+      BYTE kcfdot:WORD goto_bottom
       BYTE krgt:WORD next_track
       BYTE kcrgt:WORD next_track
       BYTE klft:WORD prev_track
@@ -337,6 +340,20 @@ _edit_row_com
           scf
           ret
 
+goto_top
+;-------
+          ld hl,0
+          jp refresh_row
+
+goto_bottom
+;----------
+          call phrase_get_duration
+          ex de,hl
+          call get_delai_ui
+          ld c,a
+          ld b,0
+          or a:sbc hl,bc
+          jp refresh_row
 
 row_dwn
 ;------     
@@ -384,6 +401,9 @@ refresh_row
 refresh_row_
       IF dev_checks'
           xor a:ld (_rr_entered+1),a
+;dbg       ld a,0
+;          inc a
+;          ld (dbg+1),a
       END
 refresh_row__
 ; -- Get offset from top (and check if out of view port)
