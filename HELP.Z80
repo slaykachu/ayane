@@ -1,12 +1,13 @@
  ; Help module (generic, except constants specific Ayane doc)
-; 2025 Jun 10
-    ; Use disp-jp
+; 2026 Jan 14 Move string helpers in conv.o
+; 2025 Jun 25 Remove bandaya dependency
+     ; Jun 10 Use disp-jp
 
 dev_checks = 1
 
 mess  = &BE00
 
-MAX_NB_LINES = 21
+MAX_NB_LINES = 25
 screen = &C000
 
 section_main = 0
@@ -18,8 +19,10 @@ NB_SECTIONS = 2
       END
 
       IMPORT "memmap.i"
-      IMPORT "disp-jp.o"
-    ; Bandaya imported at end of source
+      IMPORT "import.i"
+      IMPORT "conv.o"   ; skip_nt
+
+          IMPORT_DISP()
 
 help_init
 ;--------
@@ -57,6 +60,7 @@ help_init
 .eof
           ret
 
+      IF 0
 set_help_at_int3
 ;---------------
           ld a,12
@@ -88,7 +92,7 @@ _set_help_com
           ld hl,mode_help
   ;        ei
           ret
-
+      END
 
 
 display_section
@@ -110,9 +114,8 @@ display_section
 display_page
 ;-----------
 ; BC: text (0 = nl, -1 = eof)
+; DE: screen
 
-; Setup help windoz
-          ld de,(text_offset)
       IF dev_checks
           ld a,d:and &F8:cp &C0:call nz,mess
       END
@@ -129,44 +132,6 @@ display_page
           jr nz,.lp
           ret
 
-; --------------------------
-;  String helpers
-; --------------------------
-get_len
-;------
-;In: HL= nt string
-;Out: A= length
-    ; HL preserved
-          push hl
-          call skip_nt
-          ld a,l
-          dec a         ; rewind to 00
-          pop hl
-          sub l
-          ret
-
-copy_nt
-;------
-; Copy nt-string, hl to de, 0 included
-          ld a,(hl):inc hl
-          ld (de),a:inc de
-          or a
-          jr nz,copy_nt
-          ret
-
-skip_nt
-;------
-; Go past 0 of nt string.
-          ld a,(hl):inc hl
-          or a
-          jr nz,skip_nt
-          ret
-
-skip_line
-;--------
-; Go past &0a of line 
-          ld a,(hl):inc hl:cp &0A:ret z
-          jr skip_line
 
 conv_protext
 ;-----------
@@ -177,10 +142,11 @@ conv_protext
 
         ;  ld hl,text_welcome
         ;  ld de,text_welcome
-          call skip_line ; Remove the >L------!-----R ruler
+;          call skip_line ; Remove the >L------!-----R ruler
 .lp
           ld a,(hl):inc hl
           or a:jr z,.eof
+          cp &1A:jr z,.eof
           cp &0D:jr z,.nl
           cp &0A:jr z,.lp
           cp &8A:jr z,.lp ; "wrap" nl
@@ -197,7 +163,7 @@ conv_protext
 .space    ld a," ":jr .ok
 
 .eof
-          dec a:ld (de),a ; marker end of text (-1)
+          xor a:dec a:ld (de),a ; marker end of text (-1)
           ret
 
 ; --------------------------
@@ -211,13 +177,4 @@ index SKIP NB_SECTIONS * 2
       IF $-1 / &0100 - index/&0100
  error alignement
       END
-
-pc    = $
-
-      SKIP bandaya-$    ; xx00 for confining ints at same MSB
-; Ints must be out of page 0000, since still called when rom connected
-      IMPORT "bandaya.o"
-      SKIP psg_regs-$   ; poor's man limit
-
-      ORG pc            ; for host
 

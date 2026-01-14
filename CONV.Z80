@@ -1,6 +1,8 @@
-; <<< Conv. Conversions >>>
+; <<< Conversions + String helpers >>>
 
-; //// 2025 ////
+; //// 2026 ////
+  ; Jan 14: String helpers: move from help/ged to here
+
 ; TOC:             
    ; From string to integer:
      ; deci_to_int
@@ -364,4 +366,44 @@ notes_text
       END
 period_0 BYTE "0  "
 txt_clr BYTE "CHI"      ; CLR in small font!
+
+; --------------------------
+;  String helpers
+; --------------------------
+get_len
+;------
+;In: HL= nt string
+;Out: A= length (0 for empty string)
+    ; HL preserved
+          push hl
+          call skip_nt
+          ld a,l
+          dec a         ; rewind to 00
+          pop hl
+          sub l
+          ret
+
+copy_nt
+;------
+; Copy nt-string, hl to de, 0 included
+          ld a,(hl):inc hl
+          ld (de),a:inc de
+          or a
+          jr nz,copy_nt
+          ret
+
+skip_nt
+;------
+; Go past 0 of nt string.
+          ld a,(hl):inc hl
+          or a
+          jr nz,skip_nt
+          ret
+
+skip_line
+;--------
+; Go past &0a of line 
+          ld a,(hl):inc hl:cp &0A:ret z
+          jr skip_line
+
 

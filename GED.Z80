@@ -1090,21 +1090,17 @@ cell  = 8
 ; Widgets code
 ; ------------------
 
-hooks                   ; TODO: rename. Reachable routines
-
 wc_text
           ld (wv_text_pnt),hl
-skip_nt
-          ld a,(hl):inc hl:or a:jr nz,skip_nt
-wc_null
-any_ret
-          ret
+          jp skip_nt
 
 
 wc_hexa_byte
           ld e,(hl):inc hl
           ld d,(hl):inc hl
           ld (wv_byte_pnt),de
+wc_null
+any_ret
           ret
 
 wc_init_word
@@ -2129,10 +2125,6 @@ disp_text_hl
           push af
           jp txt_write_string
 
-disp_text_hl_padded
-          push af
-          jp txt_write_string_padded
-
 text_width
           ld hl,(wv_text_pnt)
 text_width_common
@@ -2468,13 +2460,7 @@ append_to_buffer
           ld a,l:cp wv_tmp_buffer-1 AND &FF:call z,mess
       END
           ex de,hl
-;enchaine
-copy_nt
-          ld a,(hl):inc hl
-          ld (de),a:inc de
-          or a
-          jr nz,copy_nt
-          ret
+          jp copy_nt
 
 get_hexa_byte
           call get_byte
@@ -3178,17 +3164,6 @@ display_cursor_at
           CALL_STATE_EXT(place_cursor)
           ret
 
-get_len
-;------
-;In: hl = nt string
-;Out: A = length (0 if empty string)
-          push hl
-.skip     ld a,(hl):inc hl:or a:jr nz,.skip
-          dec hl
-          ld a,l
-          pop hl
-          sub l
-          ret
 
 read_param_com
           GET_STATE(param)
