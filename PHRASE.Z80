@@ -5,8 +5,12 @@ do_add_empty_row = 0
       END
 
 ; 2026    
+ ; -- alpha 2 --
+  ; Jan 
+   ;12: Add phrase_insert_row_at
+          ; phrase_delete_row_at
  ; -- alpha 1 --
-  ; Jan 4: Add row_clr/row_is_clr
+   ; 4: Add row_clr/row_is_clr
          ; [cleanup] Remove dead code: 
                        ; row_set_byte_param_fx and co
                        ; irow_set_type_vol
@@ -480,6 +484,99 @@ phrase_select_row_at
           pop hl
           ret
 
+phrase_stable_delete_row_at
+;--------------------------
+; like /phrase_delete_row_at/ but maintain total duration 
+          push af
+          call phrase_delete_row_at
+          call phrase_get_duration
+          pop af
+;enchaine
+phrase_insert_row_at
+;-------------------
+; Insert +time at t
+; In: DE = t
+    ;  a = time     
+          call scope_bk_phrase
+          push af
+          call phrase_get_row_at
+          pop bc:ld a,b ; pop a 
+          jr nc,.insert ; when end of phrase
+          jp nz,_add_duration ; t before row: extend
+.insert
+;insert empty row (so it also works at first row)
+          call insert_new_row
+          ld (hl),b
+          ret
+
+phrase_stable_insert_row_at
+;--------------------------
+; like /phrase_insert_row_at/ but maintain total duration 
+          ex de,hl
+          call phrase_get_duration
+          push af:push de
+          ex de,hl
+          call phrase_insert_row_at
+          pop de:pop af
+;enchaine
+phrase_delete_row_at
+;-------------------
+; Remove -time at t (hence any row in the iterval [time; time+t[
+; In: DE = t
+    ;  a = time to remove
+          call scope_bk_phrase
+          push af
+          call phrase_get_row_at
+      IF dev_checks'
+          call nc,mess  ; past eoc: unexpected
+      END
+          jr z,.clear
+;post-row: just update dur (must stay >= 1)
+          pop bc        ; B: time to remove (was a)
+          ld a,(hl):sub b:ld (hl),a
+          jr z,.report
+          ret nc
+.report
+          ld (hl),1
+          neg:inc a     ; reminder
+          push af
+          call goto_next_row
+          jr nz,.clear
+; we asked to remove too much
+; can happen when last row is unaligned
+          pop af
+          ret
+ ;enchaine
+.clear
+          ld (va_row_pnt),hl ; for row_del_all
+          push hl
+          call row_del_all
+          pop hl
+          pop bc        ; B: time to remove (was a)
+          ld a,(hl):sub b:ld (hl),a
+          jr z,.report'
+          ret nc
+.report'
+; Remove row itself
+          push af       ; reminder <=0
+          call delete_byte ; duration
+      IF dev_checks'
+          ld a,(hl):or a:call nz,mess ; empty row
+      END
+          call delete_byte ; flags
+          reserved_byte ** call delete_byte
+          pop af
+          ret z
+; Remove remaining 
+          neg
+          push af
+          call follow_link_if_eoc
+      IF dev_checks'
+          call z,mess   ; trying to remove more
+      END
+          jr .clear
+
+
 phrase_set_blank_row_at
 ;----------------------
 ; Create a new row at t (if not existing)
@@ -568,37 +665,6 @@ phrase_set_blank_row_at
           jr .retry
       END
 
-      IF 0
-phrase_delete_row_at
-;In:  DE= time
-   ;   A= duration to remove
-      IF todo
-; See TODO goto_last_row
-      END
-          call scope_bk_phrase
-          ld c,a
-          call phrase_get_row_at
-          jr nz,.okrow
-;todo: empty row contents (remove note, instr...)
-.okrow
-          ld a,(hl):sub c:jr c,.remove
-          jr z,.remove
-          ld (hl),a
-          ret
-
-.remove
-          push af       ; remaining <= 0
- ; must remove row itself
-      BRK
-          pop af
-          neg
-          ret z
-; Remove remaining 
-          ld c,a
-          call goto_next_row
-          jr nz,.okrow
-          ret
-      END
 
 
 insert_new_row
@@ -679,7 +745,8 @@ phrase_get_row_at
              ; BC = t - t0
              ;  Z if t = t0 (row exactly at t)
              ; NZ otherwise
-    ; Otherwise, NC (empty phrase or past eoc)
+    ; Otherwise, NC (empty phrase / at eoc)
+               ; HL points on eoc
     ; DE preserved in any case.
 
           call connect_phrase_begin
@@ -769,6 +836,7 @@ row_add_duration
 ; IN: A= additional duration
           call scope_bk_phrase
           call connect_current_row
+_add_duration
           add (hl):jr nc,.ok
 ; insert blank row **after** with length = 255
 ; (we don't use length 0 = 256)
@@ -829,6 +897,11 @@ row_get_note
           ld a,(hl)
           ret
 
+row_del_all
+;---------- 
+          call row_del_instr
+          call row_del_vol
+;enchaine
 row_del_note
 ;-----------
 ; in: N/A
@@ -838,8 +911,11 @@ row_del_note
           ret z
           res bit_note,(hl)
           call skip_fx_ins
+;enchaine
 delete_byte
 ; In: hl : pos byte in chunk to be deleted
+; Mod: A, BC, DE
+          push hl
           ld e,l
           ld d,h
           inc l
@@ -853,6 +929,7 @@ delete_byte
           dec h
           ld l,chead_last
           dec (hl)
+          pop hl
           ret
 
 
@@ -1493,6 +1570,8 @@ goto_next_row
           call skip_all
 ;enchaine
 follow_link_if_eoc
+;Out: hl start of row
+    ; Z if end of phrase (hl points to eoc then)
           SKIP_LENGTH()
           ld a,(hl):cp mask_fx0:jr nz,.flie_ret__
           inc l:ld a,(hl)
@@ -1502,8 +1581,9 @@ follow_link_if_eoc
           ASSERT(phrase_start != chunk_start)
 ;phrase_start: means loop to start of phrase 
           cp phrase_start:jr z,.flie_ret
-          cp chunk_start:jr z,connect_next_chunk
-          call mess     ;!! unexpected
+          cp chunk_start:call nz,mess
+          call connect_next_chunk
+          jr follow_link_if_eoc ; in case emptied chunk
 
 .flie_ret
           dec hl        ; Preserve Z/NZ

@@ -1,11 +1,13 @@
 ; ----- Manual test of phrase editor -----
-do_nrt = 0              ; 0: manual test
+do_nrt = 1              ; 0: manual test
 dev_checks' = 1
 short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
 
 ; 2026
   ; -- Alpha 2 --
-  ; Jan    
+  ; Jan
+      ;13: test_fuzz: add CTRL-DEL / Return    
+         ; test_row_dwn_to_repeated_phrase: update ref to match transpos
       ; 9: test_refresh_state: add check for unaligned transpose
       ; 8: Adapt refs, accounting for row# column
   ; -- Alpha 1 --
@@ -183,7 +185,6 @@ sentinelle = 0
 tests
           ld a,&F7:ld (0),a
           call test_refresh_state
-      BRK
           call test_refresh_page
           call test_row_dwn_to_repeated_phrase
           call test_up_at_top
@@ -268,7 +269,7 @@ test_row_dwn_to_repeated_phrase
       FILL delai_ui_default,nrt_nl
           NRT_FOCUS("G")
           NRT_FOCUS("#")
-          NRT_FOCUS("1")
+          NRT_FOCUS("2") ; Transposed!
       BYTE nrtend
 
 .seq' BYTE kdwn
@@ -412,16 +413,21 @@ test_fuzz
           call dev_setup
 keys_buffer = tmp_buf_nrt
           ld ix,.keys
-          ld iyl,15
+          ld iyl,31
           call fuzz_keys
 ; Just check it doesn't assert
           TEST_RUN(keys_buffer)
           ret
 .keys
-      BYTE klft,krgt,"A",kcdel
-      BYTE "0",kcup,kcdwn,kup
-      BYTE kcf+0,kcfdot,kdwn,kclr
-      BYTE kclft,kcrgt," 1"
+      BYTE klft,krgt,kdwn,kup
+      BYTE kclft,kcrgt,kcdwn,kcup
+      BYTE " 01A"
+      BYTE kdel,kclr,kcdel,kreturn
+      BYTE kcf+0,kcfdot,"XY"
+;repeat to pad
+      BYTE klft,krgt,kdwn,kup
+      BYTE " 01A"
+      BYTE kdel,kclr,kcdel,kreturn
 
 ; -----------------------------
 

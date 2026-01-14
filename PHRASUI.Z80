@@ -1,8 +1,10 @@
 ; <<<< Phrase Editor >>>>
 todo  = 0
-; -- Alpha1 --
 ; 2026
   ; Jan
+; -- Alpha2 --
+      ;13 CTRL-DEL, ENTER
+; -- Alpha1 --
       ; 9 Display notes with transposition
       ; 8 Display phrase id and transpose
       ; 7 Display row number
@@ -87,16 +89,21 @@ phrase_ui_process
           xor a
           ld (is_modified),a
           ld (auto_skip),a
+          ld (must_refresh),a
           ld a,b
           call gedeihen_process
           ret nc
           ld a,(is_modified)
           or a
           jr z,.skip_or_next
- ; Must we refresh repeated phrase?
+ ; repeat if repeated phrase OR flagged
           call song_get_current_phrase
-          ld hl,phrase_dup:call bs_get
-          call nz,refresh_page
+          ld hl,phrase_dup:call bs_get:call z_to_val
+          ld hl,must_refresh
+          or (hl)
+          jr z,.skip_or_next
+          call refresh_page
+          call refresh_row_from_time_cur ; needed for CTRL-DEL / RETURN
 .skip_or_next
 do_next_id = 1
 do_skip_id = 2
@@ -197,6 +204,8 @@ k_ml
       BYTE klft:WORD prev_track
       BYTE kclft:WORD prev_track
       BYTE " ":WORD space
+      BYTE kreturn:WORD insert_row
+      BYTE kcdel:WORD delete_row
       BYTE "R"-&40:WORD refresh_page ; debug
 ;!! put at this level, so that /refresh_row/ update widget's Y at 
   ; the right level (struct)
@@ -552,6 +561,25 @@ row_ctrl_up
           ld hl,time_cur:call sub_ihl_de_clipped
           jp refresh_row_from_time_cur
 
+insert_row
+          call _insert_delete_setup
+          call phrase_stable_insert_row_at
+          scf
+          ret
+
+delete_row
+          call _insert_delete_setup
+          call phrase_stable_delete_row_at
+          scf
+          ret
+_insert_delete_setup
+          ld a,1
+          ld (must_refresh),a
+          ld (is_modified),a ; also needed to trigger refresh
+          call clone_if_needed
+          call get_time_row
+          jp get_delai_ui
+
 ; --------------------------------
 is_time_zero
 ;In: HL: time field (24 bits)
@@ -770,9 +798,21 @@ refresh_state
 pre_modif
 ; 1/ Clone phrase if needed
 ; 2/ Create row if empty
-; A preserved
+; A preserved    
           push af
-          ld a,(is_first_iter):or a:jr nz,.okclone
+          call clone_if_needed
+          call is_empty
+          jr nz,.ok
+          ld a,1:ld (row_exists),a
+          call get_time_row
+          call phrase_select_row_at
+.ok
+          pop af
+          ret
+
+clone_if_needed
+          ld a,(is_first_iter):or a
+          ret nz
 ;-- clone phrase
           ld hl,fetched_t0
           ld de,time_tmp
@@ -785,21 +825,11 @@ pre_modif
           call Set_phrase_at_t
           call select_row_ui
           pop af
-          jr z,.okclone
+          ret z
 ; If source phrase was duplicated, considere new phrase as duplicated
           call song_get_current_phrase
-          ld hl,phrase_dup:call bs_set
-.okclone
-          pop bc        ; was A
-          call is_empty
-          ld a,b
-          ret nz
-          push af
-          ld a,1:ld (row_exists),a
-          call get_time_row
-          call phrase_select_row_at
-          pop af
-          ret
+          ld hl,phrase_dup
+          jp bs_set
 ; ----------------------
 get_page_shift
 ; Out: HL= time_at_top
@@ -897,6 +927,7 @@ is_first_iter BYTE 0    ; 0 = implicit repeat
 row_exists BYTE 0       ; 0 = empty
 is_modified BYTE 0
 auto_skip BYTE 0        ; see do_next_id/do_skip_id
+must_refresh BYTE 0
 cur_y BYTE 0
 
 _savepc

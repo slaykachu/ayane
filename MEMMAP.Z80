@@ -56,7 +56,7 @@ uiloop = &1A56
 ; -- phrasui, salo
 ;padding
 phrase = &1AE0
-track_module = &221E
+track_module = &22A0
 fx_module = &3000
 ply   = &3004           ;needed for events signatures
 fx_set_phrase_jp = ply+5
@@ -177,7 +177,7 @@ fonte_small = &4800
 disp  = &48D8           ; start of code after fonts
 pianoui = &4F10
 phrasui = &5630
-disp_ayane = &5DB0      ; other modules imported by ayane.o
+disp_ayane = &5E10      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
 
