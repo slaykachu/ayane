@@ -3,20 +3,33 @@
 dev_checks = 1
 need_room = 1
 
-; 2025 jun 9
-  ; use disp-jp. adapt for new bandeau (page 4000, r9=7)
+; 2025 
+ ; -- v0au --
+ ; Nov
+    ; 15 Reactivate field_refresh and copy_nt
+       ; Deactivate ClearQuestion
+ ; -- v0aq --
+ ; Sep
+    ; 28 Use disp.o Only ClearQuestion reactivated
+ ; -- v0a? --
+ ; jun 9 Use disp-jp.o adapt for new bandeau (page 4000, r9=7)
 
-      IMPORT "disp-jp.o" ; !!! disp.bin loaded by client
+      IF $ AND &C000 != &C000
+  !! must be in c1 (done by host)
+ ; -> allow to call status_* routine directly
+      END
+
+.test_pc
+      IMPORT "disp.o"   ; !!! disp.bin loaded by client
+
+      IF $ != .test_pc
+  !! disp must have been imported by host
+      END
 
 fail  = &BE00
-; -------------------------------
-
-      MACRO CALL_BRIC rout
-   ; Dispatch is done in disp-jp
-          call rout
-      ENDM
 
 ; ------------------------------------------------
+      IF 0
 disp_infos_com
 ; IN:  DE: cursor
     ;  HL: nt str
@@ -37,7 +50,6 @@ disp_infos_com
           pop af
           ret
 
-      IF 0
 clear_buf_info
 ; Clear buffer
 ; OUT: hl buffer
@@ -52,7 +64,6 @@ txt_free BYTE "Free: &",0
 txt_free' BYTE "00 ("
 
 ; ----------------------
-      END
 
 ClearQuestion
 ; Efface ligne question.             
@@ -68,19 +79,18 @@ ClearQuestion
           CALL_BRIC(status_set_cursor)
 
           ld b,LEN_QUESTION
-cqlp
+.cqlp
           ld a," "
           push bc
-          CALL_BRIC(status_char)
+          call status_char
           pop bc
-          djnz cqlp
+          djnz .cqlp
           pop de
           pop bc
           pop af
           ret
 
 
-      IF 0
 disp_modified
 ; Affiche le status du source modifi{ ou non
 ; In:  Z Non modifie.
@@ -97,13 +107,8 @@ disp_modified
       END
 
 field_refresh
-; Affichage complet de tout le champ (overkill but nevermind)
-; dans bar status, avec cursor.
+; Affichage complet de tout le champ dans bar status, avec cursor.
 ; A utiliser conjointement avec field editor.
-; NB: utilise pour saisie question.
-      IF need_room
-; Factorize with status_text_pad
-      END
 
 ; In:
 ; HL : adr du champ (NT string)
@@ -113,7 +118,7 @@ field_refresh
 ; A  : Si Bit 7 est mÿs, inverse video  (or &80 sur chaque char)
 ; Out: A trashed, all other saved
           push hl
-          CALL_BRIC(status_set_cursor)
+          call status_set_cursor
 
           push bc
           and &80:ld c,a
@@ -123,9 +128,8 @@ print_lp
           inc hl
           or c          ; Inverse video?
 .stay_0
-          CALL_BRIC(status_char)
+          call status_char
           djnz print_lp
-
 
 ; Don't display cursor when inverse video.
 ; (expect if empty field)
@@ -137,7 +141,7 @@ print_lp
           push de
 ;display cursor at Offset + C
           ld a,d:add c:ld d,a
-          CALL_BRIC(status_inv_cursor_at)
+          call status_inv_cursor_at
           pop de
 .nocursor
           pop hl
@@ -146,16 +150,6 @@ print_lp
       IF 0
 
 ;----------------------
-copy_nt
-;in: HL=source, DE=dest
-
-          ld a,(hl)
-          ld (de),a
-          or a
-          ret z
-          inc hl
-          inc de
-          jr copy_nt
 
 ; Conversion d'un entier 16bit en string justifie a droite.
 ; Entr{e : HL=Nombre @ convertir
@@ -209,26 +203,24 @@ nget_path BYTE "PATH"+&80,0 ; &80 for rsx search, 0 for copy_nt
 
 ; ----- Constantes -----
 
-status_line_question = 6
+;status_line_question = 6
 
-ASTERIX = "*"
+;ASTERIX = "*"
 
 ; Positions dans status
 ; line 0
-X_TAB# = 2              ; "f1:"
-X_MODIFIED = X_TAB#+3
-X_FILENAME = X_MODIFIED+1
-X_FREE = 73
+;X_TAB# = 2              ; "f1:"
+;X_MODIFIED = X_TAB#+3
+;X_FILENAME = X_MODIFIED+1
+;X_FREE = 73
 ; line 2          
-X_DRIVE = 2
-X_CWD = X_DRIVE + 3
+;X_DRIVE = 2
+;X_CWD = X_DRIVE + 3
 
 WIDTH = 96              ; largeur totale bandeau
 
 LEN_QUESTION = WIDTH-2  ; Max len question (for clean)
 ; Actually max would be 2 + len("import:") + LEN_SRC  
 ; But for now we erase whole line (which start at 2)
-
-cnt   = &7EFC           ; before cocopy
 
 
