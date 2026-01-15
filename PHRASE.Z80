@@ -7,6 +7,8 @@ do_add_empty_row = 0
 ; 2026    
  ; -- alpha 2 --
   ; Jan 
+   ;14: Cleanup phrases_rows
+      ; Move vars in BK_PHRASE
    ;12: Add phrase_insert_row_at
           ; phrase_delete_row_at
  ; -- alpha 1 --
@@ -76,15 +78,6 @@ phrase_start = chunk_start + clip_header_size
 !!! must review is_end_of_phrase
       END
 
-;-- Tables -----------------
-;7000-...: free 
-          ASSERT(phrases_ == &7600)
-phrases_idx = &7600     ; start chunk for each phrase &100 ** word 
-          ASSERT(phrases_idx AND &01FF == 0) ; &200-aligned
-phrases_rows = &7800    ; nb rows for each phrase
-;nb: for now, no discrimination between tables (arp, instr, ...)
-;-> we should keep it that way (more flexible, less ram & code needed)
-
 ;==============================================
       MACRO INIT_LENGTH
       IF todo
@@ -117,13 +110,12 @@ phrase_code
 
 phrase_reset
 ;-----------
-          call connect_bk_base ; !! var in bk base
+          call scope_bk_phrase
           ld hl,def:ld de,var:ld bc,def_size:ldir ; non-zero vars
           ex de,hl
           ld b,zero_size:xor a:call fillb
 ; Reset index. Easier to see if phrase already allocated or not.
 ; song_select_new_phrase relies on that for checks.
-          call connect_bk_phrase
           ld hl,phrases_idx
           call fill
           inc h
@@ -160,9 +152,7 @@ song_select_new_phrase
           ex de,hl      ; DE= phrase chunk ID.
 ;Must updates vars **after** new_phrase_chunk,
 ;in case mem full -> no change.
-          call connect_bk_phrase
           ld hl,(va_current_phrase) ; for l
-          ld h,phrases_rows/&0100:ld (hl),0 ; rows # 
           ld h,phrases_idx/&0200:sla l:rl h
           ld (hl),e:inc l
       IF dev_checks'
@@ -357,9 +347,6 @@ phrase_select_new_row
 
           call scope_bk_phrase
           push af
-          ld hl,(va_current_phrase) ; for l only
-          ld h,phrases_rows/&0100
-          inc (hl)
 
           call connect_phrase_begin
           call goto_end
@@ -706,12 +693,12 @@ phrase_get_rows#
 phrase_seek_row_at
 ;-----------------
 ; like phrase_get_row_at, but reconnect bank for phrase_ui
-          call scope_bk_base
+          call scope_bk_phrase
           jr phrase_get_row_at
 
 phrase_seek_last_row
 ;-------------------
-          call scope_bk_base
+          call scope_bk_phrase
 ;enchaine
 phrase_get_last_row
 ;------------------
@@ -1163,7 +1150,7 @@ get_fx_sign
 
 
 connect_current_row_skip_length
-;In: bk base connected!
+;In: bk phrase connected!
 ;Out: HL= post length
 ;don't change A !              
           call connect_current_row
@@ -1171,7 +1158,7 @@ connect_current_row_skip_length
           ret
 
 connect_current_row_skip_length'
-;In: bk base connected!
+;In: bk phrase connected!
 ;Out: HL= post length
     ; DE= start row
 ;don't change A !              
@@ -1912,14 +1899,13 @@ get_phrase_id
 
 get_delai_ui
 ;Out a = delai_ui           
-;Generic variables are in BK_BASE
-          call scope_bk_base
+          call scope_bk_phrase
           ld a,(delai_ui)
           ret
 
 set_delai_ui
 ;In a = delai_ui
-          call scope_bk_base
+          call scope_bk_phrase
           ld (delai_ui),a
           ret
 
@@ -2078,6 +2064,10 @@ dbg2  WORD 0
 ; ----------------------------       
 ; Vars in bank
 
+          ASSERT(phrases_ == &7600)
+phrases_idx = &7600     ; start chunk for each phrase &100 ** word 
+          ASSERT(phrases_idx AND &01FF == 0) ; &200-aligned
+
 def
 ; Doesn't use org va,$$
 ; otherwise orgams set high $ = 7cxx, which is inconvenient
@@ -2085,7 +2075,7 @@ def
 def_size = $-def
 
 save_pc = $
-      ORG phrase_vars
+      ORG &7800
 var
 delai_ui BYTE           ; root value
 

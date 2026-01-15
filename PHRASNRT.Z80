@@ -2,7 +2,8 @@
 
 ; 2026
 ; -- alpha2 -- 
-; Jan 
+; Jan   
+  ; 14: Add test_init
   ; 12: Add test_phrase_insert_row_at
           ; test_phrase_insert_row_at_end
           ; test_phrase_stable_insert_row_at
@@ -49,10 +50,12 @@
       IMPORT "phrase.o"
       IMPORT "memmap.i" ; for phrases_
       IMPORT "chunk.o"  ; for Init_chunk_module
+      IMPORT "memcpc.o" ; connect_bk_phrase
 
 fail  = &BE00
 
 tests
+          call test_init
           call test_phrase_get_rows#
           call test_phrase_get_row_at
           call test_phrase_get_row_at'
@@ -95,6 +98,13 @@ nrt_init
           ld a,".":call &BB5A
           call Init_chunk_module
           call phrase_reset
+          ret
+
+test_init
+;--------
+          call nrt_init
+          call song_get_current_phrase
+          or a:call nz,fail
           ret
 
 test_phrase_get_rows#
@@ -379,6 +389,7 @@ check_blank_row
 ; -- check pnt is in proper phrase area
           ld a,h:cp &40:call c,fail
           cp phrases_/&0100:call nc,fail
+          call connect_bk_phrase
 ; -- duration must be 0
           ld a,(hl):or a:call nz,fail
 ; -- flags must be 0
