@@ -3,8 +3,12 @@
 ; ---------------------------
 
 ; 2026
- ;--- alpha 1 ---
+ ;--- alpha 2 ---
   ; Jan
+   ;15: ui_process: Fix unhandled key not passed back
+                  ; (e.g. enter in instrument selector)
+      ; phrase_ed_entry: clear status line (residue from instr editor)
+ ;--- alpha 1 ---
    ; 3: Open/Save: update display
       ; field_refresh_wait_key: handle field out of bank
       ; Pre-load "instr.aya"
@@ -30,7 +34,7 @@
  ;--- 
      ; Jun 18  Plug instr-sel
 
-dev   = 1
+;dev   = 1
 dev_checks = 1
 todo  = 1
 need_room = 1
@@ -218,6 +222,7 @@ _ui_process_com
           ld c,a
           ld hl,shortcuts
           call scan_key
+          ld a,c
           ret nc
           jp hl
 
@@ -228,6 +233,7 @@ phrase_ed_entry
 ;--------------
           ENTER(phrase_ed_entry)
           ld a,2:call scr_set_mode
+          call clear_status_last_line
           CALL_DISP_BK(phrase_cold_refresh)
 ;enchaine
 .phrase_loop_no_exit
@@ -307,9 +313,6 @@ instr_selector_entry
           call instr_selector_init
 .lp
           call ui_process
-          push af
-
-          pop af
           cp 13:jr z,instr_ed_entry_
           cp kesc
           jr nz,.lp
