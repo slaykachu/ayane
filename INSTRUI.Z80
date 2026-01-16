@@ -1,6 +1,10 @@
 ; <<<<<<<< Instrument editor >>>>>>>>>
 
-; 2025                           
+; 2026
+ ; -- alpha2 --
+  ; Jan
+   ; 14 Show instr name
+; 2025
  ; -- alpha1 -- 
  ; Dec
    ; 27 Display: replace firware routines by fast internal ones
@@ -29,6 +33,7 @@ dev_checks' = 1
       IMPORT "chung.o"  ; Model (instr get/set row)
       IMPORT "gedwidid.i"
       IMPORT "ged.o"
+      IMPORT "conv.o"   ; copy_nt_padded
       IMPORT "timer.o"  ; for fx_null/sync_buzzer_register
       IMPORT "song.o"   ; Song_get_instr
 ;      IMPORT "disp-jp.o"
@@ -113,6 +118,15 @@ update_instr_in_status
           call Song_get_instr
           LOCATION(x_pos_instr#,y_pos_instr#)
           CALL_DS(status_deci_a_pad0_at)
+          call instr_get_name
+; out of bank, and rgt pad
+          ld de,tmp_buf
+          push de
+          ld b,instr_name_width
+          call copy_nt_padded
+          pop bc
+          LOCATION(x_pos_instr# + 3,y_pos_instr#)
+          CALL_STATUS(status_str_at)
           ret
 
 instr_up

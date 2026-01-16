@@ -5,6 +5,14 @@ todo_wrong_chr = 0
 
 ; TODO???? refresh_focus in gedeihen_enter?
 
+; -- 2026 -- 
+ ; --- Alpha 2---
+; Jan 
+  ;15: Fix memory corruption (word written at tmp_env_type)
+     ; Add test_disp_struct_text_dyn_field
+         ; test_return_in_text_field
+  ;14: Add test_disp_text_field
+         ; test_focus_text_field    
 ; -- 2025 -- 
  ; --- Alpha 1---
 ; Dec
@@ -61,6 +69,7 @@ iotest_cursor_seq = &9000
       IMPORT "macro.i"
       IMPORT "gedwidid.i"
       IMPORT "ged.o"
+      IMPORT "conv.o"   ; copy_nt
 
       MACRO ASSERT_NOT p
       IF p
@@ -136,6 +145,9 @@ tests
           call test_disp_struct_vol_env
           call test_disp_dependent_disabled
           call test_disp_dependent_enabled
+          call test_disp_text_field
+          call test_disp_struct_text_dyn_field
+          call test_disp_struct_text_dyn_field'
     ; not meaningful
     ;      call test_disp_refresh_optional_deactivated
     ;      call test_disp_refresh_optional_readwrite_disabled
@@ -197,6 +209,7 @@ tests
           call test_set_past_refresh
           call test_set_past_refresh'
           call test_set_struct_refresh
+      END
           call test_set_struct_refresh'
           call test_set_struct_refresh_handler_optional_readwrite
           call test_set_struct_vol_env00
@@ -223,7 +236,7 @@ tests
           call test_multiline_scrollA
           call test_multiline_scrollB
           call test_multiline_scrollB'
-      END
+
           call test_multiline_margin
           call test_multiline_goto_top
           call test_multiline_goto_bottom
@@ -240,6 +253,8 @@ tests
           call test_delete_last_line2
           call test_delete_last_line3
           call test_delete_last_line4
+          call test_return_in_text_field
+          call test_return_in_text_field'
 
           call test_random_keys
 ; Not handled !!
@@ -280,6 +295,8 @@ tests
           call test_focus_multiline_keyhandler_struct_refresh
       END
           call test_focus_update_y
+          call test_focus_text_field
+          call test_focus_text_field'
 ;          call test_focus_update_x
 ;          call test_remove_line
           ret
@@ -850,7 +867,59 @@ env_type_handler
       BYTE " ":WORD _toggle_env
       BYTE 0:WORD 0
 
+ui_text_field
+      BYTE w_text_field
+      WORD .set_field
+      WORD .get_field
+nrt_field_width = 7
+      BYTE nrt_field_width
 
+.set_field
+          ld de,nrt_buf
+          call copy_nt
+          scf
+          ret
+
+.get_field
+          ld hl,nrt_buf
+          ret
+oi    BYTE "Oi",0
+
+
+ui_text_field_handler
+      BYTE w_key_handler
+      WORD ui_text_field
+      WORD catch_handler
+
+ui_text_field_handler'
+      BYTE w_key_handler
+      WORD ui_struct_text_dyn_field'
+      WORD catch_handler
+
+catch_handler
+      BYTE kreturn:WORD .mark
+      BYTE 0:WORD 0
+
+.mark
+          ld (nrt_deci_byte),a
+          GED_HANDLED()
+          ret
+
+ui_struct_text_dyn_field
+      BYTE w_struct
+      WORD nrt_text_dyn_ui
+      WORD ui_text_field
+      WORD 0
+
+ui_struct_text_dyn_field'
+      BYTE w_multiline
+      WORD ui_struct_text_dyn_field
+      WORD nrt_get_lines#
+      WORD nrt_select_line
+      WORD 0
+      WORD 0
+      BYTE 2            ; Height
+      BYTE 0            ; scroll offset (margin)
 
 test_disp_dependent_enabled
 ;--------------------------
@@ -908,6 +977,30 @@ test_disp_struct_vol_env
       BYTE " "          ; separator (to be removed)
       BYTE 0            ; check no garbage
       BYTE nrtend
+
+test_disp_text_field
+;-------------------
+          call nrt_setup_text_field
+          TEST_DISP(ui_text_field,.ref)
+          ret
+
+.ref  BYTE "Oi"
+      BYTE nrtend
+
+test_disp_struct_text_dyn_field
+;------------------------------
+          call nrt_setup_text_field
+          TEST_DISP(ui_struct_text_dyn_field,ref_dyn_field)
+          ret
+
+ref_dyn_field BYTE "dynamyte Oi"
+      BYTE nrtend
+
+test_disp_struct_text_dyn_field'
+;------------------------------
+          call nrt_setup_text_field
+          TEST_DISP(ui_struct_text_dyn_field',ref_dyn_field)
+          ret
 
 test_disp_focus_optional_readwrite_disabled
 ;------------------------------------------
@@ -2006,7 +2099,7 @@ test_set_optional_readwrite
 test_set_handler_optional_readwrite
 ;----------------------------------
           ld a,14:ld (tmp_vol),a
-          xor a:ld (tmp_env_type),hl
+          xor a:ld (tmp_env_type),a
           TEST_RUN(env_type_handler_optional_readwrite_ui,.seq)
           ret
 
@@ -2018,7 +2111,7 @@ test_set_handler_optional_readwrite
 test_set_struct_refresh_handler_optional_readwrite
 ;-------------------------------------------------
           ld a,14:ld (tmp_vol),a
-          xor a:ld (tmp_env_type),hl
+          xor a:ld (tmp_env_type),a
           TEST_RUN(struct_refresh_handler_optional_readwrite_ui,.seq)
           ret
 
@@ -2171,7 +2264,7 @@ test_set_struct_vol_env
 ;----------------------
 ; 'env type' deactivated but readwrite to be reactivated
           ld a,14:ld (tmp_vol),a
-          xor a:ld (tmp_env_type),hl
+          xor a:ld (tmp_env_type),a
           TEST_RUN(ui_struct_vol_env,.seq)
           ld hl,(state_stack + 4*state_ + on_enter)
           ld de,get_hexa_digit_custom
@@ -2625,6 +2718,30 @@ test_delete_last_line4
 .seq  BYTE kcfdot:FILL 4,kcdel
           END_OF_NRT_SEQUENCE()
       BYTE 5,0
+
+test_return_in_text_field
+;------------------------
+          call nrt_setup_text_field
+          xor a:ld (nrt_deci_byte),a
+          TEST_RUN_FOCUS(ui_text_field_handler,.seq)
+          ld a,(nrt_deci_byte):cp kreturn:call nz,fail
+          ret
+.seq  BYTE "x",kreturn
+          END_OF_NRT_SEQUENCE()
+      BYTE "x"          ; didn't give back focus, nevermind
+      BYTE nrtend
+
+test_return_in_text_field'
+;------------------------
+          call nrt_setup_text_field
+          xor a:ld (nrt_deci_byte),a
+          TEST_RUN_FOCUS(ui_text_field_handler',.seq)
+          ld a,(nrt_deci_byte):cp kreturn:call nz,fail
+          ret
+.seq  BYTE krgt,"y",kreturn
+          END_OF_NRT_SEQUENCE()
+      BYTE "dynamyte y" ; didn't give back focus, nevermind
+      BYTE nrtend
 
 
 test_toggle
@@ -3222,7 +3339,6 @@ ui_update_y
       WORD ui_struct_3fields
       WORD k_ml
 
-
 k_ml
       BYTE kdwn:WORD row_dwn
       BYTE krgt:WORD next_col
@@ -3241,6 +3357,35 @@ next_col
           call enter
           GED_HANDLED()
           ret
+
+test_focus_text_field
+;--------------------     
+          call nrt_setup_text_field
+          TEST_RUN_FOCUS(ui_text_field,.seq)
+          ret
+.seq
+      BYTE "hu"
+          END_OF_NRT_SEQUENCE()
+      BYTE "hu":FOCUS(" ") ; editing: cursor
+      BYTE nrtend
+
+
+test_focus_text_field'
+;--------------------
+;When exiting: give focus back?
+          call nrt_setup_text_field
+          TEST_RUN_FOCUS(ui_text_field,.seq)
+          ret
+.seq
+      BYTE "123456",kdwn
+          END_OF_NRT_SEQUENCE()
+          6 ** FOCUS("1" + #)
+      BYTE nrtend
+
+nrt_setup_text_field
+          ld hl,oi
+          ld de,nrt_buf
+          jp copy_nt
 
       IF 0
 ;see /ged.propagate_x/
@@ -3415,6 +3560,8 @@ _test_disp_sprite
           ret
 
 _test_run
+          ld a,(nrt_text_getter):cp &21:call nz,&BE00 ; dbg
+
           ld (nrt_sequence_pnt),de
 ;We keep track of set_cursor display calls,
 ;Because last esc in simulation must remove it -which we check as well.
@@ -4056,6 +4203,7 @@ gedeihen_set_hooks_nrt
 nrt_enabled SKIP 2      ; for multiline
 selected_line BYTE 
 nrt_sequence_pnt WORD 
+nrt_buf SKIP 80
 
 hi
       SKIP &4000 - $

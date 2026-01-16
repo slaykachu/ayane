@@ -1,6 +1,8 @@
 ; <<<< Manual test of uiloop >>>>
 ; +++++ Generated some libs +++++
 
+; 2026
+   ; jan 15: set instr name
 ; 2025
    ; sep 4: Load fonts ourselves
 
@@ -18,6 +20,7 @@ post_core
 ; Just pull names, imported by uiloop
       IMPORT "instrui.o" ; instr_cold_refresh (CTRL-f3)
       IMPORT "memcpc.o" ; connect_bk_base
+      IMPORT "chung.o"  ; instr_set_name
           IMPORT_BANDAYA() ; firm2status
           IMPORT_GED()  ; ged_end
 ; Testlib at the end (doesn't fit below &4000)
@@ -38,6 +41,8 @@ start
 
           call init_for_test
           call dummy_instr_ui
+          ld hl,dummy_name
+          call instr_set_name
 
           ld bc,&7F00+BK_DISP:out (c),c
           ld hl,fake_name
@@ -63,6 +68,7 @@ start
 
 fake_name BYTE "Cucu",0
 fake_name_ = $ - fake_name
+dummy_name BYTE "pouet",0
 
 hi
           LIMIT(ramlimit)

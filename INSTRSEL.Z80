@@ -1,4 +1,8 @@
 ; <<<<<<<< Instrument selector >>>>>>>>>
+; 2026
+; -- alpha2 --
+  ; Jan 14 edit instr name 
+         ; deactivate f5/f8 (fix bug instr changed in selector line)
 ; 2025 
 ; -- v0au --
   ; Nov 14 ui_get_instr#: set to 99
@@ -62,7 +66,7 @@ selector_ui
 
 selector_ui'
       BYTE w_multiline
-      WORD instr_id_ui
+      WORD instr_entry_ui
       WORD ui_get_instr#
       WORD ui_select_instr
       WORD 0            ; no delete
@@ -85,46 +89,52 @@ ui_select_instr
 extra_handler
       BYTE kreturn:WORD select_instr
       BYTE kesc:WORD cancel
+      BYTE kf+5:WORD swallow
+      BYTE kf+8:WORD swallow
       BYTE 0:WORD 0
 
-instr_id_ui
-; Display instr id (future: name and graphic preview!)
-      BYTE w_text_dyn
-      WORD instr_title
+instr_entry_ui
+      BYTE w_struct
+      WORD instr_id_ui
+      WORD instr_name_ui
+      WORD 0
 
-instr_title
+instr_id_ui
+; Display instr id
+      BYTE w_text_dyn   ; w_deci would be R/W!
+      WORD instr_id
+
+instr_name_ui
+      BYTE w_text_field
+      WORD ui_set_name
+      WORD ui_get_name
+      BYTE instr_name_width
+
+instr_id
 ;Out: hl= txt to print
           call Song_get_instr
-          call _deci_byte_to_buffer
-          push hl
-          call instr_does_exist
-          jr z,.empty
-;toto: print name 
-          pop hl
-          push hl
-          call skip_nt
-          ex de,hl
-          ld b,18
-          jr .clear_right
+          jp _deci_byte_padded_to_buffer
 
-.empty
-          ld hl,.empty_txt
-          call append_to_buffer
-          ld b,18 - .empty_txt_
-.clear_right
-      IF todo
-; Check for buffer overrun, or have the disp routine doing the padding
-      END
-          ld a," "
-          dec de
-.lp       ld (de),a:inc de:djnz .lp
-          xor a
-          ld (de),a
+ui_set_name
+;when name entered: create instr if needed
+          push hl
+          call Song_get_instr
+          ld b,a
+          call instr_does_exist
+          ld a,b
+          call z,New_instr_ayane
           pop hl
+          call instr_set_name
+          scf
           ret
 
-.empty_txt BYTE " <New instr>",0
-.empty_txt_ = $ - .empty_txt - 1
+ui_get_name
+          call instr_does_exist
+          ld hl,.empty_txt
+          ret z
+          jp instr_get_name
+
+.empty_txt BYTE "<New instr>",0
 
 cancel
           UNHANDLED(kesc) ; Caller can process exit
@@ -134,3 +144,8 @@ select_instr
           UNHANDLED(kreturn) ;Caller will enter instrui
           ret
 
+swallow
+;no-op 
+          call refresh_focus
+          GED_HANDLED()
+          ret

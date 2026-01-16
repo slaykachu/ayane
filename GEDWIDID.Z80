@@ -1,5 +1,7 @@
 ; <<<< GED Widgets ids >>
 
+;2026 Jan 14: Add w_text_field
+
 w_brk = 0               ; for now used as w_null
 w_text = 1
 w_text_dyn = 2
@@ -40,8 +42,8 @@ w_refresh = 12
    ; child      <- triggering refresh on validate
 ; param1: child (embedded) ui
 w_toggle_custom = 13    ;
-; Getter: Any non-zero returned in A means "set"
 ; Setter: Pass A=0 or &ff
+; Getter: Any non-zero returned in A means "set"
 w_key_handler = 14
 ; Pseudo (non-visible) widget to catch keys. Bugged?
 ; Params: subwidget, handler
@@ -51,3 +53,7 @@ w_key_handler = 14
 ;!!! If put directy under w_multiline, Y pos won't be propagated to
 ;!!! actual concrete widget. 
 ;!!! Will fail at e.g.: validate -> force_refresh -> disp_struct 
+w_text_field = 15
+; Setter: hl: nrt str
+; Getter: return hl: nrt str (copied in internal buffer)
+; max width (not including last 0 / position for cursor)

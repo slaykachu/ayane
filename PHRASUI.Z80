@@ -15,10 +15,9 @@ todo  = 0
 ; 2025
   ; Dec 31. Use ged binary.
 
+      IMPORT "const.i"  ; kclr
 dev_checks' = 1 - release
 
-
-      IMPORT "const.i"  ; kclr
       IMPORT "memmap.i" ; BK_DISP
       IMPORT "macro.i"
           ASSERT($ AND &C000 == &4000) ; must be imported

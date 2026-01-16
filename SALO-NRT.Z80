@@ -1,4 +1,7 @@
 ; <<<< Tests salo and generate libs >>>>
+; 2026
+; -- Alpha2 --
+   ; Jan 14. test_assets: try with instr name
 ; 2025      
 ; -- Alpha1 --
    ; Dec 25. Default instrument is now 1 (see by init.full_init)
@@ -138,6 +141,10 @@ test_assets
           ld b,1
           ld hl,raw_row2
           call instr_ayane_append_rows
+          call check_save_load_save
+; -- name
+          ld hl,name_instr
+          call instr_set_name
           call check_save_load_save
 ; - New instr 2 
           ld a,3        ; skip id 2
@@ -284,6 +291,8 @@ raw_row2  instr_row_size_max ** BYTE #+16
 raw_row3  instr_row_size_max ** BYTE #+32
 
 paramX BYTE "X"
+
+name_instr BYTE "horn",0
 
 time1 WORD &BABE:BYTE 0
 time2 WORD &8000:BYTE 2 ; more than &10000 ticks away 
@@ -547,16 +556,17 @@ vampire
 ; vampire_size = $ - vampire   Doesn't work: unidos copy rounded to b00
 vampire_size = &1110
 
-; Sanity checks
+; Sync with all
           ASSERT(memcpc_code == memcpc)
           ASSERT(scankey_code == scankey)
           ASSERT(conv_code == conv)
-          ASSERT(chunk_code == chunk_module)
 ; Sync with phrasui
+          ASSERT(chunk_code == chunk_module)
+          ASSERT(instr_code == instr_module)
           ASSERT(phrase_code == phrase)
           ASSERT(track_code == track_module)
-; Sync with ayane             
           ASSERT(playsong_code == playsong_module)
+; Sync with ayane             
           ASSERT(init_code == init_module)
 
       IF 0              ; dev_checks (ambiguous)

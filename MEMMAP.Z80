@@ -37,7 +37,7 @@ code_start = &40
 memcpc = &40
 scankey = &0211
 conv  = &0222
-chunk_module = &045A
+chunk_module = &0470
 ;periods_module = &057F
 ;timer = &0A61
 instr_module = &0DD8
@@ -49,7 +49,7 @@ ppi   = &1400
 piano = &145F
 ; --  uiloop
 instrui = &1580
-instrsel = &1999
+instrsel = &19A9
 uiloop = &1A56
 ; ---- uiloop end ----
 ; -- phrasui, salo
@@ -137,7 +137,6 @@ track_zero_ = $-tracks
 ; Bulk load/save in salo.o
       END
 subsong_pool_pnt BYTE 
-delay_ui BYTE           ; Only impact display
 diapason WORD           ; 9 + 7 bits
 
 ; ! Actually those 2 variables must be populated when switching subsong.
@@ -150,7 +149,6 @@ replay_period WORD      ; value saved in .aya
 replay_period_ui BYTE   ; id in drop down list (no free setting for now)
 ;replay_period_in_nops WORD  ; in ply.o
 ; ----
-phrase_vars
 
 ;79xx-7e00 : free
 
@@ -187,7 +185,7 @@ jp_status_error = disp+2
 psg_regs                ;  Room for pseudo registers and ??? 
 ;!! Shared with other buf, as we never play while loading or saving!
 workzone SKIP &0200     ; salo, &8100:pianoui (tmp for display)
-tmp_buf = workzone      ; ayane
+tmp_buf = workzone      ; ayane, instrui
 salo_buf1 = workzone
 track_tmp = workzone + &80
 salo_buf2 = workzone + &0100

@@ -1,6 +1,6 @@
 ; ---- Shared constants and struct def -----
 
-release = 1
+release = 0
 dev   = 1-release
 dev_checks = dev AND 0
 
@@ -90,6 +90,7 @@ ss_size = $ - ss_trackid ; doesn't count link
 ;Future: replay freq, psg mix, sample mix
 
 ; ---- Struct of track amorce (at /tracks/) -----
+; Used by track.o salo.o widget.o
 ; Empty track is denoted with tf_clips pnt = 0
       ORG 0
 tf_clips SKIP idsz      ; list of clips/events (evt0 in track.o)
@@ -206,6 +207,7 @@ y_pos_note = y_pos_octave
 x_pos_note = x_pos_octave + 12
 x_pos_command = 5       ; open/save
 x_pos_error = 10
+instr_name_width = 22
 ;-------------------------
 
 ; --------------------------

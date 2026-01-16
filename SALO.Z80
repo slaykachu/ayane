@@ -1,7 +1,10 @@
 ;   <<<<< SAVE/LOAD module >>>>>
-; 2025      
- ; Sep
 ;--- Alpha 1 ---
+; 2026
+ ; Jan:
+  ;14: load/save instr name
+;--- Alpha 1 ---
+; 2025      
  ; Dec:                           
   ;26: Use assert, remove dead code
   ;17: WTF? Line 1510 we had ld b,3 instead of ld c,3 to save track loop
@@ -504,8 +507,10 @@ load
           ld b,a
           pop af        ; id
           call New_instr
-; -- Name
-          LOAD_TEXT()
+; -- Name       
+          call load_bloc_with_size
+          inc c:dec c
+          call nz,instr_set_name
 ; -- Table (by columns)
   ; ---- rows#       
           call load_b
@@ -1119,8 +1124,9 @@ save
           instr_head_ext - instr_head_rows ** inc hl
           ld c,b
           call save_bloc_with_size0
-; -- Name
-          call save_str_pnt
+; -- Name    
+          call instr_get_name
+          call save_str
 ; -- "Table"
           pop hl
           pop bc        ; c = row size (was L)
@@ -1578,25 +1584,24 @@ save_tag
 
           call print_tag
 ;enchaine
-save_str
+.lp
 ; Save str (without including 0)
           ld a,(hl):inc hl:or a:ret z
           call save_a
-          jr save_str
+          jr .lp
 
 save_str_pnt
 ; If null pnt, save null str (0)
-; In: hl: pnt str.
+; In: hl: pnt to str pnt!
 ;Out: hl+= 2
           ld a,(hl):inc hl
           or (hl):inc hl:jp z,save_a
-          call unexpected ; tmp dbg: for now don't expect str
-          push hl
-          dec hl:ld a,(hl)
-          dec hl:ld l,(hl):ld h,a
-          call save_str
-          pop hl
-          ret
+          call to_be_implemented ; read pointer
+save_str
+;in: Hl: str
+          call get_len
+          ld c,a
+          jp save_bloc_with_size0
 
 save_int_sentinelle
 ; save max value possible

@@ -392,6 +392,30 @@ copy_nt
           jr nz,copy_nt
           ret
 
+copy_nt_clipped
+;--------------
+; Like copy_nt, except:
+  ; don't copy 0
+  ; max size = B 
+          ld a,(hl):inc hl
+          or a
+          ret z
+          ld (de),a:inc de
+          djnz copy_nt_clipped
+          ret
+
+copy_nt_padded
+;-------------
+; Like copy_nt_clipped, but fill the rest with space, and add 0
+; B: max size
+          call copy_nt_clipped
+          inc b
+          ld a," "
+          jr .pad
+.padlp    ld (de),a:inc de
+.pad      djnz .padlp
+          ret
+
 skip_nt
 ;------
 ; Go past 0 of nt string.
@@ -405,5 +429,6 @@ skip_line
 ; Go past &0a of line 
           ld a,(hl):inc hl:cp &0A:ret z
           jr skip_line
+conv_end
 
 

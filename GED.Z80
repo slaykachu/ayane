@@ -1,4 +1,12 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
+;2026
+; -- alpha1 --
+; Jan
+  ;15 multiline: must return "unhandled" when ins/del fields null.
+               ; otherwise "kreturn" eaten (instrsel).
+    ; /hack_dyn_text/ for focus of w_text_dyn inside w_struct
+  ;14 Add w_text_field
+;2025
 ; -- alpha1 --
 ; Dec               
   ;29 Fix regression spurious cursor when inserting in w_multiline 
@@ -13,6 +21,7 @@ dev_checks_display = 0  ; 0: let display fails, easier to see problem
 need_room = 1
 todo  = 1
 hack  = 1
+hack_dyn_text = 1
 
 ; ==== Shortcuts ========================
  ; - invariant (now in journal.o)
@@ -113,6 +122,10 @@ param4 WORD
 
 text_getter = param
 
+text_field_setter = param
+text_field_getter = param+2
+text_field_width = param+4
+
 ; TODO: check if we can actually reuse param in any case.
 ; Rule: All widgets using push_state should use non-overlapping params?
 byte_setter = param
@@ -181,7 +194,7 @@ get_height WORD
 
 on_enter WORD 
  ; Typically: get value from 'model' (e.g. deci_to_text)
-            ; Done just one so that editing is more generic and simpler
+            ; Done just once so that editing is more generic and simpler
                ; - We don't change until validation
                ; - Text editing is more lenient (e.g. clear all)
                     ; -> We don't want to get/set value in editing loop
@@ -735,10 +748,10 @@ set_state_sp_gen = set_state_sp
 
       IF dev_checks'
 _check_state_sp
-          push de
+          push af:push de
           ld de,state_stack:or a:sbc hl,de:add hl,de:call c,mess
           ld de,state_stack_end:or a:sbc hl,de:add hl,de:call nc,mess
-          pop de
+          pop de:pop af
           ret
 
 _check_state_sp_gen
@@ -904,7 +917,12 @@ virt_start
 
           ASSERT(w_text_dyn == 2)
 ; getter return 
+      IF hack_dyn_text
+;For instrsel: we want focus
+      WORD flag_readwrite
+      ELSE
       WORD 0
+      END
       WORD disp_text_custom
       WORD text_width_custom
       WORD return_1
@@ -1053,7 +1071,7 @@ virt_start
       WORD wc_toggle_custom
 
           ASSERT(w_key_handler == 14)
-; Pseudo (non-visible) widget to catch keys. Bugged?
+; Pseudo (non-visible) widget to catch keys. 
 ; Params: subwidget, handler
    ; Note: subwidget always placed first for consistency among wrappers
 ; param1: embedded ui
@@ -1070,7 +1088,17 @@ virt_start
       WORD h_key_handler ; Delegate to passed param
       WORD wc_key_handler
 
-widgets_nb = 15
+          ASSERT(w_text_field == 15)
+      WORD flag_readwrite
+      WORD disp_text_field
+      WORD get_text_field_width
+      WORD return_1
+      WORD text_field_on_enter
+      WORD text_field_validate
+      WORD h_text_field
+      WORD wc_text_field
+
+widgets_nb = 16
 
 ; -------------------
 set_row = 0
@@ -1093,7 +1121,6 @@ cell  = 8
 wc_text
           ld (wv_text_pnt),hl
           jp skip_nt
-
 
 wc_hexa_byte
           ld e,(hl):inc hl
@@ -1146,9 +1173,15 @@ wc_key_handler
 
 wc_init_double_word
 ; Only 2 word parameters. Simply copy them.
+          ld bc,4
+_wc_init
           DE_STATE_PNT(param)
-          ld bc,4:ldir
+          ldir
           ret
+
+wc_text_field
+          ld bc,5
+          jr _wc_init
 
 wc_hexa_custom = wc_init_double_word
 wc_toggle_custom = wc_init_double_word
@@ -1944,7 +1977,7 @@ multiline_ins
           call get_current_line_number
           call call_insert_line ; NC if no such rout or failure
           call c,_ml_refresh
-          jr _ml_postlude
+          jr _ml_postlude_
 
 multiline_del
           call _ml_prelude
@@ -1952,7 +1985,7 @@ multiline_del
 ;Update the model
           call get_current_line_number
           call call_delete_line ; NC if no del rout or failure
-          jr nc,_ml_postlude
+          jr nc,_ml_postlude_
 
 ;Handle the UI part of del: cursor up if last line
           call call_state_get_line#
@@ -1981,9 +2014,10 @@ multiline_del
 .done
           call _ml_refresh
 _ml_postlude
+          scf
+_ml_postlude_
           pop hl
           call set_state_sp
-          scf
           ret
 
 _ml_is_reachable
@@ -2112,14 +2146,42 @@ disp_text
           jp txt_write_string
 
 disp_text_custom
-      IF hack
- ; Actually for selector we want focus
-  ;        xor a         ; No focus on R/O text
-      END
           push af
           CALL_STATE(text_getter)
           jp txt_write_string
 
+text_field_on_enter
+          CALL_STATE(text_field_getter)
+          ld de,wv_tmp_buffer
+          call copy_nt
+          scf
+          ret
+
+text_field_validate
+          ld hl,wv_edit_buffer
+          CALL_STATE(text_field_setter)
+          ret
+
+disp_text_field
+;Pad with space:
+   ; - remove cursor for refresh_nofocus
+   ; - ensure no residue when page switch (instrsel)
+          push af
+          CALL_STATE(text_field_getter)
+          GET_STATE_BYTE(text_field_width)
+          ld b,a
+          ld de,wv_tmp_buffer
+          push de
+          call copy_nt_padded
+          pop hl
+          jp txt_write_string
+
+get_text_field_width
+;max width
+          GET_STATE_BYTE(text_field_width)
+          ld l,a
+          ld h,0
+          ret
 
 disp_text_hl
           push af
@@ -2424,6 +2486,15 @@ _put_0_pop
           ld (hl),0
           pop hl
           ret
+
+_deci_byte_padded_to_buffer
+;note: a bit unnecessary. see not after /invariant/ 2.
+;!! used by instrsel.o
+          ld de,wv_tmp_buffer
+          push de
+          call put_deci_a_pad_space
+          jr _put_0_pop
+
 
 _deci_byte_signed_to_buffer
           ld de,wv_tmp_buffer
@@ -2853,6 +2924,9 @@ h_kmultiline
 
 h_key_handler
       BYTE 0:WORD key_handler_custom
+
+h_text_field
+      BYTE 0:WORD field_editing
 
 keytables_
 
@@ -3435,11 +3509,10 @@ state_stack_disp_end
 ; --------------
 wv_text_pnt WORD 0
 wv_byte_pnt WORD 0
-wv_edit_buffer FILL 8,0
+wv_edit_buffer FILL 80,0
 
 dbg_call WORD 
 dbg_call' WORD 
-
 
 
 ged_end
