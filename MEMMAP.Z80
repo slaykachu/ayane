@@ -31,20 +31,48 @@ bk_connected = &3C
 code_start = &40
 ; Expected addresses, for sanity checks
 ; -- All
-      IF dev_checks
- !! argl, shifted addresses
-      END
+
 memcpc = &40
 scankey = &0211
 conv  = &0222
 chunk_module = &0470
 ;periods_module = &057F
 ;timer = &0A61
-instr_module = &0DD8
-chung = &0F19
+
+      IF dev_checks
+instr_module = &0E78
+chung = &0FED
 ;13b0 "AYA!  " what's that
 ;then free?
 ; -- uiloop, salo (via playsong.o)
+ppi   = &1500
+piano = &155F
+; --  uiloop
+instrui = &1680
+instrsel = &1AA9
+uiloop = &1B56
+; ---- uiloop end ----
+; -- phrasui, salo
+;padding
+phrase = &1BE0
+track_module = &23A0
+fx_module = &3100
+ply   = &3104           ;needed for events signatures
+fx_set_phrase_jp = ply+&13
+evt_set_transpose_lsb = ply+&BF AND &FF ; track
+evt_change_phrase_lsb = ply+&DE AND &FF ; "
+evt_track_loop = ply+0 AND &FF ; "
+
+playsong_module = &35A2
+; -- salo
+shortcut = &3630
+init_module = &36C1
+
+; -- Ayane
+code_main = &3D20
+      ELSE
+instr_module = &0DD8
+chung = &0F19
 ppi   = &1400
 piano = &145F
 ; --  uiloop
@@ -57,10 +85,11 @@ uiloop = &1A56
 phrase = &1AE0
 track_module = &22A0
 fx_module = &3000
-ply   = &3004           ;needed for events signatures
+ply   = &3004
 fx_set_phrase_jp = ply+5
-evt_set_transpose_lsb = ply+&6F AND &FF ; track 
-evt_change_phrase_lsb = ply+&80 AND &FF ; track 
+evt_set_transpose_lsb = ply+&6F AND &FF
+evt_change_phrase_lsb = ply+&80 AND &FF
+evt_track_loop = ply+0 AND &FF
 
 playsong_module = &34A2
 ; -- salo
@@ -69,6 +98,7 @@ init_module = &35C1
 
 ; -- Ayane
 code_main = &3C20
+      END
 
 ramlimit = &3FF0
 phrasui_shared_vars = &3FF0

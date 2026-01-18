@@ -1,8 +1,11 @@
 ; Tests ply.o            
 do_profile = 1
 ; 2026
+; --- alpha2 --
+  ; Jan     
+      ;17 Fix assemble when do_profile = 0
+        ; Fix nrt_setup_play. init_timer was never called!?
 ; --- alpha1 --
-  ; Jan
       ; 5 Add test_clr_fx  
       ; 4 Add test_clr
 ; 2025 
@@ -61,6 +64,11 @@ tests
           ret
 
 nrt_init
+progress_bar ld hl,&E000
+          ld (hl),&55
+          inc hl
+          ld (progress_bar+1),hl
+
           call Init_chung
           call Init_track_module
           call New_module ; create 3 empty tracks
@@ -206,7 +214,7 @@ test_clr
       IF do_profile
           call tm_play
       ELSE
-          call nrt_play
+          call play
       END
           ld hl,.ref
           ld de,psg_regs
@@ -235,7 +243,7 @@ test_clr_fx
           3 ** call tm_play
       ELSE
           call nrt_play_from_start
-          3 ** call nrt_play
+          3 ** call play
       END
           ld a,(cut_list)
           or a:call z,fail
@@ -257,7 +265,7 @@ test_sync_buzzer
           2 ** call tm_play
       ELSE
           call nrt_play_from_start
-          2 ** call nrt_play
+          2 ** call play
       END
           pop bc
           djnz .lp
@@ -451,6 +459,7 @@ nrt_setup_play
 untouched = &DD
 .raz      ld (hl),untouched:inc l:djnz .raz
 
+          call init_timer
           call Amorce_song
           ret
 
