@@ -4,6 +4,7 @@ dev_checks' = 1
 ; 2025
 ; -- Alpha2 -- 
   ; Jan
+     ;19 Do not transpose /note_c_10/
      ; 8 Display phrase id and transpose
      ; 7 Display row number
 ; -- Alpha1 --
@@ -19,6 +20,7 @@ view_rows = view_hei-4  ; in scanlines
       IMPORT "memmap.i" ; BK_DISP
       IMPORT "macro.i"
       IMPORT "import.i"
+      IMPORT "const.i"  ; note_c_10
 ref_pc
           IMPORT_CORE()
       IMPORT "phrase.o"
@@ -172,9 +174,12 @@ _disp_row_com
           jr .oknote
 .note
           ex de,hl
+          cp note_c_10
+          jr z,.oktranspose
           ld c,a
           ld a,(cur_transpose)
           add c
+.oktranspose
           call put_note
           ex de,hl
           ld c,"-"

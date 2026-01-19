@@ -59,9 +59,9 @@ track_module = &23A0
 fx_module = &3100
 ply   = &3104           ;needed for events signatures
 fx_set_phrase_jp = ply+&13
-evt_set_transpose_lsb = ply+&C9 AND &FF ; track
-evt_change_phrase_lsb = ply+&E8 AND &FF ; "
-evt_track_loop_lsb = ply+&F6 AND &FF ; "
+evt_set_transpose_lsb = ply+&CD AND &FF ; track
+evt_change_phrase_lsb = ply+&EC AND &FF ; "
+evt_track_loop_lsb = ply+&FA AND &FF ; "
 
 playsong_module = &35A2
 ; -- salo
@@ -87,9 +87,9 @@ track_module = &22A0
 fx_module = &3000
 ply   = &3004
 fx_set_phrase_jp = ply+5
-evt_set_transpose_lsb = ply+&6F AND &FF
-evt_change_phrase_lsb = ply+&80 AND &FF
-evt_track_loop_lsb = ply+&8E AND &FF
+evt_set_transpose_lsb = ply+&73 AND &FF
+evt_change_phrase_lsb = ply+&84 AND &FF
+evt_track_loop_lsb = ply+&92 AND &FF
 
 playsong_module = &34A2
 ; -- salo

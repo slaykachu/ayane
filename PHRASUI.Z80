@@ -3,6 +3,7 @@ todo  = 0
 ; 2026
   ; Jan
 ; -- Alpha2 --
+      ;19 Do not transpose /note_c_10/
       ;17 Handle track loop
       ;13 CTRL-f0/f.
         ; CTRL-DEL, ENTER
@@ -222,6 +223,8 @@ note_as_text
           jr nz,.clr
           call row_get_note
           jr z,.nonote
+          cp note_c_10
+          jr z,.comnote
           ld hl,cur_transpose
           add (hl)
 .comnote
@@ -725,8 +728,11 @@ piano_keys
           call is_piano_key_pressed
           ret nc
           call pre_modif
+          cp note_c_10
+          jr z,.oknote
           ld hl,cur_transpose
           sub (hl)
+.oknote
           call row_set_note
           call Song_get_instr
           call row_set_instr

@@ -31,6 +31,7 @@ use_track_volume = 0
 use_phrase_volume = 1
 
 use_transpose = 1
+use_note_c_10 = 1
 
 ; Hum. to be reviewed (fx.o)
 use_fx_noise = 0
@@ -65,4 +66,5 @@ default_use_hard_env = 1 ; "
 use_volume = use_track_volume OR use_phrase_volume
 use_noise = use_fx_noise OR use_instr_noise
 use_flags = use_instr_flag OR use_note_flag OR has_phrase_loop
+
 

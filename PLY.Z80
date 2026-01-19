@@ -19,7 +19,8 @@ need_room = 1
 
 ; \/\/\/ 2026 \/\/\/\/\
 ; ----- Alpha2 -----
-  ; Jan
+  ; Jan       
+   ;19 Don't transpose /c_note_10/
    ;17 Add evt_track_loop (see rationale in journal)
 ; ----- Alpha1 -----
    ;04 play: reset volumes (see rationale there)
@@ -321,11 +322,12 @@ update_instr_tm = 61
       END
           pop hl
 ; l: note+transpose (aka current note)
-; h: transpose
-          add h:ld l,a
+; h: transpose  
+          cp note_c_10 * 2:jr z,$+3:add h
+          ld l,a
           push hl
       ELSE
-update_note_tm = 15
+update_note_tm = 19
 ;same but de,hl exchanged
           ld a,(hl):INC_HL()
           add a
@@ -334,7 +336,8 @@ update_note_tm = 15
           SUB_TM''(3)
       END
           pop de
-          add d:ld e,a
+          cp note_c_10 * 2:jr z,$+3:add d
+          ld e,a
           EX_AF'()
           SUB_TM_CALL(update_note_tm-1) ; -1 jr not taken
           EX_AF'()
