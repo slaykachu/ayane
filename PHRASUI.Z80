@@ -3,6 +3,7 @@ todo  = 0
 ; 2026
   ; Jan
 ; -- Alpha2 --
+      ;17 Handle track loop
       ;13 CTRL-f0/f.
         ; CTRL-DEL, ENTER
 ; -- Alpha1 --
@@ -354,10 +355,28 @@ goto_bottom
           or a:sbc hl,bc
           jp refresh_row
 
+goto_last
+;--------
+; bottom of phrase might be further than end of track 
+; (when loop in middle of phrase), using goto_bottom in that case
+; would lead to infinite loop    
+          call track_get_last_hook
+          ex de,hl
+          ld de,time_cur
+          push de
+          call copy_time
+          call get_delai_ui
+          ld e,a
+          ld d,0
+          pop hl
+          call sub_ihl_de_clipped
+          jp refresh_from_time_cur
+
 row_dwn
 ;------     
           call get_next_row
           jp refresh_row
+
 
 row_ctrl_dwn
 ;-----------
@@ -373,13 +392,15 @@ refresh_row_from_time_cur
 ; before current phrase?
 ; Note: other tests (after current? in view?) done in refresh_row
           ld de,time_cur+2
-          ld hl,fetched_t0+2
+          ld hl,t0+2
           call cp_ide_ihl_end
           jr nc,refresh_row_ ; no 
+;enchaine
+refresh_from_time_cur
+;--------------------
 ; yes: switch phrase
           call refresh_state_cur
-; time_cur will not change,
-; as well pass hl = time_cur - fetched_t0
+; time_cur will not actually change,
 ; save one "jr"
 ;enchaine 
 refresh_row
@@ -390,10 +411,10 @@ refresh_row
 ; !!! Only called from ged event (update_pos_y uses that?)
 ; In: HL: relative time in current phrase
 
-          ld de,(fetched_t0)
+          ld de,(t0)
           add hl,de
           ld (time_cur),hl
-          ld a,(fetched_t0+2)
+          ld a,(t0+2)
           adc 0
           ld (time_cur+2),a
 
@@ -471,7 +492,7 @@ get_time_row
 ; Assume offset <= &ffff
           push hl
           ld hl,(time_cur)
-          ld de,(fetched_t0)
+          ld de,(t0)
           or a:sbc hl,de
           ex de,hl
           pop hl
@@ -490,7 +511,7 @@ select_row_ui_
 
 ; time_cur >= fetched_t0 (start of phrase)
           ld de,time_cur+2
-          ld hl,fetched_t0+2
+          ld hl,t0+2
           call cp_ide_ihl_end
           call c,mess
       END
@@ -512,10 +533,12 @@ select_row_ui_
 .no_row
           xor a
           ld (row_exists),a
+          scf:sbc a     ; nz
           ret
 
 .past_phrase
           call refresh_state_cur
+          jp z,goto_last
 
       IF dev_checks'
 ; Avoid infinite loop
@@ -731,6 +754,7 @@ refresh_page
           ld ixl,0      ; cursor y
 .slice_lp
           call refresh_state
+          jr z,.next_track
           ld e,l:ld d,h ; save cur time
 ; Set iyh: row#
           call get_delai_ui
@@ -745,7 +769,7 @@ refresh_page
           ld iyh,a
 ; Set DE: time end   
           ld hl,(time_end)
-          ld bc,(fetched_t0)
+          ld bc,(t0)
           or a:sbc hl,bc
           ex de,hl      ; hl = cur time, de = time end
           push hl
@@ -768,6 +792,7 @@ refresh_page
           ld hl,time_end
           jr nc,.slice_lp
 
+.next_track
           ld a,ixh:add track_wid:ld ixh,a
           pop bc
           djnz .track_lp
@@ -785,16 +810,26 @@ refresh_state
 ;------------
 ; Select phrase and set associated info.
 ; in: hl: pnt time 
-;out: hl: offset time in phrase
-    ; phrase selected
-    ; time_end set to nxt phrase in track or end of selected one,
-             ; whichever comes first
-    ; (cur_transpose) updated
+;out: if in range: NZ
+        ; hl: offset time in phrase
+        ; phrase selected
+        ; time_end set to nxt phrase in track or end of selected one,
+               ; whichever comes first
+        ; (cur_transpose) updated
+    ; otherwise, Z
           call track_get_state_at
-          ld (cur_transpose),a
+          ld b,a
+          push bc
           call track_select_phrase_at
+          pop bc
+          ret z
+; only update if successful
+          ld a,b:ld (cur_transpose),a
           push hl
           sbc a:ld (is_first_iter),a
+; store fetched_t0 (so that t0 isn't invalidated when
+                   ;track_select_phrase_at fails)
+          ld hl,fetched_t0:ld de,t0:call copy_time
 ; -- If phrase clipped?
 ; -- de = min(duration, t1 - t0)
 ; Note: for now we drop MSB 24 bits
@@ -812,6 +847,7 @@ refresh_state
           ld bc,fetched_t0
           call add_ihl_ibc_de
           pop hl
+          scf:sbc a     ; nz
           ret
 
 pre_modif
@@ -833,7 +869,7 @@ clone_if_needed
           ld a,(is_first_iter):or a
           ret nz
 ;-- clone phrase
-          ld hl,fetched_t0
+          ld hl,t0
           ld de,time_tmp
           call copy_time
           call song_get_current_phrase
@@ -948,15 +984,16 @@ is_modified BYTE 0
 auto_skip BYTE 0        ; see do_next_id/do_skip_id
 must_refresh BYTE 0
 cur_y BYTE 0
+t0        TIME(0)       ; start of current phrase
 
 _savepc
       ORG phrasui_shared_vars
 ; Time passed to track.o must be out of bank
 state
 ; All vars needed to recover when switching screen
-time_at_top TIME(0)     ; absolute time (determines "page")
-time_cur  TIME(0)       ; absolute time (determine pos in page)
-track_cur BYTE 0        ; not shared 
+time_at_top SKIP 3      ; absolute time (determines "page")
+time_cur SKIP 3         ; absolute time (determine pos in page)
+track_cur BYTE          ; not shared 
 state_ = $ - state
 
 time_end SKIP 3         ; bottom of slice

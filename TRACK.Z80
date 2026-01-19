@@ -10,7 +10,10 @@ use_widget = 0          ; 1 for trackui
 
 ; 2026
 ; -- alpha 2 --
- ; Jan 
+ ; Jan       
+     ;17: Remove used_tracks (was write only)     
+     ;16: Add track_set_loop_at
+     ;15: track_select_phrase_at and co: return Z if past end 
      ; 9: track_select_phrase_at: Respect invariant fetched_t1 > t
      ; 8: track_get_state_at: save hl, ix. Preserve transpose sign!
      ; 7: [cleanup] Remove ui related code
@@ -1545,11 +1548,6 @@ Song_select_new_track
 
           call scope_bk_track
           push af
-          ld c,a
-          ld a,(used_tracks):cp MAX_TRACKS:call nc,mess
-          inc a
-          ld (used_tracks),a
-          ld a,c
           cp 4:call nc,to_be_implemented ; see /todo1/
           cp MAX_TRACKS:call nc,mess
           ld (current_track),a
@@ -1576,6 +1574,7 @@ Set_phrase_at_t
 ; Set phrase into current track 
 ; In: A = id phrase        
     ; hl = pnt to t
+;Out: hl = pnt hook
           call scope_bk_track
           push hl
           call Get_phrase:call z,mess
@@ -1596,13 +1595,16 @@ set_event
 ; In:  A = type event  
     ; de = param event      
     ; hl = pnt to t
+;Out: hl = pnt hook
           push de:push af
           call setup_track_t
           ld hl,set_hook_at
           call eval
  ; here hl= start hook structure
+          pop af:pop de
+          push hl
+          push de:push af
           idsz + evt0_link ** inc hl
-          pop af:push af
           call goto_event
           jr nz,.oknode
 ;Must insert new node so that set_phrase is always last.
@@ -1632,6 +1634,7 @@ set_event
           ASSERT(evt_param == 1)
           ld (hl),e:inc hl
           ld (hl),d
+          pop hl
           ret
 
 
@@ -1641,6 +1644,7 @@ Set_transpose_at_t
 ; !!See note at Set_phrase_at_t
 ; In: A = transpose (signed)        
     ; hl = pnt to t
+;Out: hl = pnt hook
       IF todo
 ;!!! right now we use prepend_event, as we know that converter
 ; will call that first.
@@ -1793,6 +1797,14 @@ sub_ade_ibc_ihl
           ld a,(bc):sbc (hl)
           ret
 
+sub_ide_ihl_bc
+; (de) = (hl) - bc
+; Return C/NC (!!!! Z flag not accurate, NZ if Carry)
+          ld a,(hl):inc hl:sub c:ld (de),a:inc de
+          ld a,(hl):inc hl:sbc b:ld (de),a:inc de
+          ld a,(hl):inc hl:sbc 0:ld (de),a
+          ret
+
 sub_ihl_de
 ; (hl) -= de               
 ; HL preserved
@@ -1881,6 +1893,7 @@ track_get_event_at
           ld hl,0:ld (fetched_event),hl
           ld hl,get_event_at
           call eval
+          ret z         ; when past end
           ld hl,(fetched_event)
           ld a,l:or h
           ret z
@@ -1923,51 +1936,75 @@ Set_hook_duration
 ; That doesn't work for last hook
 ; In; hl = pnt to hook timestamp
     ; de = duration (0 for 65536) 
+          push de
           call track_get_hook_at
+          pop de
           jr _set_duration_com
 
 Set_last_hook_duration
 ;---------------------
 ; Needed by salo. Same rationale than Set_hook_duration
+          push de
           call track_get_last_hook
+          pop de
 _set_duration_com
           idsz ** inc hl
           ld (hl),e:inc hl
           ld (hl),d
           ret
 
-Set_track_loop
-;-------------
-; Set loop 
-;!!! if no hook at expected timestamp (hl), will point to
-   ; first hook before that
-      IF todo
-; to fix that, set a null event at time (hl)
-      END
-; In; hl = pnt to loop timestamp
-
-          call track_get_hook_at
+track_set_loop_at
+;----------------
+; Encoded as event. See rationale in journal
+; Memory leak if set in middle of track, nevermind.
+; In: hl = pnt time loop hook (t)
+    ; de = pnt time loop dest (t0)
+;Mod: AF, BC, DE, HL
           push hl
-          call track_get_last_hook
+          ex de,hl
+          call track_get_hook_at
+          ex (sp),hl
+          ld a,evt_track_loop_lsb
+          call set_event
+
           pop de
           ld (hl),e:inc hl
           set 7,d
-          ld (hl),d
+          ld (hl),d:inc hl
+; set dur = 0 (since automaticaly added in ply.o)
+          xor a
+          ld (hl),a:inc hl
+          ld (hl),a
           ret
 
 track_get_last_hook
 ;------------------
+;out: de = pnt last timestamp
+          call scope_bk_track ; when coming from phrasui
           ld hl,time_inf
+          call track_get_hook_at
 ;enchaine
 track_get_hook_at
 ;----------------
  ;In: hl = pnt to t
 ;Out: hl = hook structure
-    ; (on hold) de = pnt to timestamp start hook
+    ; de = pnt to timestamp start hook
           call setup_track_t
           ld hl,get_hook_at
           call eval
-;          ld de,aum_regs + t0*4
+          ld de,aum_regs + t0*4
+          ret
+
+track_set_hook_at
+;----------------
+; Set hook if not already existing
+ ;In: hl = pnt to t
+;Out: hl = hook structure
+    ; de = pnt to timestamp start hook
+          call setup_track_t
+          ld hl,set_hook_at
+          call eval
+          ld de,(aum_regs + out0*4)
           ret
 
 setup_track_t
@@ -2199,7 +2236,7 @@ Song_add_map
           djnz .lpc
 
 ; -- Set last phrase duration
-; For other phrase this is done automatically when next phrase is hooked
+; For other phrases it is done automatically when next phrase is hooked
           call phrase_get_duration ; was selected by .advancetime
       IF dev_checks
           inc c:dec c:call nz,mess ; must be < &10000
@@ -2212,8 +2249,9 @@ Song_add_map
 
       IF do_set_loop
 ;Set loop to 0 (good default). 
-          ld hl,time_zero
-          call Set_track_loop
+          ld hl,timestamp
+          ld de,time_zero
+          call track_set_loop_at
       END
 
           pop hl:pop bc:pop af
@@ -2338,7 +2376,7 @@ ext_connect_head
 ;---------------
 ; In: DE = pnt node 
 ; Out: If has next: NZ, DE = pnt next node (connected)
-     ; Otherwise, Z, DE inchanged     
+     ; Otherwise (end or loop), Z, DE inchanged     
 ; Note: generic routine in liszt, this is just to have signature
       ; and additional checks                            
 
@@ -2404,15 +2442,15 @@ time_inf FILL 3,&FF
 ;--------------------------
 ; Buffers and tmp variables     
 ;--------------------------
-          ALIGN(&10)    ; align for easier debug
+ ;         ALIGN(&20)    ; align for easier debug
 
 ;for phrasui
           ASSERT($ AND &C000 != &4000) ; out of bank for sharing
-fetched_event WORD 0
 fetched_t0 TIME(0)
 fetched_t1 TIME(0)
           ASSERT(fetched_t1 == fetched_t0+3)
 
+fetched_event WORD 0
 timestamp TIME(0)
 previous_timestamp TIME(0)
 time_param TIME(0)

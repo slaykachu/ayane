@@ -1,7 +1,8 @@
 ;   <<<<< SAVE/LOAD module >>>>>
 ;--- Alpha 1 ---
 ; 2026
- ; Jan:
+ ; Jan:      
+  ;17: Use new track_set_loop_at
   ;14: load/save instr name
 ;--- Alpha 1 ---
 ; 2025      
@@ -338,10 +339,8 @@ load_bloc_c
 ;Like load_bloc, but size in C > 0
           ld b,0
 load_bloc
-;in: de = dest
-   ; bc = size. 0 means 0 (e.g. for empty field text)
-;out: de+=bc
-    ; hl = buffer'
+;in:  bc = size. 0 means 0 (e.g. for empty field text)
+;out: hl = buffer'
           ld de,buffer'
           push de
           call _load_bloc
@@ -509,6 +508,11 @@ load
           call New_instr
 ; -- Name       
           call load_bloc_with_size
+; must push NT
+          add hl,bc
+          xor a         ; also for NC
+          ld (hl),a
+          sbc hl,bc
           inc c:dec c
           call nz,instr_set_name
 ; -- Table (by columns)
@@ -741,13 +745,13 @@ track_lp
           ld hl,timestamp ; current timestamp before update
 ; -- Type
           call load_a
+          ASSERT(type_evt_null == SENTINELLE) ; we don't discriminate
+; Evt null = intermediate hook, just to handle duration > &10000
+; No actual event to encode, just update timestamp,
+; subsequent setters (e.g. Set_phrase_at_t) will create hook as needed.
           IS_END_OF_LIST():jr z,.evtend
           cp type_evt_stop:jr z,.track_stop
           cp type_evt_loop:jr z,.track_loop
-; Evt null = intermediate hook, just to handle duration > &1000
-; No actual event to encode, just update timestamp,
-; subsequent setters (e.g. Set_phrase_at_t) will create hook as needed.
-          cp type_evt_null:jr z,.evtend
           ASSERT(type_evt_change_phrase == 1)
           dec a:jr z,.set_phrase
           ASSERT(type_evt_transpose == 2)
@@ -763,6 +767,16 @@ track_lp
           call load_a
           call Set_transpose_at_t
           jr .evtlp
+
+.track_loop
+          ld c,3
+          call load_bloc_c
+          ex de,hl
+          ld hl,timestamp
+          call track_set_loop_at
+; End of track: no other event or duration
+          jr .track_next
+
 .evtend
           call load_bc  ; duration
           ld hl,timestamp
@@ -771,21 +785,14 @@ track_lp
           jr nc,$+3:inc (hl)
           jr .hooklp
 
-.track_loop
-          push bc
-          ld de,timeloop
-          push de
-          ld c,3
-          call load_bloc_c
-          pop hl
-          call Set_track_loop
-          pop bc
-;enchaine 
 .track_stop
 ; here bc= last duration met
+      IF todo
+; review that. should use track_set_stop_at (todo)
+      END
           ld e,c:ld d,b
           call Set_last_hook_duration ; see there for rationale
-
+.track_next
           LOAD_ALT_SELECTED()
           jp track_lp
 
@@ -1364,12 +1371,12 @@ phrase_param# = clip_header_size-fc_color
           cp track_events_/&0100:call nc,mess
       END
           push hl
-          ld (dbg_current_hook),hl
+          ld (current_hook),hl
           idsz ** inc hl
 ; -- Duration 
 ;will be stored after events,
 ;since we don't need it for fake events loop/stop
-;and loading wouldn't know beforehand the kind of event.
+;and /load/ wouldn't know beforehand the kind of event.
           ld c,(hl):inc hl
           ld b,(hl):inc hl
           push bc
@@ -1388,23 +1395,25 @@ phrase_param# = clip_header_size-fc_color
           call save_a
           ASSERT(type_evt_comment == 0)
           or a:call z,to_be_implemented ; 0: comment
-          ASSERT(type_evt_change_phrase == 1)
-          dec a:jr z,.set_phrase
-          ASSERT(type_evt_transpose == 2)
-          dec a:jr z,.set_transpose
-;Note: events null/stop/loop are for serialization 
-;but shouldn't exist in ram (null link or link+&8000 used instead)
+          cp type_evt_change_phrase:jr z,.set_phrase
+          cp type_evt_transpose:jr z,.set_transpose
+          cp type_evt_loop:jr z,.set_loop
+;Note: event null is for serialization 
+;but doesn't exist in ram (null link used instead)
+      IF todo
+; evt_stop (<> than letting the track run of last phrase)
+      END
           call unexpected
 
 .set_phrase
-;Note: internally phrase is always last event,
-     ; but in .aya we store sentinelle anyway (future-proof)
           call Next_node ; phrase start in chunk
           call connect_bk_phrase
           ld l,chunk_start+fc_index
           ld a,(hl)
           call save_a_as_int
           call connect_bk_track
+;Note: internally phrase is always last event,
+     ; but in .aya we store sentinelle anyway (future-proof)
           jr .evtnxt
 
 .set_transpose
@@ -1412,6 +1421,29 @@ phrase_param# = clip_header_size-fc_color
 ;remove encoding x2
           sra a:call c,unexpected
           call save_a
+          jr .evtnxt
+
+.set_loop
+          ld hl,(current_hook)
+; pnt to loop
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          res 7,h
+          call get_timestamp_from_hook
+      IF dev_checks
+          call nc,mess
+      END
+          ld l,c:ld h,b
+          ld c,3
+          call save_bloc
+
+; Necessary last event, and marker end of track, like "stop"
+; Don't store sentinelle then, or duration.
+          pop hl
+          pop bc
+          pop hl
+          jr .track_finalize
+
 .evtnxt
           pop hl
           call Next_node
@@ -1428,21 +1460,12 @@ phrase_param# = clip_header_size-fc_color
           ld e,(hl):inc hl
           ld d,(hl)
           ex de,hl
-          ld a,l:or h:jr z,.track_stop
+;shouldn't happen: .set_loop stopped iteratiorn 
           bit 7,h
-          jr z,.hooklp
+          jr nz,.track_finalize
+          ld a,l:or h
+          jp nz,.hooklp
 
-;.track_loop    
-          ld a,type_evt_loop:call save_a
-          res 7,h
-          call get_timestamp_from_hook
-          call nc,mess
-          ld l,c:ld h,b
-          ld c,3
-          call save_bloc
-          jr .track_finalize
-
-.track_stop
           ld a,type_evt_stop:call save_a
 ;enchaine
 .track_finalize
@@ -1816,17 +1839,17 @@ pbar_ok
 
 ; -------- Local vars -----------------
 
-v_savesp WORD           ; Ease error handling / exit
-v_temp_word WORD 
-cur_instr BYTE          ; for dbg
-cur_instr_type BYTE     ; idem
-dbg_current_track BYTE  ; idem
-dbg_current_hook WORD 
-dbg_current_evt WORD 
-timestamp SKIP 3
-timeloop SKIP 3
-progress_adr WORD 
-progress_pix BYTE 
+v_savesp WORD 0         ; Ease error handling / exit
+v_temp_word WORD 0
+cur_instr BYTE 0        ; for dbg
+cur_instr_type BYTE 0   ; idem
+dbg_current_track BYTE 0 ; idem
+dbg_current_evt WORD 0
+current_hook WORD 0
+timestamp TIME(0)
+timeloop  TIME(0)
+progress_adr WORD 0
+progress_pix BYTE 0
 
 salo_end
           LIMIT(ged)

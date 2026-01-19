@@ -2,10 +2,12 @@
 do_nrt = 1              ; 0: manual test
 dev_checks' = 1
 short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
+with_loop = 1
 
-; 2026
+; 2026         
   ; -- Alpha 2 --
-  ; Jan
+  ; Jan 
+      ;16: Add with_loop
       ;13: test_fuzz: add CTRL-DEL / Return    
          ; test_row_dwn_to_repeated_phrase: update ref to match transpos
       ; 9: test_refresh_state: add check for unaligned transpose
@@ -102,6 +104,7 @@ note2 = &26             ; D-2
           ld a,note2:call row_set_note
       END
       END
+; -- track 1
           ld a,1:call Song_select_new_track
           xor a:ld hl,time0:call Set_phrase_at_t
           ld a,12:ld hl,time24:call Set_transpose_at_t
@@ -114,6 +117,9 @@ note3 = &34
       IF 1-do_nrt
           ld a,1:call row_set_instr ; to test replay
       END
+          call maybe_set_loop
+
+;-- track 2
           ld a,2:call Song_select_new_track
           ld a,1:ld hl,time0:call Set_phrase_at_t
 
@@ -125,10 +131,14 @@ note4 = &43
       IF 1-do_nrt
           ld a,1:call row_set_instr
       END
+          call maybe_set_loop
+
+;-- track 3
           ld a,3:call Song_select_new_track
           ld a,2:ld hl,time0:call Set_phrase_at_t
 
           ld a,-12:ld hl,time96:call Set_transpose_at_t
+          call maybe_set_loop
 
           ld a,BK_DISP:call connect_a ; for checks against phrasui's var
           CALL_DISP_BK(phrase_cold_refresh)
@@ -146,7 +156,13 @@ note5 = 5
           ld a,note5:call row_set_note
           ret
 
-
+maybe_set_loop
+      IF with_loop
+          ld hl,time96
+          ld de,time0
+          call track_set_loop_at
+      END
+          ret
 
       IF do_nrt
 ; -----------------------------
@@ -192,8 +208,10 @@ tests
           call test_kcdwn
           call test_kcdwn'
           call test_kcup
+      IF 1-with_loop
           call test_next_page
           call test_prev_page
+      END
           call test_note_2nd_row
           call test_clr
           call test_fuzz
@@ -334,11 +352,16 @@ test_kcdwn
 ;DOWN+CONTROL-DOWN: go 17*delai_ui down
           call dev_setup
           TEST_RUN(.seq)
+      IF with_loop
+          CHECK_CURSOR(4+wid_row#,delai_ui_default*15 + 1)
+          ld a,(row_exists):or a:call nz,nrtfail
+      ELSE
           CHECK_CURSOR(4+wid_row#,delai_ui_default*17 + 1)
           ld a,(row_exists):or a:call z,nrtfail
           ld a,(is_first_iter):or a:call nz,nrtfail
           call row_get_note:call z,nrtfail
           cp note1+1:call nz,nrtfail
+      END
           ret
 
 .seq  BYTE kdwn,kcdwn
@@ -349,11 +372,15 @@ test_kcdwn'
 ;2 * CONTROL-DOWN
           call dev_setup
           TEST_RUN(.seq)
+      IF with_loop
+          CHECK_CURSOR(4+wid_row#,delai_ui_default*15 + 1)
+      ELSE
           CHECK_CURSOR(4+wid_row#,delai_ui_default*32 + 1)
           ld a,(row_exists):or a:call z,nrtfail
           ld a,(is_first_iter):or a:call nz,nrtfail
           call row_get_note:call z,nrtfail
           cp note1:call nz,nrtfail
+      END
           ret
 
 .seq  FILL 2,kcdwn
@@ -365,11 +392,15 @@ test_kcup
 ;DOWN + CTRL-DOWN + CTRL-UP: go delai_ui down
           call dev_setup
           TEST_RUN(.seq)
+      IF with_loop
+          CHECK_CURSOR(4+wid_row#,1)
+      ELSE
           CHECK_CURSOR(4+wid_row#,delai_ui_default + 1)
           ld a,(row_exists):or a:call z,nrtfail
           ld a,(is_first_iter):or a:call z,nrtfail
           call row_get_note:call z,nrtfail
           cp note1+1:call nz,nrtfail
+      END
           ret
 
 .seq  BYTE kdwn,kcdwn,kcup

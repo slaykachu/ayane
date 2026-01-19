@@ -18,8 +18,10 @@ need_room = 1
  ; See /track_stack/
 
 ; \/\/\/ 2026 \/\/\/\/\
-; ----- Alpha1 -----
+; ----- Alpha2 -----
   ; Jan
+   ;17 Add evt_track_loop (see rationale in journal)
+; ----- Alpha1 -----
    ;04 play: reset volumes (see rationale there)
    ;02 Amorce_song: must scope bk (when called from PHRASUI)
    ;01 read_vol: Must add track volume, since it will be sub in instr.o
@@ -431,6 +433,7 @@ tick      ld bc,0       ; Nb tick (1st iter:0)
 tm1'  = 5               ; until end_of_track (taken)
 tm2   = 14+5+12+10-1    ; until evt_handle_loop ; -1: jr not taken
           inc h:dec h:jr z,end_of_track ; cannot use A(')
+track_reset
 ; read link next event hook
           ld e,(hl):inc hl
           ld d,(hl):inc hl
@@ -493,6 +496,8 @@ tm_evt_iter = 10+15+3   ; until jp hl (play_phrase' not taken)
           cp evt_set_transpose AND &FF:jp z,.oklsb ; jp: stable
           SUB_TM''(5)
           cp evt_change_phrase AND &FF:jp z,.oklsb
+          SUB_TM''(5)
+          cp evt_track_loop AND &FF:jp z,.oklsb
       BRK
 .oklsb
       END
@@ -814,21 +819,6 @@ set_replay_period
       END
       ENDM
 
-type_evt_comment = 0    ; Todo 
-type_evt_change_phrase = 1
-type_evt_transpose = 2
-;type_evt_row ; todo
-;type_evt_set ; todo? or use via type_evt_row?
-
-; In ram, no need for null event, as null link serves this purpose.
-; Needed for serialization.
-; That's why we use -1, for consistency with SENTINELLE
-; (not very important though) 
-type_evt_null = -1
-; Dedicated for serialization (and compiled version)
-; In-tool we use null link and link with bit15 set.
-type_evt_stop = -2
-type_evt_loop = -3
 
 events
           SIGN_EVT(type_evt_transpose)
@@ -865,6 +855,17 @@ evt_change_phrase
           SUB_TM(tm1+tm_evt_iter+change_phrase_tm+4)
           jp read_row
 
+          SIGN_EVT(type_evt_loop)
+evt_track_loop
+          ASSERT(evt_change_phrase/&0100 == events/&0100) ;confine
+          ASSERT(evt_track_loop_lsb == [$ AND &FF])
+; read back hook pnt
+          dec sp
+          dec sp
+          pop hl
+          EX_AF'()
+          SUB_TM(tm_evt_iter+8+3 - 3) ; -3: ???
+          jp track_reset
 
 ;-------------------------------------
       IF 1-ayane

@@ -59,9 +59,9 @@ track_module = &23A0
 fx_module = &3100
 ply   = &3104           ;needed for events signatures
 fx_set_phrase_jp = ply+&13
-evt_set_transpose_lsb = ply+&BF AND &FF ; track
-evt_change_phrase_lsb = ply+&DE AND &FF ; "
-evt_track_loop = ply+0 AND &FF ; "
+evt_set_transpose_lsb = ply+&C9 AND &FF ; track
+evt_change_phrase_lsb = ply+&E8 AND &FF ; "
+evt_track_loop_lsb = ply+&F6 AND &FF ; "
 
 playsong_module = &35A2
 ; -- salo
@@ -89,7 +89,7 @@ ply   = &3004
 fx_set_phrase_jp = ply+5
 evt_set_transpose_lsb = ply+&6F AND &FF
 evt_change_phrase_lsb = ply+&80 AND &FF
-evt_track_loop = ply+0 AND &FF
+evt_track_loop_lsb = ply+&8E AND &FF
 
 playsong_module = &34A2
 ; -- salo
@@ -153,13 +153,12 @@ instr_idx_
 subsongs SKIP &0100     ; &100 for chained list with just LSB
 tracks SKIP MAX_TRACKS * tf_struct_size ; track and tracknub
 ; --- Vars ---                                              
-used_tracks BYTE 
 current_track BYTE 
 ; subsong: for now mixed with track setup
 nb_subsong BYTE 
 current_subsong BYTE 
 track_zero_ = $-tracks
-      IF used_tracks != [tracks + MAX_TRACKS*tf_struct_size]
+      IF current_track != [tracks + MAX_TRACKS*tf_struct_size]
  !! must be contiguous
       END
 
@@ -204,7 +203,7 @@ fonte_small = &4800
 disp  = &48D8           ; start of code after fonts
 pianoui = &4F10
 phrasui = &5630
-disp_ayane = &5E10      ; other modules imported by ayane.o
+disp_ayane = &5E40      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
 
@@ -225,8 +224,8 @@ fx_by_track = workzone + &0100 ; MAX_TRACKS*track_fx_size
 ; n**(type, event pnt)
 salo                    ; &8200
 tmp_buf_nrt SKIP &0100  ; well except salo-nrt!
-field_module = &8BA0
-ged   = &8C6C
+field_module = &8BB0
+ged   = &8C7C
 free_ram_for_nrt = field_module ; used by salo-nrt, tracknrt
 ;free room &9e70-&9eff
 bandaya = &9F00

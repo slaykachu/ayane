@@ -3,7 +3,8 @@ do_profile = 1
 ; 2026
 ; --- alpha2 --
   ; Jan     
-      ;17 Fix assemble when do_profile = 0
+      ;17 Add test_track_loop
+        ; Fix assemble when do_profile = 0
         ; Fix nrt_setup_play. init_timer was never called!?
 ; --- alpha1 --
       ; 5 Add test_clr_fx  
@@ -33,7 +34,7 @@ do_profile = 1
  ; ensure same location than in ayane.o 
           IMPORT_SHARED_DEPS_ALL()
           IMPORT_SHARED_DEPS() ; Init_chung, New_instr_ayane
- ; For Init_track_module, phrase_select_new_row
+ ; For Init_track_module, phrase_select_new_row, track_set_loop_at
           IMPORT_SHARED_DEPS''()
       IMPORT "timer.o"  ; for fx_end, SUB_TM_CALL
       ORG playsong_module
@@ -61,6 +62,7 @@ tests
           call test_clr_fx
           call test_sync_buzzer
           call test_endoftrack
+          call test_track_loop
           ret
 
 nrt_init
@@ -186,6 +188,7 @@ check_note_instr
       ELSE
           call nrt_play_from_start
       END
+_check_ref_start
           ld hl,.ref
           ld de,psg_regs
           ld b,8
@@ -293,6 +296,30 @@ test_endoftrack
           pop bc
           djnz .lp
           ret
+
+test_track_loop
+;--------------
+; track handling should be no-op after end
+          call nrt_init
+          call nrt_dummy_song
+
+          ld hl,time2
+          ld de,time_zero
+          call track_set_loop_at
+
+      IF do_profile
+          call tm_play_from_start
+          2 ** call tm_play
+      ELSE
+          call nrt_play_from_start
+          2 ** call play
+      END
+          call _check_ref_start
+          ret
+
+time2     TIME(2)
+
+
 
 
 nrt_dummy_song

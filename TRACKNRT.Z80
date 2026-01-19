@@ -5,6 +5,8 @@ do_brittle = 0
 ; ----- 2026 ----------
 ; -- alpha 2 --
  ; Jan
+    ; 16 Add test_track_set_loop_at
+    ; 14 Add test_track_select_phrase_past_end
      ; 9 Add test_track_get_hook_t1
        ; Add test_t1_with_transpose
 
@@ -96,8 +98,6 @@ tests
           call nrt_init
 
 ; ---- Recent
-          call test_track_get_hook_t1
-          call test_t1_with_transpose
 
 ; ---- UI (manual)
       IF enable
@@ -155,13 +155,15 @@ tests
           call test_set_phrase_far
           call test_get_phrase_implicit_repeat
           call test_track_select_phrase_far
+          call test_track_select_phrase_past_end
           call test_t0_when_repeat
           call test_t1_with_transpose
           call test_track_get_state_at
+          call test_track_set_loop_at
 
 ; ---- Test subsong -----
           call test_subsong_add_track
-          call test_default_loop
+  ;          call test_default_loop   !!not anymore
           call test_get_timestamp_from_hook
 
 ; --- Misc ---
@@ -1298,10 +1300,9 @@ test_track_get_event_at
           ld hl,time14
           call check_transpose
 
-; Far: still return same event
-          ld a,val1
+; Past end: return Z
           ld hl,time_far
-          call check_transpose
+          call track_get_event_at:call nz,fail
 
 ; With other kind of event in-between
           call nrt_dummy_phrase
@@ -1473,6 +1474,16 @@ test_track_select_phrase_far
 
 .time_post_last TIME(.evts# * .dur + 42)
 
+test_track_select_phrase_past_end
+          call nrt_init
+          call nrt_dummy_phrase
+          xor a:ld hl,time0:call Set_phrase_at_t
+          ld hl,time20
+          ld de,time0
+          call track_set_loop_at
+          ld hl,time20:call track_select_phrase_at
+          call nz,nrtfail
+          ret
 
 
 test_t0_when_repeat
@@ -1568,20 +1579,42 @@ test_track_get_state_at
           cp 24:call nz,fail
           ld hl,time14:call track_get_state_at
           cp 42:call nz,fail
-          ld hl,time_far:call track_get_state_at
-          cp 42:call nz,fail
           ret
 
 
+test_track_set_loop_at
+;---------------------
+          call nrt_init
+          call nrt_dummy_phrase_finite
+          xor a
+          ld hl,time0
+          call Set_phrase_at_t
 
+          ld hl,time7
+          ld de,time0
+          call track_set_loop_at
+
+          ld hl,time6:call track_select_phrase_at:call z,nrtfail
+          ld hl,time7:call track_select_phrase_at:call nz,nrtfail
+
+; put an event between last hook and loop time
+          ld hl,time2
+          ld a,10:call Set_transpose_at_t
+
+          ld hl,time6
+          call track_get_state_at
+          cp 10:call nz,fail
+          ret
 
 time0     TIME(0)
+time2     TIME(2)
 time6     TIME(6)
 time7     TIME(7)
 time13    TIME(13)
 time14    TIME(14)
 time20    TIME(20)
 time325   TIME(325)
+time_end  TIME(last_duration)
 time_far WORD &CAFE:BYTE 2 ; > &10000
 time_far' WORD &CAFE+&0777:BYTE 2
 time_dyn  TIME(0)
@@ -1678,17 +1711,14 @@ test_subsong_add_track
 test_default_loop
 ;----------------
 ; New module should have set loop to time 0
+; !!! NO; discarded
           call nrt_init
-
-          call Song_get_first_track:call z,fail
-          call Song_select_track
-          ld hl,time_zero:call Set_track_loop
 
           call Song_get_first_track:call z,fail
           call get_track_header
 
           ld e,(hl):inc hl
-          ld d,(hl):dec hl ; first event
+          ld d,(hl):dec hl ; first hook
 .lp
           ld a,(hl):inc hl:or (hl):dec hl:call z,fail ; no null link
           ld a,(hl):inc hl
@@ -1820,7 +1850,7 @@ nrt_dummy_phrase
           ret
 
 nrt_dummy_phrase_finite
-;Finite duration
+;Finite duration 7
           xor a:call song_select_new_phrase
 dummy_dur = 7
           ld a,dummy_dur:call phrase_select_new_row

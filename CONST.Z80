@@ -32,14 +32,13 @@ type_evt_change_phrase = 1
 type_evt_transpose = 2
 ; In ram, no need for null event, as null link serves this purpose.
 ; Needed for serialization.
-; That's why we use -1, for consistency with SENTINELLE
+; We use -1, for consistency with SENTINELLE
 ; (not very important though) 
 type_evt_null = -1
 ; Dedicated for serialization (and compiled version)
 ; In-tool we use null link and link with bit15 set.
 type_evt_stop = -2
-type_evt_loop = -3
-
+type_evt_loop = -3      ; since alpha2, also used explicitly in-tool
 
 fx_type_none = 0
 fx_type_sync_buzzer = 1
