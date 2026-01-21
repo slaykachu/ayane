@@ -1,7 +1,8 @@
 ; <<<< Tests salo and generate libs >>>>
 ; 2026
 ; -- Alpha2 --
-   ; Jan 14. test_assets: try with instr name
+   ; Jan 17. test_assets: actually test track loop
+       ; 14. test_assets: try with instr name
 ; 2025      
 ; -- Alpha1 --
    ; Dec 25. Default instrument is now 1 (see by init.full_init)
@@ -57,6 +58,7 @@ ho    SKIP ramlimit - $ ; poor man's limit
       BYTE 0
       ENDM
 ;-----------------------------
+failnrt = &BE00
 
 tests
           call test_save_empty_module
@@ -122,7 +124,7 @@ test_assets
           call nrt_init
 
 ; Sanity: check no track in subsong
-          call Song_get_first_track:call nz,fail
+          call Song_get_first_track:call nz,failnrt
 
 ; - Empty instr 
           ld a,1        ; id (0 is reserved)
@@ -174,25 +176,25 @@ test_assets
           call phrase_set_params
           call check_save_load_save
 ; ---- Sanity check
-          call phrase_get_rows#:or a:call nz,fail
+          call phrase_get_rows#:or a:call nz,failnrt
 ; -- With one empty row (duration 0)
           xor a:call phrase_select_new_row
-          call phrase_get_rows#:cp 1:call nz,fail
+          call phrase_get_rows#:cp 1:call nz,failnrt
           call check_save_load_save
-          call phrase_get_rows#:cp 1:call nz,fail
+          call phrase_get_rows#:cp 1:call nz,failnrt
 ; --- With non-zero duration 
           ld a,42
           call row_add_duration
-          call phrase_get_rows#:cp 1:call nz,fail
+          call phrase_get_rows#:cp 1:call nz,failnrt
           call check_save_load_save
-          call phrase_get_rows#:cp 1:call nz,fail
+          call phrase_get_rows#:cp 1:call nz,failnrt
 ; --- With fx
 ; --- With note
           ld a,43
           call row_set_note
-          call phrase_get_rows#:cp 1:call nz,fail
+          call phrase_get_rows#:cp 1:call nz,failnrt
           call check_save_load_save
-          call phrase_get_rows#:cp 1:call nz,fail
+          call phrase_get_rows#:cp 1:call nz,failnrt
 ; --- With vol            
           ld a,&0E
           call row_set_vol
@@ -217,17 +219,17 @@ phrase4 = 4
           call check_save_load_save
 ; -- With event
           ld a,5
-          ld hl,time1
+          ld hl,time_babe
           call Set_transpose_at_t
           call check_save_load_save
 ; -- With phrase at same time
           xor a
-          ld hl,time1
+          ld hl,time_babe
           call Set_phrase_at_t
           call check_save_load_save
 ; -- With phrase at different time
           ld a,phrase4
-          ld hl,time2
+          ld hl,time_far
           call Set_phrase_at_t
           call check_save_load_save
 ; - Another track
@@ -240,7 +242,7 @@ phrase4 = 4
           xor a
           call Subsong_add
 ; Sanity: check no track in subsong
-          call Song_get_first_track:call nz,fail
+          call Song_get_first_track:call nz,failnrt
           call check_save_load_save
 ; -- With one track
           ld hl,.trackinfo
@@ -267,21 +269,23 @@ phrase4 = 4
           call .check_tracks
 ; -- With loop
           ld a,0:ld (hack_ret),a
-          call Song_get_first_track
-          call Song_select_track
-          ld hl,time_zero:call Set_track_loop
+          call Song_get_first_track:call Song_select_track
+          ld hl,time_babe
+          ld de,time_1
+          call track_set_loop_at
+          call check_save_load_save
           ret
 
 .trackinfo BYTE 1,1     ; id, channel
 .trackinfo' BYTE 2,2
 
 .check_tracks
-          call Song_get_first_track:call z,fail
-          cp 1:call nz,fail
-          call Song_get_next_track:call z,fail
-          cp 2:call nz,fail
-          call Song_get_next_track:call z,fail
-          cp 3:call nz,fail
+          call Song_get_first_track:call z,failnrt
+          cp 1:call nz,failnrt
+          call Song_get_next_track:call z,failnrt
+          cp 2:call nz,failnrt
+          call Song_get_next_track:call z,failnrt
+          cp 3:call nz,failnrt
           ret
 
 instr_param1 BYTE "yeh"
@@ -294,8 +298,9 @@ paramX BYTE "X"
 
 name_instr BYTE "horn",0
 
-time1 WORD &BABE:BYTE 0
-time2 WORD &8000:BYTE 2 ; more than &10000 ticks away 
+time_1    TIME(1)
+time_babe TIME(&BABE)
+time_far WORD &8000:BYTE 2 ; more than &10000 ticks away 
 
 test_big
 ;-------
@@ -303,7 +308,7 @@ test_big
           call nrt_init
           ld hl,vampire_name
           ld bc,0
-          call load_file:call nc,fail
+          call load_file:call nc,failnrt
           ld de,destnrt:call nrt_save_no_meta
           call connect_bk_io
           ld hl,vampire
@@ -320,14 +325,14 @@ hack_ret  ret           ; to speed-up tests
 ; Save state
           call Song_get_instr:push af
 ; -- In NRT: doesn't use id > 4
-          cp 5:call nc,fail
+          cp 5:call nc,failnrt
       ;    call phrase_get_row_position:push hl
           call song_get_current_phrase:push af
-          cp 5:call nc,fail
+          cp 5:call nc,failnrt
           call get_current_track_header:push af ; also gives ID
-          cp 5:call nc,fail
+          cp 5:call nc,failnrt
           call Song_get_current_subsong:push af
-          cp 5:call nc,fail
+          cp 5:call nc,failnrt
 
 ; Clear buffer for comparaison (we don't know exact lenght)
           call connect_bk_io
@@ -361,15 +366,15 @@ hack_ret  ret           ; to speed-up tests
 
 ; Check state    
           call Song_get_current_subsong
-          pop bc:cp b:call nz,fail
+          pop bc:cp b:call nz,failnrt
           call get_current_track_header
-          pop bc:cp b:call nz,fail
+          pop bc:cp b:call nz,failnrt
           call song_get_current_phrase
-          pop bc:cp b:call nz,fail
+          pop bc:cp b:call nz,failnrt
      ;     call phrase_get_row_position
      ;     pop de:or a:sbc hl,de:add hl,de:call nz,fail
           call Song_get_instr
-          pop bc:cp b:call nz,fail
+          pop bc:cp b:call nz,failnrt
           ret
 
 hook_check
@@ -391,16 +396,16 @@ _check_2_tracks
           ret
 _check_has_track
           call get_track_header
-          ld a,(hl):inc hl:or (hl):call z,fail
+          ld a,(hl):inc hl:or (hl):call z,failnrt
           ret
 _check_no_track
           call get_track_header
-          ld a,(hl):inc hl:or (hl):call nz,fail
+          ld a,(hl):inc hl:or (hl):call nz,failnrt
           ret
 
 _check_1_track_in_subsong
-          call Song_get_first_track:call z,fail
-          call Song_get_next_track:call nz,fail
+          call Song_get_first_track:call z,failnrt
+          call Song_get_next_track:call nz,failnrt
           ret
 
 almost_empty
@@ -496,7 +501,7 @@ nrt_save
           ld hl,memdisk_write_bloc
           ld de,dummy_meta
           ld bc,dummy_
-          call save:call nc,fail
+          call save:call nc,failnrt
           ret
 
 nrt_save_no_meta
@@ -504,7 +509,7 @@ nrt_save_no_meta
           call memdisk_init_write
           ld hl,memdisk_write_bloc
           ld bc,0
-          call save:call nc,fail
+          call save:call nc,failnrt
           ret
 
 tmpbrk
@@ -526,7 +531,7 @@ nrt_load
           ld hl,memdisk_load_bloc
           ld de,dest_meta
           ld bc,dummy_
-          call load:call nc,fail
+          call load:call nc,failnrt
 ; Check meta data was loaded
           ld hl,dummy_meta
           ld de,dest_meta

@@ -5,7 +5,8 @@ tmp_rast = 0
 ; <<<< Handling cpc keyboard as piano >>>>
 ; -> Using hardware keycode: locale agnostic (azerty/qwerty)
 
-;2026 Jan 3 Handle ^ (qwerty) / - (azerty) for period 0 (note_c_10)
+;2026 Jan 19 s/fail/mess
+         ; 3 Handle ^ (qwerty) / - (azerty) for period 0 (note_c_10)
 
       IMPORT "const.i"  ; note_c_10
       IMPORT "memmap.i"
@@ -74,7 +75,7 @@ _refa     ld a,0
 ; anchor event could have been trigered
 ; (e.g. fx evt happening just at vsync time: since it's long, we reach
   ;anchor rdv)
-          inc a:cp (hl):call nz,fail:dec a
+          inc a:cp (hl):call nz,mess:dec a
           SUB_TM''(7-1)
 .ok
           add 39*2
@@ -304,7 +305,7 @@ _prelude
       IF dev_checks
 _check_di
           push af
-          ld a,i:call pe,fail
+          ld a,i:call pe,mess
           pop af
           ret
 
@@ -312,10 +313,10 @@ _check_regs'
  ; apparently A' can be 0 or &8x
           push af
           or a:jr z,.oka
-          and &8C:cp &8C:call nz,fail
+          and &8C:cp &8C:call nz,mess
 .oka
-          ld a,b:cp &7F:call nz,fail
-          ld a,c:and &8C:cp &8C:call nz,fail
+          ld a,b:cp &7F:call nz,mess
+          ld a,c:and &8C:cp &8C:call nz,mess
           pop af
           ret
 
