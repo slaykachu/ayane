@@ -5,6 +5,8 @@ need_speed = 1
 border_col = &54
 border_col' = &44
 
+; 2026 Jan 19: Use ARP_CLIP
+
 MAX_FX_CHANGE_PARAMS = 5 ; type, evtpnt. Syncbuzz: env, period 
 MAX_TIMER_FXS = 15      ; used here only -> no ui check.
 
@@ -26,6 +28,8 @@ MAX_TIMER_FXS = 15      ; used here only -> no ui check.
 ; Routines plugged in instr row:
 ; - fx_null                    
 ; - sync_buzzer_register
+
+mess' = &BE00           ; tmp mitigation bug orgams
 
       IMPORT "const.i"
       IMPORT "plyconf.i"
@@ -213,7 +217,7 @@ insert_event_tm = 34 + 13
 ; We check that to be more future-robust, and detect programming error
       IF dev_checks
           ld b,a
-          ld a,c:inc a:cp e:call z,mess
+          ld a,c:inc a:cp e:call z,mess'
           ld a,b
           SUB_TM''(8)
       END
@@ -284,7 +288,7 @@ program_next_event_tm = 11
           ASSERT_NOT(EVENT_MAX_SIZE AND EVENT_MAX_SIZE-1)
 ; -> if not power of 2, replace 'and' by modulo 
           and EVENT_MAX_SIZE-1
-          cp offset:call nz,mess
+          cp offset:call nz,mess'
       END
       ENDM
 
@@ -407,7 +411,6 @@ current_anchor = $+1
 init_timer
 ;---------     
 ; Call before playing start. No need to mesure TM.
-
 ; ---- Init linked list free slots 
           ld hl,events
           ld a,l
@@ -488,7 +491,7 @@ fx_by_track_pnt = $+1
 ; Same fx, with different params.
 ; Cannot change params of currently running evt,
 ; Much like we cannot program PSG right now. 
-sbr_params_tm = sbr_tm_switch-1 + 58 ; -1: jr not taken
+sbr_params_tm = sbr_tm_switch-1 + 60 + arp_clip_tm ; -1: jr not taken
           inc l
           ld a,(hl):inc l
           ld (fx_by_track_pnt),hl
@@ -505,8 +508,10 @@ change_pnt = $+1
           pop de        ; in instr param
           ld (hl),e:inc l
 ;- period    
-          ld a,d        ; arp
-          add ixl       ; base note
+          ld a,ixl      ; base note
+          add d         ; arp
+          ARP_CLIP()
+          sub note_c_0_encoding
           ld c,a
           ld b,periods/&0100
           pop de        ; pitch
@@ -548,7 +553,7 @@ change_pnt = $+1
 ; Use exception mecanism, as we don't want to crash in user mode
 ; (exec without orgams)
       END
-          call mess
+          call mess'
 
 .start
 ; Setup code as new event
@@ -617,7 +622,7 @@ current_clock = $+1
 ; -- Install routine, and poke params direclty:
    ; - Faster
    ; - We couldn't reuse "poke params" 
-sbr_setup_tm = 52       ; until RET_ROUT'
+sbr_setup_tm = 54 + arp_clip_tm ; until RET_ROUT'
 ; Routine to poke:
 ; Note: TM is counted at end of set_psg_insert_and_program,
 base_fx_tm = 9
@@ -640,8 +645,10 @@ skip_prelude = 1 +1     ; +1 also skip "ld a," opcode
           ld (hl),e:inc l
 ;- period    
           ld (hl),&11:inc l
-          ld a,d        ; arp
-          add ixl       ; base note
+          ld a,ixl      ; base note
+          add d         ; arp
+          ARP_CLIP()
+          sub note_c_0_encoding
           ld c,a
           ld b,periods/&0100
           pop de        ; pitch
@@ -783,7 +790,7 @@ change_params_tm = 10   ; until chgend taken
 
       IF dev_checks
 ; For now, only 1 type of fx so we know what/where to poke
-          cp fx_type_sync_buzzer:call nz,mess
+          cp fx_type_sync_buzzer:call nz,mess'
           SUB_TM''(5)
       END
           inc l
@@ -926,7 +933,7 @@ cut_tm2 = 6 - 1         ; until jr .removefound (taken) -1: not .race1
           cp anchor_event
       IF dev_checks
 removelp_tm = 14
-          call z,mess
+          call z,mess'
       ELSE
 removelp_tm = 13
           jr z,.mess
@@ -1085,23 +1092,26 @@ waitlines_tm
 dbg   SKIP &0100
       END
 
-      SKIP -$ AND 3     ; use res 1,l
+      FILL -$ AND 3,&F7 ; use res 1,l
 rasters BYTE border_col,border_col'
-
-          ASSERT(fx_by_track AND &FF == 0) ; aligned
-
-change_list SKIP MAX_TIMER_FXS*MAX_FX_CHANGE_PARAMS +1 ; +sentinelle
-          CHECK_CONFINE(change_list)
-
-cut_list SKIP MAX_TIMER_FXS +1
-          CHECK_CONFINE(cut_list)
 
 free_slot WORD events
 replay_period_in_nops WORD replay_default
 
-nrt_msb_tm BYTE 
-dbg_tm_marker BYTE      ; tm of next event
+nrt_msb_tm BYTE &F7
+dbg_tm_marker BYTE &F7  ; tm of next event
+
+          ASSERT(fx_by_track AND &FF == 0) ; aligned
+
+cut_list FILL MAX_TIMER_FXS +1,0
+          CHECK_CONFINE(cut_list)
+
+      FILL -$ AND &3F,&F7 ; padding for confine
+
+change_list FILL MAX_TIMER_FXS*MAX_FX_CHANGE_PARAMS +1,0 ; +sentinelle
+          CHECK_CONFINE(change_list)
+
       IF tmp_dbg
 dbg1  WORD dbg
-dbg2  WORD 
+dbg2  WORD 0
       END

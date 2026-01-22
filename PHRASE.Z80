@@ -6,7 +6,8 @@ do_add_empty_row = 0
 
 ; 2026    
  ; -- alpha 2 --
-  ; Jan 
+  ; Jan       
+   ;19: row_set_note/row_get_note: New note encoding
    ;14: Cleanup phrases_rows
       ; Move vars in BK_PHRASE
    ;12: Add phrase_insert_row_at
@@ -417,6 +418,7 @@ _unpack_row_com
           inc e:ld (de),a:dec e
           ld a,c:bit bit_note,b:jr z,.oknote
           ld a,(hl):inc l
+          NOTE_DECODE()
 .oknote
           ld (de),a:inc e
 .vol
@@ -841,9 +843,11 @@ _add_duration
 
 row_set_note
 ;-----------
-; in: A= note
-;out: A preserved
+; in: A= note (0=c-0, 1=c#0 ...)
+;out: A as encoded (side effect, not used)
+;MOD: F
 
+          NOTE_ENCODE()
           call scope_bk_phrase
           push bc:push de:push hl
           call connect_current_row_skip_length'
@@ -880,8 +884,9 @@ row_get_note
           ret z
 
           call skip_fx_ins
-          xor a:inc a   ; NZ
           ld a,(hl)
+          NOTE_DECODE()
+          inc h         ; nz
           ret
 
 row_del_all

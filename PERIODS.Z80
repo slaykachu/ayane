@@ -2,7 +2,7 @@
 todo  = 1
 need_room = 1
 
-; 2025
+; 2026 Jan 19: Add ARP_CLIP
 
       IMPORT "plyconf.i"
       IMPORT "const.i"  ; note_c_10
@@ -53,6 +53,30 @@ periods_code
           ld (hl),a:inc l
           ld (hl),a
       ENDM
+
+arp_clip_tm = 3         ; jp .okarp (taken)
+      MACRO ARP_CLIP
+; clipping after ADD arp (already *2)
+; put here since imported by timer
+          jp po,.okarp
+          jp p,.corneg  ; < -128
+; >128
+.corpos
+          SUB_TM''(5)
+          sub 12*2
+          jp po,.corpos
+          SUB_TM''(6)
+          jp .okarp
+
+.corneg
+          SUB_TM''(5)
+          add 12*2
+          jp po,.corneg
+          SUB_TM''(3)
+.okarp
+; Don't correct /note_c_0_encoding/ here, as the macro is used in ply.o
+      ENDM
+
 
       IF ayane
           ASSERT($ == periods_code)

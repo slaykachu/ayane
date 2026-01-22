@@ -1,5 +1,9 @@
 ; ------------- Tests for instr.o ----------------
 
+;/2026//
+; --- alpha2 ---
+   ; Jan 19 Add test_arp_clip
+;/2025//
 ; --- alpha1 ---
    ; Dec 26 Add test_non_existing_instr
 ; --- v0.0at ---
@@ -22,14 +26,18 @@
 
       IMPORT "instr.o"
       IMPORT "timer.o"  ; set_reg13_insert_and_program/_tm init_timer
+      IMPORT "periods.o" ; ARP_CLIP
       IMPORT "testlib.o"
-;prof.o at the end
+;prof.o at the end        
+
+nrtfail = &BE00
 
 tests
           call nrt_init
           call test_instr_null
           call test_instr
           call test_non_existing_instr
+          call test_arp_clip
           ret
 
 nrt_init
@@ -71,7 +79,7 @@ test_instr
 ; check period
           ld de,&9F71+hard_pitch /256 + 1
           ld hl,(psg_regs+11)
-          or a:sbc hl,de:add hl,de:call nz,fail
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
           ld de,.ref2code
           ld bc,ref2code_
           call check_fx
@@ -109,9 +117,34 @@ test_non_existing_instr
           call check_from_channel_b
           ret
 
-;-------------------------
+test_arp_clip
+;------------
+          ld a,-2:ld b,4:ld c,2:call .check_arp_clip
+          ld a,2:ld b,-4:ld c,-2:call .check_arp_clip
+          ld a,124:ld b,2:ld c,126:call .check_arp_clip
+          ld a,124:ld b,6:ld c,130-24:call .check_arp_clip
+          ld a,100:ld b,32:ld c,132-24:call .check_arp_clip
+          ld a,-124:ld b,-4:ld c,-128:call .check_arp_clip
+          ld a,-124:ld b,-10:ld c,-134+24:call .check_arp_clip
+          ld a,-100:ld b,-30:ld c,-130+24:call .check_arp_clip
+          ld a,-128:ld b,-24:ld c,-128:call .check_arp_clip
+c#5   = 5*12 + 1 + note_c_0_encoding
+          ld a,c#5:ld b,2:ld c,c#5+2:call .check_arp_clip
+          ld a,c#5:ld b,4:ld c,c#5+4:call .check_arp_clip
+g_4   = 4*12 + 7 + note_c_0_encoding
+          ld a,g_4:ld b,2:ld c,g_4+2:call .check_arp_clip
+          ld a,g_4:ld b,4:ld c,g_4+4:call .check_arp_clip
+          ret
+
+.check_arp_clip
+          add b
+          ARP_CLIP()
+          cp c:call nz,nrtfail
+          ret
+;-------------------------     
 nrt_instr_play
           di
+          push af
           xor a:ld (nrt_msb_tm),a
           exx
           ld hl,timer_nop
@@ -119,12 +152,13 @@ nrt_instr_play
           ex af,af
           ld a,MAX_TM
           ex af,af
+          pop af
           ld hl,instr_play
           call profile
           neg
           add a
           add MAX_TM*2-3 ;-3: final 'ret' not counted by prof
-          cp l:call nz,fail
+          cp l:call nz,nrtfail
           ld a,(nrt_msb_tm):cp h
           ret
 

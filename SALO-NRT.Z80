@@ -1,7 +1,8 @@
 ; <<<< Tests salo and generate libs >>>>
 ; 2026
 ; -- Alpha2 --
-   ; Jan 17. test_assets: actually test track loop
+   ; Jan 21. test_big: Add test play
+       ; 17. test_assets: actually test track loop
        ; 14. test_assets: try with instr name
 ; 2025      
 ; -- Alpha1 --
@@ -38,6 +39,7 @@ hu
       ORG init_module
       IMPORT "init.o"   ; for test and ayalib2.bin
       IMPORT "instr.o"
+      IMPORT "timer.o"  ; init_timer
       IF use_widget
       IMPORT ":lib/rgb256.o" ; for rgb256_code
       END
@@ -302,6 +304,11 @@ time_1    TIME(1)
 time_babe TIME(&BABE)
 time_far WORD &8000:BYTE 2 ; more than &10000 ticks away 
 
+      MACRO CHECK_NOTE note,div
+          ld de,[note + div/2]/div:or a:sbc hl,de:add hl,de
+          call nz,failnrt
+      ENDM
+
 test_big
 ;-------
 ;Full file 
@@ -309,12 +316,51 @@ test_big
           ld hl,vampire_name
           ld bc,0
           call load_file:call nc,failnrt
+
+      IF 1
+;check not related to salo, but take the oportunity
+          di
+          exx
+          ld hl,.timer_nop
+          exx
+          call Song_get_first_track
+          call get_track_header
+          ld a,3
+          call Amorce_song
+          call init_timer
+          ld bc,16*6*25 + 10*6 + 1
+          call nrt_play
+          ld hl,(psg_regs+2):CHECK_NOTE(E,32)
+          ld hl,(psg_regs+4):CHECK_NOTE(B,16)
+          ld bc,6*2
+          call nrt_play
+          ld hl,(psg_regs+2):CHECK_NOTE(D#,32)
+          ld hl,(psg_regs+4):CHECK_NOTE(A,16)
+          ld bc,6*2
+          call nrt_play
+          ld hl,(psg_regs+2):CHECK_NOTE(D,32)
+          ld hl,(psg_regs+4):CHECK_NOTE(G#,16)
+      END
+
           ld de,destnrt:call nrt_save_no_meta
           call connect_bk_io
           ld hl,vampire
           ld de,destnrt
           ld bc,vampire_size
           call compare_sized
+          ret
+
+.timer_nop
+          exx
+          ret
+
+.nrt_play
+          push bc
+          call play
+          pop bc
+          dec bc
+          ld a,c:or b
+          jr nz,.nrt_play
           ret
 
 check_save_load_save

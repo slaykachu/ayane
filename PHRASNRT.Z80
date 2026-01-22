@@ -2,7 +2,8 @@
 
 ; 2026
 ; -- alpha2 -- 
-; Jan   
+; Jan          
+  ; 19: Fix test itself: cannot encode note >= 128 anymore
   ; 14: Add test_init
   ; 12: Add test_phrase_insert_row_at
           ; test_phrase_insert_row_at_end
@@ -261,10 +262,10 @@ test_phrase_set_blank_crosschunk
           ld de,nrt_delai*140+1:call phrase_set_blank_row_at
           ld de,nrt_delai*140
           call phrase_select_row_at
-          call row_get_note:cp 140:call nz,fail
+          call row_get_note:cp 140 AND &7F:call nz,fail
           ld de,nrt_delai*141
           call phrase_select_row_at
-          call row_get_note:cp 141:call nz,fail
+          call row_get_note:cp 141 AND &7F:call nz,fail
           ret
 
 
@@ -924,7 +925,7 @@ dummy_phrase_custom
           pop bc
           push bc
 ;note 0,1,2 ...
-          ld a,c:sub b
+          ld a,c:sub b:and &7F
           call row_set_note
           pop bc
           djnz .lp
@@ -944,7 +945,7 @@ dummy_phrase_inf
 
 check_phrase
 ; Check phrase created by dummy_phrase
-; IN: b: rows#      
+; IN: b: rows# 
           ld c,b
           ld de,0
 .lp
@@ -952,7 +953,7 @@ check_phrase
           push bc
           call phrase_select_row_at
           pop bc
-          ld a,c:sub b:ld e,a
+          ld a,c:sub b:and &7F:ld e,a
           call row_get_note:call z,fail
           cp e:call nz,fail
           pop hl

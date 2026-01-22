@@ -20,7 +20,8 @@ need_room = 1
 ; \/\/\/ 2026 \/\/\/\/\
 ; ----- Alpha2 -----
   ; Jan       
-   ;19 Don't transpose /c_note_10/
+   ;19 Use ARP_CLIP
+     ; Don't transpose /c_note_10/
    ;17 Add evt_track_loop (see rationale in journal)
 ; ----- Alpha1 -----
    ;04 play: reset volumes (see rationale there)
@@ -324,19 +325,19 @@ update_instr_tm = 61
 ; l: note+transpose (aka current note)
 ; h: transpose  
           cp note_c_10 * 2:jr z,$+3:add h
+!!todo ARP_CLIP
           ld l,a
           push hl
       ELSE
-update_note_tm = 19
+update_note_tm = 18
 ;same but de,hl exchanged
           ld a,(hl):INC_HL()
-          add a
-      IF dev_checks
-          call c,mess   ; >= 128: reserved
-          SUB_TM''(3)
-      END
           pop de
-          cp note_c_10 * 2:jr z,$+3:add d
+          cp note_c_10*2 + note_c_0_encoding:jr z,.oktrans
+          add d
+          ARP_CLIP()
+          SUB_TM''(1+arp_clip_tm-1)
+.oktrans
           ld e,a
           EX_AF'()
           SUB_TM_CALL(update_note_tm-1) ; -1 jr not taken
@@ -777,37 +778,6 @@ track_end
 savesp    ld sp,&3131
           RET_ROUT(15)
 
-      IF ayane
-; ----------------------
-; Getter/setters        
-; (put before /events/ to help with alignement
-; ----------------------
-
-set_replay_period
-; In: hl = period
-; Init in Track_init_module
-          xor a         ; id tool box. 
-; Start with highest periods to keep NC
-          ex de,hl
-          ld hl,replay_25_04Hz:sbc hl,de:jr z,.ok
-          inc a
-          ld hl,replay_50_08Hz:sbc hl,de:jr z,.ok
-          inc a
-          ld hl,replay_100_16Hz:sbc hl,de:jr z,.ok
-          inc a
-          ld hl,replay_300_48Hz:sbc hl,de
-
-          call nz,mess
-.ok
-          ex de,hl
-          call scope_bk_base
-          ld (replay_period),hl
-          ld (replay_period_ui),a
-          ld (replay_period_in_nops),hl
-          ret
-
-      END
-
 ; ------
 ; Events
 ; ------
@@ -870,8 +840,35 @@ evt_track_loop
           SUB_TM(tm_evt_iter+8+3 - 3) ; -3: ???
           jp track_reset
 
-;-------------------------------------
-      IF 1-ayane
+      IF ayane
+; ----------------------
+; Getter/setters        
+; ----------------------
+
+set_replay_period
+; In: hl = period
+; Init in Track_init_module
+          xor a         ; id tool box. 
+; Start with highest periods to keep NC
+          ex de,hl
+          ld hl,replay_25_04Hz:sbc hl,de:jr z,.ok
+          inc a
+          ld hl,replay_50_08Hz:sbc hl,de:jr z,.ok
+          inc a
+          ld hl,replay_100_16Hz:sbc hl,de:jr z,.ok
+          inc a
+          ld hl,replay_300_48Hz:sbc hl,de
+
+          call nz,mess
+.ok
+          ex de,hl
+          call scope_bk_base
+          ld (replay_period),hl
+          ld (replay_period_ui),a
+          ld (replay_period_in_nops),hl
+          ret
+
+      ELSE
 ; For ayane: handled in timer.o
 psg
           ld hl,psg_regs

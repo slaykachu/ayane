@@ -5,7 +5,10 @@ dev_checks' = 1         ; new checks
 ; Routine for each type of intruments:
       ; - instr_default
 
-;2026 Jan 5: instr_null must cut fx
+;2026 
+ ;Jan
+   ;19: Use ARP_CLIP
+   ; 5: instr_null must cut fx
 
 ; Limitations:
    ; - only works for fixed /regs/ address XX00. 
@@ -53,7 +56,6 @@ r14   = psg_regs+14     ; Reset by ply before iteration
       END
 
 loop_bit = 7
-fail  = &BE00
 
       MACRO CHECK_CONFINE
 ; For now constraint also in-tool
@@ -182,7 +184,7 @@ instr_default
 ; Handling that first allows to skip optional field at the end for free
                           ; and use L or H to read last 
       IF ayane
-tm1   = tm1_-1 + 14+7+48 ; Until jr ok_noise (taken)
+tm1   = tm1_-1 + arp_clip_tm + 14+7+50 ; Until jr ok_noise (taken)
           ld ixl,c      ; Free C (also, needed later for hard env)
           ld ixh,b      ; Free B
           ld c,(hl):inc hl
@@ -221,7 +223,13 @@ tm1   = tm1_-1 + 14+7+48 ; Until jr ok_noise (taken)
           ld a,c
       END
       IF default_use_arp
-          add (hl):INC_HL_INSTR()
+          add (hl)
+          ARP_CLIP()
+      IF todo
+; shift the period table instead to save this sub
+      END
+          sub note_c_0_encoding
+          INC_HL_INSTR()
       END
 ; Compute period now, since we instr pitch comes next
 ; Computed period is kept in BC:
@@ -319,6 +327,8 @@ tm_hard = 17-1          ; until jr abs_hard (taken)
     ; it's still the base to use (well, unused feature now)
 ; Maybe we could use C for base note, since that's the most important
           add ixl
+          ARP_CLIP()
+          sub note_c_0_encoding
           ld e,a
           ld d,periods/&0100
 ; /16 (nops to psg) /16 (psg to env hard) -> /256
@@ -334,7 +344,7 @@ tm_hard = 17-1          ; until jr abs_hard (taken)
           ld (r11_12),hl
           ld a,&10
           EX_AF'()
-          SUB_TM(tm_hard-1+38) ; -1 jr abs_hard not taken
+          SUB_TM(tm_hard-1+40+arp_clip_tm) ; -1 jr abs_hard not taken
           jr .ok_vol
 
 .abs_hard
@@ -473,11 +483,11 @@ instr_play
 
 ;Note: cannot use ret_sp since it will be overwritten 
      ; from instr to timer.
-          add a         ; instr expect note *2 (index in periods table)
           ASSERT(c0 AND &FF == 0)
+          NOTE_ENCODE()
           ld c,a        ; note 
           ld b,0        ; volume (substracted)
-          ld de,0       ; shift
+          ld e,b:ld d,b ; shift
           ld a,&3F:ld (r7),a
 ; Mimic ply.o pre-loop (for fx management)
 ; For now, don't inline, to trigger timer at RET point.
@@ -485,7 +495,7 @@ instr_play
           ld (save_sp+1),sp
           ld sp,instr_code_pnt
  ; jump to instr code and then back at play_return
-          RET_ROUT(23+6) ;+6: ld sp,n:jp n
+          RET_ROUT(24+6) ;+6: ld sp,n:jp n
 play_return
 save_sp   ld sp,0
           ret
@@ -494,7 +504,7 @@ save_sp   ld sp,0
 _check_di
           SUB_TM''(8+13)
           push af
-          ld a,i:call pe,fail
+          ld a,i:call pe,mess
           pop af
           ret
       END

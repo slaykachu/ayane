@@ -1301,7 +1301,9 @@ phrase_param# = clip_header_size-fc_color
 .ok_instr
 ; -- Note
           bit bit_note,b:jr z,.ok_note
-          call save_ldi
+          ld a,(hl):inc l
+          NOTE_DECODE()
+          call save_a
 .ok_note
 ; -- Vol
           bit bit_vol,b:jr z,.ok_vol

@@ -40,61 +40,64 @@ chunk_module = &0470
 ;timer = &0A61
 
       IF dev_checks
-instr_module = &0E78
-chung = &0FED
-;13b0 "AYA!  " what's that
-;then free?
-; -- uiloop, salo (via playsong.o)
-ppi   = &1500
-piano = &155F
+instr_module = &0ECC
+chung = &108F           ; phrasuit (for test)
+; -- phraseui, uiloop, salo (via playsong.o)
+ppi   = &1590
+piano = &15EF
 ; --  uiloop
-instrui = &1680
-instrsel = &1AA9
-uiloop = &1B56
+instrui = &1749
+instrsel = &1B69
+uiloop = &1BFF
 ; ---- uiloop end ----
 ; -- phrasui, salo
 ;padding
-phrase = &1BE0
-track_module = &23A0
-fx_module = &3100
-ply   = &3104           ;needed for events signatures
+phrase = &1C90
+track_module = &2450
+fx_module = &3200
+ply   = &3204           ;needed for events signatures
 fx_set_phrase_jp = ply+&13
-evt_set_transpose_lsb = ply+&CD AND &FF ; track
-evt_change_phrase_lsb = ply+&EC AND &FF ; "
-evt_track_loop_lsb = ply+&FA AND &FF ; "
+evt_set_transpose_lsb = ply+&BE AND &FF ; track
+evt_change_phrase_lsb = ply+&DD AND &FF ; "
+evt_track_loop_lsb = ply+&EB AND &FF ; "
+
+playsong_module = &36A2
+; -- salo
+shortcut = &3730
+init_module = &37C1
+
+; -- Ayane
+code_main = &3D20
+
+      ELSE
+
+instr_module = &0E4C
+chung = &0FCC
+;13b0 "AYA!  " what's that
+;then free?
+; -- phraseui, uiloop, salo (via playsong.o)
+ppi   = &1490
+piano = &14EF
+; --  uiloop
+instrui = &1610
+instrsel = &1A39
+uiloop = &1AE0
+; ---- uiloop end ----
+; -- phrasui, salo
+;padding
+phrase = &1B90
+track_module = &2350
+fx_module = &3100
+ply   = &3104
+fx_set_phrase_jp = ply+5
+evt_set_transpose_lsb = ply+&6C AND &FF
+evt_change_phrase_lsb = ply+&7D AND &FF
+evt_track_loop_lsb = ply+&8B AND &FF
 
 playsong_module = &35A2
 ; -- salo
 shortcut = &3630
 init_module = &36C1
-
-; -- Ayane
-code_main = &3D20
-      ELSE
-instr_module = &0DD8
-chung = &0F19
-ppi   = &1400
-piano = &145F
-; --  uiloop
-instrui = &1580
-instrsel = &19A9
-uiloop = &1A56
-; ---- uiloop end ----
-; -- phrasui, salo
-;padding
-phrase = &1AE0
-track_module = &22A0
-fx_module = &3000
-ply   = &3004
-fx_set_phrase_jp = ply+5
-evt_set_transpose_lsb = ply+&73 AND &FF
-evt_change_phrase_lsb = ply+&84 AND &FF
-evt_track_loop_lsb = ply+&92 AND &FF
-
-playsong_module = &34A2
-; -- salo
-shortcut = &3530
-init_module = &35C1
 
 ; -- Ayane
 code_main = &3C20

@@ -22,8 +22,9 @@ MAX_TRACKS = 16         ; used by track, ply, salo
 MAX_FX_BY_INSTR = 2     ; 7 max (see timer.fxcutend)
 ;MAX_TIMER_FXS = 15      ; in timer.o
 
+note_c_0_encoding = -128 ; Notes are signed, for ovf detection
 note_c_10 = 10 * 12     ; C-10 -> period 0 
-note_clr = 127          ; not encoded as is, just for "unpack_row_at"
+note_clr = 127          ; *not* encoded as is, just for "unpack_row_at"
 instr_clr = -1          ; still allow for 254 instruments
 
 ;ply, salo, comp
