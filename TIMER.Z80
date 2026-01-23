@@ -5,7 +5,8 @@ need_speed = 1
 border_col = &54
 border_col' = &44
 
-; 2026 Jan 19: Use ARP_CLIP
+; 2026 Jan 22: Don't use PSG_L_HL_FAST, as Zik can hear it
+         ; 19: Use ARP_CLIP
 
 MAX_FX_CHANGE_PARAMS = 5 ; type, evtpnt. Syncbuzz: env, period 
 MAX_TIMER_FXS = 15      ; used here only -> no ui check.
@@ -850,15 +851,15 @@ psg_tm = 27             ; ld and calls until SUB_TM_CALL
           ld l,4
           call psg_channel ; regs 4,5,10
           ld l,6
-          PSG_L_HL_FAST()
+          PSG_L_HL()
 ;todo for sid: and with sid_mask
 ; (or skip r7 setting if current sid. More complicated?)
-          PSG_L_HL_FAST()
-          SUB_TM_CALL(2*psg_l_hl_fast_tm + [psg_tm MOD 3])
+          PSG_L_HL()
+          SUB_TM_CALL(2*psg_l_hl_tm + [psg_tm MOD 3])
           ld l,11
           PSG_L_HL()
-          PSG_L_HL_FAST()
-          SUB_TM_CALL(psg_l_hl_tm + psg_l_hl_fast_tm + 2)
+          PSG_L_HL()
+          SUB_TM_CALL(2*psg_l_hl_tm + 2)
           ex af,af
           ld a,(hl)
 ;If bit 4 set or different val: force trigger
