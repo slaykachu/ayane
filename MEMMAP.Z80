@@ -76,10 +76,10 @@ chung = &0FCC
 ;13b0 "AYA!  " what's that
 ;then free?
 ; -- phraseui, uiloop, salo (via playsong.o)
-ppi   = &1490
-piano = &14EF
+ppi   = &14A0
+piano = &14FF
 ; --  uiloop
-instrui = &1610
+instrui = &1620
 instrsel = &1A39
 uiloop = &1AE0
 ; ---- uiloop end ----

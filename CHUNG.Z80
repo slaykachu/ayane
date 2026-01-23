@@ -1,6 +1,11 @@
 ; <<<<< chung: gestion chunk? + instr >>>>>
-; 2025     
+ ; -- alpha 2 --
+; 2026
+  ; Jan 22. Add New_instr_ayane_if_empty
+          ; Fix /def/ overwritten (not detected by orgams!?!)
+      ; 14. Add instr_set_name, instr_get_name
  ; -- alpha 1 --
+; 2025     
   ; Dec 26. Init all instrs by 'instr_null' (so no assert in UI for
                                             ;undefined instr)
   ; Nov 26. Move Song_get_instr to song
@@ -33,6 +38,7 @@ row_link = 2
       IMPORT "chunk.o"  ; new_chunk 
       IMPORT "song.o"   ; Song_get_instr
       IMPORT "memcpc.o"
+      IMPORT "conv.o"   ; get_len, copy_nt
 
       IF 0
 ;Doesn't need JPs for now
@@ -164,8 +170,8 @@ row_link = 2
       IF dev_checks'
 _check_instr_pnt
           push de
-          ld de,tables:or a:sbc hl,de:add hl,de:call c,fail
-          ld de,tables_:or a:sbc hl,de:add hl,de:call nc,fail
+          ld de,tables:or a:sbc hl,de:add hl,de:call c,mess
+          ld de,tables_:or a:sbc hl,de:add hl,de:call nc,mess
           pop de
           ret
 
@@ -175,7 +181,7 @@ _check_instr_setup
           call get_instr_pnt
 ;For now, just one type of instr
           ld a,(hl):cp instr_default AND &FF
-          call nz,fail
+          call nz,mess
           pop hl:pop af
           ret
 
@@ -192,7 +198,7 @@ _check_sfx
           ld hl,fx_null:or a:sbc hl,bc:jr z,.ok
           ld hl,sync_buzzer_register:or a:sbc hl,bc:jr z,.ok
 ; for now just one type of fx possible. If not sync_buzzer, break
-          call fail
+          call mess
 .ok
           pop hl
           ld bc,instr_fx_size
@@ -202,7 +208,7 @@ _check_sfx
 
           ld c,(hl):inc hl
           ld b,(hl)
-          ld hl,fx_end:or a:sbc hl,bc:call nz,fail
+          ld hl,fx_end:or a:sbc hl,bc:call nz,mess
 
           pop hl:pop bc:pop af
           ret
@@ -238,11 +244,14 @@ song_reset_chung
 ; Needed to be able to pick non-contiguous instruments.
 ; Also needed to avoid assert if non-defined instrument played in phrase
           ld hl,instr_idx
-          ld de,instr_head_size
+          ld de,instr_head_name
           ASSERT(instr_idx AND &FF == 0)
           ld b,l
 .raz      ld (hl),instr_null AND &FF
           add hl,de
+          ld (hl),0:inc hl ; clear name pnt
+          ld (hl),0:inc hl
+          instr_head_size - instr_head_name - 2 ** inc hl
           djnz .raz
 
       IF todo
@@ -296,6 +305,25 @@ _select_instr
           pop de        ; stack correction
           jp _postlude_
 
+;----------------------------------------
+New_instr_ayane_if_empty
+ ; Create instrument if empty + append row (used by instrui/instrsel)
+ ; In : N/A
+          call Song_get_instr
+          ld c,a
+          call Song_select_instr
+          ret nz
+
+          ld a,c
+          call New_instr_ayane
+;Set 1 line (prevent ged assert, and user friendly)
+      IF todo
+; Not null row. E.g. tone + vol=f
+      END
+          jp instr_append_empty_row
+
+
+
 New_instr
 ; Generic builder for loading and ui
 ; in: A= ID
@@ -339,6 +367,46 @@ _select_new_instr
 .raz      ld (hl),0:inc hl:djnz .raz
           jp _select_instr
 
+instr_set_name
+;-------------
+;In: Instr selected
+   ; HL pnt to nt string (out of bank or in BK_INSTR)
+          call scope_bk_instr
+; For now, don't try to reuse string. Memory leak, nevermind.
+          call get_len
+          inc a         ; nt
+          call allocate
+          push de
+          call copy_nt
+          call get_instr_name_field
+          pop de
+          ld (hl),e:inc hl
+          ld (hl),d
+          ret
+
+instr_get_name
+;-------------
+;In: Instr selected
+;Out: HL pnt to nt string (Z if empty), bk connected!!!
+          call connect_bk_instr
+          call get_instr_name_pnt
+          ret nz
+          ld hl,null_string
+          ret
+
+get_instr_name_pnt
+;Out: Z if null 
+          call get_instr_name_field
+          ld a,(hl):inc hl
+          ld h,(hl):ld l,a
+          or h
+          ret
+
+get_instr_name_field
+          call get_instr_pnt
+          ld bc,instr_head_name
+          add hl,bc
+          ret
 
 instr_ayane_append_rows
 ;----------------------
@@ -618,8 +686,8 @@ instr_append_empty_row
       IF dev_checks'
 ;link can be in row itself or instr header
           ld a,h
-          cp tables/&0100:call c,fail
-          cp instr_idx_/&0100:call nc,fail
+          cp tables/&0100:call c,mess
+          cp instr_idx_/&0100:call nc,mess
       END
           ld (hl),e:inc hl
           ld (hl),d
@@ -962,7 +1030,7 @@ allocate_new_row
       IF dev_checks'
 ; !!! for now only full ayane row supported,
 ; !!! since we set instr_flags and fx0_type
-          cp instr_row_size_max:call nz,fail
+          cp instr_row_size_max:call nz,mess
       END
           push af
           row_link ** inc a
@@ -994,7 +1062,7 @@ allocate_new_row
 allocate
 ;.......
 ; For now, append only without mecanism to free memory        
-; In:  A = size to reserve (without link)
+; In:  A = size to reserve 
 ;Out: DE = pointer
     ; A, HL preserved
           or a:call z,mess
@@ -1047,7 +1115,6 @@ _prelude
           push de:push ix:push hl
           ld hl,6:add hl,sp
           push af
-          ld a,&C3:ld (jp_ret),a ; done each time, nevermind
           ld a,(hl):ld (jp_ret+1),a:ld (hl),c:inc hl
           ld a,(hl):ld (jp_ret+2),a:ld (hl),b:inc hl
           ld (va_savesp),hl
@@ -1061,13 +1128,12 @@ _prelude
 vars
 ; Private vars alongside code
 
-va_savesp WORD 
+va_savesp WORD 0
 
-jp_ret    3 ** BYTE 
+jp_ret    jp &BE00
 
-
-dbg1  WORD 
-dbg2  WORD 
+dbg1  WORD 0
+dbg2  WORD 0
 
 ; ----------------------------       
 ; Vars in bank
@@ -1079,14 +1145,15 @@ dbg2  WORD
 ; !!! Note applicable for persistent variables.
       END
 
-save_pc = $
-
 def
 ; Doesn't use org va,$$
 ; otherwise orgams set high $ = 7cxx, which is inconvenient
-      BYTE "Aya!",0     ; sign: For sanity checks (unused for now)
+      BYTE "Aya!"       ; sign: For sanity checks (unused for now)
+null_string BYTE 0
       WORD tables       ; va_free_nt: pnt in free zone
 def_size = $-def
+
+save_pc = $
 
       ORG va_chung
 var
@@ -1117,14 +1184,7 @@ zero_chung_ = $-zero_chung
 ; ----
 stored_table_back WORD  ; ID of last chunk for append_raw_in_chunk
 
-
       ORG save_pc       ; for host
-; Align, for more stable addresses
-; -> ease debugging
-; -> less re-assembling when we change just one module
-      SKIP -$ AND &FF
 
-
-
-
+          LIMIT(ppi)
 

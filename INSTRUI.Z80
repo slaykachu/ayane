@@ -2,7 +2,8 @@
 
 ; 2026
  ; -- alpha2 --
-  ; Jan
+  ; Jan    
+   ; 22 Move /New_instr_ayane_if_empty/ in chung (to share w/ instrsel)
    ; 14 Show instr name
 ; 2025
  ; -- alpha1 -- 
@@ -67,19 +68,7 @@ instr_cold_refresh
           ld bc,instr_fields + &8000
           CALL_DS(status_str_at)
 
- ; -- Create instrument if empty 
-          call Song_get_instr
-          ld c,a
-          call Song_select_instr
-          jr nz,.exist
-          ld a,c
-          call New_instr_ayane
-;Set 1 line (prevent ged assert, and user friendly)
-      IF todo
-; Not null row. E.g. tone + vol=f
-      END
-          call instr_append_empty_row
-.exist
+          call New_instr_ayane_if_empty
 
  ; -- gedeihen 
           call gedeihen_init
@@ -812,5 +801,5 @@ _paint_sprite = mess
 ;----------------------------------------
 
       SKIP -$ AND &0F   ; easier debug
-row_buffer SKIP instr_row_size_max
+row_buffer FILL instr_row_size_max,0
 selected_line BYTE 0

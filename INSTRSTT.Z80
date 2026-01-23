@@ -1,0 +1,58 @@
+; <<<<<<<< Test Instrument selector >>>>>>>>>
+; 2026 Jan 14 Set instr name
+; 2025 Sep  6 Adapt to new api
+     ; Jul 13
+
+to_be_implemented = &BE00
+dev_checks = 1
+need_rom = 1
+
+      ORG &40
+      ENT test
+      IMPORT "const.i"  ; kesc
+      IMPORT "memmap.i" ; ramlimit
+      IMPORT "import.i"
+
+      IMPORT "instrsel.o"
+   ;   IMPORT "uiloop.o"
+      IMPORT "chung.o"  ; Model (instr get/set row)
+      IMPORT "ged.o"
+   ;   IMPORT "memcpc.o" ; reset_sp
+      IMPORT "shortcut.o" ; for setup_keys kcdel km_wait_key
+      IMPORT "testlib.o" ; for dev test
+      BANK BK_DISP      ; instr_change use status routines
+          IMPORT_DISP()
+
+
+test
+; --- Firmware setup ---  
+          ld a,2:call &BC0E
+          call setup_keys ; already done by ged (and full_init)
+
+          call init_for_test
+          call dummy_instr_ui
+          ld b,2:call instr_set_loop
+          ld hl,dummy_name
+          call instr_set_name
+          ld a,2:call dummy_instr_ui_id
+          ld a,3:call dummy_instr_ui_id
+
+          call instr_selector_init
+
+mainloop
+          call km_wait_key
+          call gedeihen_process
+;TODO: review that, interface has changed
+          jr c,mainloop
+; Z: ev_child_exit. 
+          call z,to_be_implemented
+;--- Unhandled key 
+          cp kesc
+          jr nz,mainloop
+;exit
+          ret
+
+dummy_name BYTE "violao",0
+
+      SKIP ramlimit - $
+

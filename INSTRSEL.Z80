@@ -1,7 +1,9 @@
 ; <<<<<<<< Instrument selector >>>>>>>>>
 ; 2026
 ; -- alpha2 --
-  ; Jan 14 edit instr name 
+  ; Jan 22 ui_set_name: use New_instr_ayane_if_empty to ensure
+                      ; at least one row.
+      ; 14 edit instr name 
          ; deactivate f5/f8 (fix bug instr changed in selector line)
 ; 2025 
 ; -- v0au --
@@ -116,13 +118,10 @@ instr_id
           jp _deci_byte_padded_to_buffer
 
 ui_set_name
-;when name entered: create instr if needed
           push hl
-          call Song_get_instr
-          ld b,a
-          call instr_does_exist
-          ld a,b
-          call z,New_instr_ayane
+; Needed in case we don't enter instr ed immedialty (e.g. cursor up/dwn)
+; Otherwise instr still considered empty, and <New instr> is displayed
+          call New_instr_ayane_if_empty
           pop hl
           call instr_set_name
           scf
@@ -149,3 +148,4 @@ swallow
           call refresh_focus
           GED_HANDLED()
           ret
+hi
