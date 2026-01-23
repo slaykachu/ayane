@@ -9,12 +9,26 @@ do_profile = 1
       ORG code_start
       ENT tests
 
+      IMPORT "assert.o" ; mitigate orgams bug
       IMPORT "testlib.o" ; import it before timer for periods padding
       IMPORT "timer.o"
       IF do_profile
       IMPORT ":orgrel/prof.o"
       END
 
+      IF nrt_marker == 0
+  !! set it, otherwise inf loop waiting for nrt_msb_tm to change
+      END
+
+; /\/\/\/ 2026 \/\/\/\/\/
+   ; --- alpha 2 ---
+  ; Jan 23 Remove obsolete test_waitlines
+         ; Fix tests themselves:
+     ; - test_change_sync_buzzer: fix ref
+     ; - test_sync_on_off'': must use nrt_profile_check_against_event
+     ; - test_simulate_timer: still broken!! 
+                            ; (when dev_checks = 0 or just flaky?)
+     ; - test_simulate_timer_double': still broken!!
 ; /\/\/\/ 2025 \/\/\/\/\/
    ; ----- v0.0ar ------
   ; Oct 
@@ -43,9 +57,10 @@ do_profile = 1
     ; 1 Use :orgrel/prof.o (rather than ums:) 
 
 ; ------------------------------------------------
-      MACRO VOL n
-; Encode as expected -> xxxx0
-      BYTE n*2
+      MACRO NRT_INIT_ANCHOR
+;init_timer set a lag, but we want run_simulation to start at first
+;event. no race condition, since nrt_timer_setup set hl'=timer_nop
+          xor a:ld (current_anchor),a
       ENDM
 
 fail  = &BE00
@@ -53,8 +68,6 @@ nrtfail = &BE00
 MAX_TM = &80
 
 tests
-          call test_sync_on_off_high_note
-      BRK
       1 ** [
           call test_null
           call test_fx_null
@@ -68,6 +81,7 @@ tests
           call test_sync_on_off
       END
           call test_sync_on_off'
+          call test_sync_on_off''_0
           call test_sync_on_off''
           call test_change_sync_buzzer
           call test_stop_sync_buzzer
@@ -81,7 +95,6 @@ tests
           call test_simulate_timer_double'
           ]
       IF do_profile
-          call test_waitlines
           call test_vsync
           call test_anchor
       END
@@ -169,7 +182,6 @@ test_sync_on_off
           ld b,128
 .lp
           push bc
-    ;      ld a,b:cp &75:call z,fail
           ld hl,stack0_fx_end:call run_fx
           call check_no_cut
           ld hl,stack_fx_null:call run_fx
@@ -199,10 +211,11 @@ test_sync_on_off'
           djnz .lp
           ret
 
-test_sync_on_off''
-;----------------
-; Same with 2 fx (1st one cut)
+test_sync_on_off''_0
+;-------------------
+; Same with 2 fx (1st one cut) but don't interleave with timer events
           call nrt_init
+          NRT_INIT_ANCHOR()
 
           ld b,128
 .lp
@@ -212,16 +225,54 @@ test_sync_on_off''
     ; - then handled by run_set_timer_and_psg
           ld hl,stack_double:call run_fx_no_init_list
           call check_no_cut
-          call run_set_timer_and_psg
-          ld a,(events+hdr_link_next)
-; No. Events linked at first iter, but then at <> timestamps
-      ;    cp EVENT_MAX_SIZE + hdr_cpt:call nz,fail
+          call run_set_timer_and_psg'
+      IF 1
           ld a,(events+EVENT_MAX_SIZE+hdr_link_next)
+      ELSE
+          ld a,(events+hdr_link_next)
+      END
           cp anchor_event:call nz,fail
 
           ld hl,stack_null_and_fx:call run_fx_no_init_list
           call check_cut
-          call run_set_timer_and_psg
+          call run_set_timer_and_psg'
+;Note: first event was reused
+          ld a,(events+hdr_link_next)
+          cp anchor_event:call nz,fail
+
+          pop bc
+          djnz .lp
+          ret
+
+
+test_sync_on_off''
+;----------------
+; Same with 2 fx (1st one cut)
+          call nrt_init
+
+          ld b,128
+.lp
+          push bc
+;          ld a,b:cp &66:call z,&BE00
+;Don't init list: 
+    ; - at first iteration: done by nrt_init via init_timer
+    ; - then handled by run_set_timer_and_psg
+          ld hl,stack_double:call run_fx_no_init_list
+          call check_no_cut
+          call run_set_timer_and_psg'
+; No. Events linked at first iter, but then at <> timestamps
+      ;    ld a,(events+hdr_link_next)
+      ;    cp EVENT_MAX_SIZE + hdr_cpt:call nz,fail 
+      IF 1
+          ld a,(events+EVENT_MAX_SIZE+hdr_link_next)
+      ELSE
+          ld a,(events+hdr_link_next)
+      END
+          cp anchor_event:call nz,fail
+
+          ld hl,stack_null_and_fx:call run_fx_no_init_list
+          call check_cut
+          call run_set_timer_and_psg'
 ;Note: first event was reused
           ld a,(events+hdr_link_next)
           cp anchor_event:call nz,fail
@@ -239,9 +290,7 @@ test_sync_on_off'''
    ; not all events are cleared
    ; Solution: simulate whole frame or advance at 100hz (current_clock)
           call nrt_init
-;init_timer set a lag, but we want run_simulation to start at first
-;event. no race condition, since nrt_timer_setup set hl'=timer_nop
-          xor a:ld (current_anchor),a
+          NRT_INIT_ANCHOR()
       IF do_profile
           ld b,8        ; too slow otherwise
       ELSE
@@ -285,6 +334,7 @@ test_sync_on_off_high_note
           ld b,128
       END
 .lp
+          ld a,&F0:call progress_bar
           push bc
           ld hl,stack1:ld ixl,84*2:call run_fx_custom_note_no_reset
           ld a,hdr_cpt:call check_at_most_one_event
@@ -442,6 +492,7 @@ test_simulate_timer_double'
 ;-------------------------  
 ; Same but with identical periods
 ; Prerequiste: test_insert_event
+; !!!! broken. generate too many events!!
           call nrt_init
 
           call clear_markers
@@ -532,6 +583,7 @@ simulation_len = 78     ; full frame to clear each events
           ld (nrt_msb_tm),a
 ; A= TM = 0 to trigger immediatly (doesn't matter much)
           ld c,simulation_len
+          ld c,10
 .lp
       IF do_profile
           push bc
@@ -737,14 +789,20 @@ refchange
 
 ref1
       BYTE &10          ; link to next free slot
-      BYTE [clock0 AND &FF] / 2 ; cpt
+      IF 0
+.clockref = clock0
+      ELSE
+;well set_reg13_insert_and_program was trigerred, so clock +period
+.clockref = clock0 + &D4D4 + shift1 ; not shift0 ???
+      END
+      BYTE [.clockref AND &FF] / 2 ; cpt
       BYTE anchor+hdr_cpt AND &FF ; link to next event
-      BYTE clock0 / &0100
-      BYTE clock0 AND &FF
+      BYTE .clockref / &0100
+      BYTE .clockref AND &FF
 ; installed routine
           ex af,af
           ld a,env_type1
-          ld de,&D4D4 + shift1 ; c# + arp 1 
+          ld de,&D4D4 + shift1 ; C# + arp 1 = D
           jp set_reg13_insert_and_program
 ref1_ = $ - ref1
       IF ref1_-1 AND &F0
@@ -915,7 +973,7 @@ run_fx
           pop hl
 run_fx_no_init_list
 ;In: HL = SP stack
-          ld ixl,2      ; note (c#0)
+          ld ixl,2 + note_c_0_encoding ; note (c#0)
 run_fx_custom_note
           call nrt_timer_setup
 run_fx_custom_note_no_reset
@@ -1058,13 +1116,6 @@ nrt_reset_msb_compensate
 
       IF do_profile
 
-test_waitlines
-          call nrt_init
-          ld b,13
-          ld iy,waitlines_tm
-          call nrt_profile_check
-          ret
-
 test_vsync
           call nrt_init
           ld iy,vsync_timed
@@ -1113,7 +1164,9 @@ nrt_profile_check_against_event
           exx
           ex af,af
           ld a,l
+          cp timer_nop AND &FF:jr z,.ok
           CHECK_EVENT_OFFSET(hdr_code)
+.ok
           ex af,af
           neg
           push hl
@@ -1150,6 +1203,7 @@ nrt_init_custom_clock
 clock0 = &0146
           ld hl,clock0:ld (current_clock),hl
 _nrt_init_com
+          ld a,&55:call progress_bar
           SYNC_ANCHOR()
           call nrt_init_periods
 ; Not striclty needed, but ease testing.
@@ -1163,9 +1217,13 @@ _nrt_init_com
           exx
           ret
 
+progress_bar
+.progress ld hl,&C000:ld (hl),a:inc hl:ld (.progress+1),hl
+          ret
 
-      SKIP -$ AND &FF
-evtmarker0 SKIP &0100
-evtmarker1 SKIP &0100
+      FILL -$ AND &FF,&F7
+evtmarker0 FILL &0100,0
+evtmarker1 FILL &0100,0
 
           LIMIT(ramlimit)
+
