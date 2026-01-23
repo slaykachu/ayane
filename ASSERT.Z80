@@ -1,5 +1,9 @@
 ; <<<<<<< Assertions: BRK in dev mode, message in release >>>>>>
 
+; 2026
+ ; -- alpha 2 --
+   ; Jan 22: jp to reenter_safe to avoid retriggering assert
+
       IMPORT "const.i"  ; dev
       IMPORT "memmap.i" ; jp_status_error
       IMPORT "memcpc.o"
@@ -17,7 +21,7 @@ com_error
           pop hl        ; failing point (dropped)
           CALL_STATUS(jp_status_error + &8000)
           call connect_bk_base
-          jp reenter_last
+          jp reenter_safe
 
       IF dev
 ;fail  = &BE00

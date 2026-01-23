@@ -5,6 +5,7 @@
 ; 2026
  ;--- alpha 2 ---
   ; Jan
+   ;22: discriminate reenter_jp/reenter_safe_jp
    ;15: ui_process: Fix unhandled key not passed back
                   ; (e.g. enter in instrument selector)
       ; phrase_ed_entry: clear status line (residue from instr editor)
@@ -34,16 +35,16 @@
  ;--- 
      ; Jun 18  Plug instr-sel
 
-;dev   = 1
 dev_checks = 1
 todo  = 1
 need_room = 1
+allow_exit = 1          ; overriden by BUILDREL.BAS
 
 client_ayane = 1
 r2    = 46              ; defaut
 r2'   = 50              ; sequence
 
-      IMPORT "const.i"  ; kesc
+      IMPORT "const.i"  ; kesc/release/dev
       IMPORT "memmap.i" ; bk_disp, code_main, ...
       IMPORT "import.i"
       IMPORT "macro.i"
@@ -178,8 +179,10 @@ start
 ;---------          
           call set_sp_backup
 ; Entry point after io_postlude
-; do it first in case of assert error
           ENTER(ayane_entry)
+; Entry point after error (avoid infinite assert)
+; do it early in case of assert error            
+          ld hl,ayane_entry:ld (reenter_safe_jp),hl
 
           call full_init
           CALL_DISP_BK(start_disp_bk)
@@ -250,7 +253,7 @@ phrase_ed_entry
 ; second chance for f5/f8 etc...
           jr _ui_process_com
 
-      IF dev
+      IF allow_exit
 exit
 ;Exit if control+esc to e.g. test ESC when CTRL-S
           ld a,23       ; CTRL
@@ -411,6 +414,16 @@ clear_status_last_line
           LOCATION(0,y_pos_last_line)
           CALL_STATUS(status_clear_from)
           ret
+
+;-----------------------------------------------
+; Helpers
+;-----------------------------------------------
+reenter_last
+; Go back to last "screen" after selectors/help
+          call reset_sp
+reenter_jp = $+1
+          jp &BE00
+
 ;-----------------------------------------------
 ; Tables, variables and co 
 ;-----------------------------------------------
@@ -427,7 +440,7 @@ shortcuts
       BYTE "O"-&40:WORD open_command
       BYTE "S"-&40:WORD save_command
 ;misc
-      IF dev
+      IF allow_exit
       BYTE kesc:WORD exit
       END
 ;      BYTE "o":WORD open

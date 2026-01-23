@@ -1,6 +1,5 @@
 ; << Memory bank handling for ayane >>
 ; CPC specific PAGING (out &7fxx,&cX)
-; 2025
 
       IMPORT "memmap.i"
       IMPORT "macro.i"  ; ASSERT
@@ -11,8 +10,10 @@ dev_checks' = 1         ; for now, don't use const.dev_checks
 ; -> allow to detect programming errors even when we deactivate 
    ; dev_checks for ply, timer etc...
 
+; /// 2026 ///
+   ; -- alpha2 --
+     ; Jan 22: s/reenter_last/reenter_safe
 ; /// 2025 ///
-   ; -- alpha1 --
    ; -- v0.0an --
        ;25: Adopt JP_DISP / 
 
@@ -432,11 +433,11 @@ check_bk_base
           pop bc:pop af
           ret
 
-reenter_last
-; Go back to last "screen" after error or ESC in selectors
+reenter_safe
+; Go back to welcome screen after error
           call reset_sp
-reenter_jp = $+1
-          jp &BE00      ; set by ENTER_SCREEN
+reenter_safe_jp = $+1
+          jp &BE00      ; set by ayane init 
 
       END
 
