@@ -26,9 +26,8 @@ do_profile = 1
          ; Fix tests themselves:
      ; - test_change_sync_buzzer: fix ref
      ; - test_sync_on_off'': must use nrt_profile_check_against_event
-     ; - test_simulate_timer: still broken!! 
-                            ; (when dev_checks = 0 or just flaky?)
-     ; - test_simulate_timer_double': still broken!!
+     ; - test_simulate_timer_double': flaky?
+            ; or works again since we removed PSG_L_HL_FAST?
 ; /\/\/\/ 2025 \/\/\/\/\/
    ; ----- v0.0ar ------
   ; Oct 
@@ -583,7 +582,6 @@ simulation_len = 78     ; full frame to clear each events
           ld (nrt_msb_tm),a
 ; A= TM = 0 to trigger immediatly (doesn't matter much)
           ld c,simulation_len
-          ld c,10
 .lp
       IF do_profile
           push bc

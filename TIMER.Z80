@@ -6,6 +6,7 @@ border_col = &54
 border_col' = &44
 
 ; 2026 Jan 23: Fix timing /chgend/
+             ; Don't use PSG_L_HL_FAST (cont)
          ; 22: Don't use PSG_L_HL_FAST, as Zik can hear it
          ; 19: Use ARP_CLIP
 
@@ -903,8 +904,8 @@ psg_channel
 ; period to volume without using A
           dec l         ; compensate 2nd OUTI
           srl l:set 3,l
-          PSG_L_HL_FAST()
-          RET_ROUT(psg_l_hl_fast_tm + psg_tm/3 + 5)
+          PSG_L_HL()
+          RET_ROUT(psg_l_hl_tm + psg_tm/3 + 5)
 
 
 _do_cut
