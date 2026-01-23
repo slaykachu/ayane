@@ -3,7 +3,8 @@
 
 ;2026
 ; ---- Alpha 2 ----
-  ;Jan 14 Don't import "init.o" 
+  ;Jan 14 Add test_instr_set_name 
+        ; Don't import "init.o" 
 ;2025
 ; ---- Ayane 0.ae ----
   ;May 30 /test_loop'/
@@ -40,6 +41,7 @@ tests
       IF has_chipnsfx
           call test_instr_chip
       END
+          call test_instr_set_name
           ret
 
 fail  = &BE00
@@ -401,11 +403,58 @@ test_insert_row_adjust_loop
           ld a,b:cp 2:call nz,fail
           ret
 
+test_instr_set_name
+;------------------
+
+          call nrt_init
+          call dummy_instr
+; empty name
+          call instr_get_name
+          ld de,null_string
+          call compare_nt_string
+; basic check
+          ld hl,.name1
+          call .check_name
+; other instr
+          ld a,2:call New_instr_ayane
+          ld hl,.name2
+          call .check_name
+;instr 1 still ok    
+          ld a,1:call Song_select_instr
+          call instr_get_name
+          ld de,.name1
+          call compare_nt_string
+;replace by shorter 
+          ld hl,.name3
+          call .check_name
+;replace by longer
+          ld hl,.name2
+          call .check_name
+          ret
+
+.name1 BYTE "drum1",0
+.name2 BYTE "harpsi",0
+.name3 BYTE "bong",0
+
+.check_name
+          push hl
+          call instr_set_name
+          call instr_get_name
+          pop de
+          call compare_nt_string
+          ret
 
 compare
           ld a,(de):cp (hl):call nz,&BE00
           inc de:inc hl
           djnz compare
+          ret
+
+compare_nt_string
+          ld a,(de):cp (hl):call nz,&BE00
+          inc de:inc hl
+          or a
+          jr nz,compare_nt_string
           ret
 
 destnrt
