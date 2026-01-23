@@ -1,7 +1,8 @@
 ; <<< Conversions + String helpers >>>
 
 ; //// 2026 ////
-  ; Jan 14: String helpers: move from help/ged to here
+  ; Jan 22: copy_nt_padded: add 0
+      ; 14: String helpers: move from help/ged to here
 
 ; TOC:             
    ; From string to integer:
@@ -407,13 +408,14 @@ copy_nt_clipped
 copy_nt_padded
 ;-------------
 ; Like copy_nt_clipped, but fill the rest with space, and add 0
-; B: max size
+; B: max size (not counting last 0)
           call copy_nt_clipped
           inc b
           ld a," "
           jr .pad
 .padlp    ld (de),a:inc de
 .pad      djnz .padlp
+          xor a:ld (de),a
           ret
 
 skip_nt
