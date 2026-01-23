@@ -1,11 +1,12 @@
 tmp_dbg = 0
-nrt_marker = 0          ; for timernrt
+nrt_marker = 1          ; for timernrt
 todo  = 1
 need_speed = 1
 border_col = &54
 border_col' = &44
 
-; 2026 Jan 22: Don't use PSG_L_HL_FAST, as Zik can hear it
+; 2026 Jan 23: Fix timing /chgend/
+         ; 22: Don't use PSG_L_HL_FAST, as Zik can hear it
          ; 19: Use ARP_CLIP
 
 MAX_FX_CHANGE_PARAMS = 5 ; type, evtpnt. Syncbuzz: env, period 
@@ -191,6 +192,15 @@ insert_event_tm = 34 + 13
 
 ; Must do that now, as rdv might be overwriten in insertion below
 ; (when event repeated after itself) 
+      IF dev_checks
+          ld c,a
+          ld a,h:cp events/&0100:call nz,mess
+          ld a,l
+          CHECK_EVENT_OFFSET(hdr_cpt)
+          ld a,c
+          SUB_TM''(16)
+      END
+
           ex af,af
           COMPENSATE_RDV()
           ex af,af
@@ -409,6 +419,17 @@ current_anchor = $+1
   !!! must be contiguous
       END
 
+; --------------------
+; Lists (here to ensure confine)
+
+cut_list FILL MAX_TIMER_FXS +1,0
+          CHECK_CONFINE(cut_list)
+
+change_list FILL MAX_TIMER_FXS*MAX_FX_CHANGE_PARAMS +1,0 ; +sentinelle
+          CHECK_CONFINE(change_list)
+
+; --------------------
+
 init_timer
 ;---------     
 ; Call before playing start. No need to mesure TM.
@@ -443,6 +464,7 @@ init_timer
 ; ---- No current fx (0 used as sentinelle)
 ; Sentinelle invariant is kept in fx_end (cut fx are cleared)
           ASSERT_NOT(fx_type_none) ;expect 0
+          ASSERT(fx_by_track AND &FF == 0) ; aligned
           ld hl,fx_by_track
           ld b,MAX_TRACKS*track_fx_size AND &FF ; &100 -> 0
           xor a
@@ -813,7 +835,7 @@ change_params_tm = 10   ; until chgend taken
 .chgend
 
           ex af,af
-          SUB_TM_CALL(cut_tm + change_params_tm)
+          SUB_TM_CALL(cut_tm + change_params_tm + 1)
 
           INIT_LISTS()  ; Reset pnts for next time
 
@@ -1102,17 +1124,8 @@ replay_period_in_nops WORD replay_default
 nrt_msb_tm BYTE &F7
 dbg_tm_marker BYTE &F7  ; tm of next event
 
-          ASSERT(fx_by_track AND &FF == 0) ; aligned
-
-cut_list FILL MAX_TIMER_FXS +1,0
-          CHECK_CONFINE(cut_list)
-
-      FILL -$ AND &3F,&F7 ; padding for confine
-
-change_list FILL MAX_TIMER_FXS*MAX_FX_CHANGE_PARAMS +1,0 ; +sentinelle
-          CHECK_CONFINE(change_list)
-
       IF tmp_dbg
 dbg1  WORD dbg
 dbg2  WORD 0
       END
+
