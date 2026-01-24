@@ -4,10 +4,15 @@
 
 CTRL-H for Help.
 
------ Alpha 1. 3 Jan 2026. Happy New Day ----
- - Phrase Editor (CTRL-f2)
- - A bit less slugish instrument editor
- - Fix PSG replay of low notes
+----- Alpha 2. 22 Jan 2026. -----------------
+ - Phrase Editor:
+    - More editing facilities 
+    - Show row #, phrase id and transposition
+    - Display transposed notes
+    - Clear status line
+    - Fix display at end of song
+    - Fix infinite loop when transpose in middle of phrase 
+ - Instrument selector: Can edit instrument name
 
 --- Known bugs ------------------------------
 #6: Some spurious artefacts with timer FX
@@ -16,3 +21,4 @@ CTRL-H for Help.
 #1: Timer FXs (sync-buzzer) dephasing relative to PSG square tone
     With pitch=0, no phase shifting should occur. Yet it does
     Mitigation: Deactivate PSG tone!
+

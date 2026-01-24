@@ -9,6 +9,9 @@ Press "piano key" (Z,S,X, Q,2,W,...) to play instrument
 
 --- In both editors --------------------
 Cursor keys:  Navigate. With CTRL: Navigate faster
+CTRL+f0/f.:   First/Last row
+ENTER/RETURN: Insert row
+CTRL-DEL:     Delete row
 
 --- In phrase editor -------------------
 Space: Play row and goto next row
@@ -16,8 +19,5 @@ CLR:   Cut instrument playing
 DEL:   Delete note (resp. instr, vol)
 
 --- In instrument editor ---------------
-CTRL+f0/f.:   First/Last row
-CTRL-DEL:     Delete row
-ENTER/RETURN: Insert row
 Space:        Toggle on-off 
 

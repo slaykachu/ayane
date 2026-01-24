@@ -1,18 +1,17 @@
-(T)one flag: PSG square tone
-Noise flag + value: . -  No noise
-                    . n  No noise, but change R6 for side effect
-                    x 0  Noise, don't change R6
-                    x n  Noise n 
-Hard Env: 0,1,2,3 \___ 4,5,6,7,F /___ 8 \\\\ 9 \___ A \/\/ 
-                                  ___           ___
-                               B \    C //// D /    E /\/\
-Hard Arp/Pitch: When sync buzzer is on, control wave form.
+All values (but Volume / Hard Env) are decimal. **Numeric pad inactive**
+Use cursor or piano key to validate, as ENTER will insert line.
+(T)one flag: Flip/flop PSG square tone                          
+Pitch: 16 bits value! (+16 will decrease PSG tone by 1)
+Noise flag + value: . 0  No noise
+                    . n  No noise, but change R6 for side effect 
+                    x 0  Noise, don't change R6 (future)
+                    x n  Noise n                    ___
+(H)ard Env: 0..7: reserved  8 \\\\ 9 \___ A \/\/ B \
+                  --------            ___
+                            C //// D /    E /\/\ F /___
+Hard Arp/Pitch: When sync buzzer is on, control wave form
 Hard (R)etrig:  Retrig env (expert option) 
 
 Each arp and pitch are re-computed from the base note. E.g. to apply the
-same vibrato on psg tone and sync buzzer you have to copy the column
+same vibrato on psg tone and sync buzzer you have to copy the column.
 
-s.
-
-#1: Timer FXs (sync-buzzer) dephasing relative to PSG square tone
-    With pitch=0, no phase shifting should occur. Ye
