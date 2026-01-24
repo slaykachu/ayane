@@ -19,7 +19,8 @@ need_room = 1
 
 ; \/\/\/ 2026 \/\/\/\/\
 ; ----- Alpha2 -----
-  ; Jan       
+  ; Jan      
+   ;22 Call preplay (cleaner than doing it in timer.set_timer_and_psg)
    ;19 Use ARP_CLIP
      ; Don't transpose /c_note_10/
    ;17 Add evt_track_loop (see rationale in journal)
@@ -384,8 +385,15 @@ play
 
 ; DI Needed since SP used 
 ; Better to do it ourself to avoid crash in case of oversight.
+      IF sfx
+tm0   = 32              ; until track_loop
+      ELSE
+tm0   = 27
+      END
           di
-tm0   = 1+26            ; until track_loop
+      IF sfx
+          call preplay
+      END
           ld hl,r7
       IF use_flag_channel
           ld (hl),&3F

@@ -57,9 +57,9 @@ track_module = &2450
 fx_module = &3200
 ply   = &3204           ;needed for events signatures
 fx_set_phrase_jp = ply+&13
-evt_set_transpose_lsb = ply+&BE AND &FF ; track
-evt_change_phrase_lsb = ply+&DD AND &FF ; "
-evt_track_loop_lsb = ply+&EB AND &FF ; "
+evt_set_transpose_lsb = ply+&C2 AND &FF ; track
+evt_change_phrase_lsb = ply+&E1 AND &FF ; "
+evt_track_loop_lsb = ply+&EF AND &FF ; "
 
 playsong_module = &36A2
 ; -- salo
@@ -76,7 +76,7 @@ chung = &0FCC
 ;13b0 "AYA!  " what's that
 ;then free?
 ; -- phraseui, uiloop, salo (via playsong.o)
-ppi   = &14A0
+ppi   = &1490
 piano = &14FF
 ; --  uiloop
 instrui = &1620
@@ -90,9 +90,9 @@ track_module = &2350
 fx_module = &3100
 ply   = &3104
 fx_set_phrase_jp = ply+5
-evt_set_transpose_lsb = ply+&6C AND &FF
-evt_change_phrase_lsb = ply+&7D AND &FF
-evt_track_loop_lsb = ply+&8B AND &FF
+evt_set_transpose_lsb = ply+&7E AND &FF
+evt_change_phrase_lsb = ply+&8F AND &FF
+evt_track_loop_lsb = ply+&9D AND &FF
 
 playsong_module = &35A2
 ; -- salo
@@ -244,4 +244,5 @@ ramlimit' = &A400
 screen_main = &C000
 
       ORG savepc,saveobj
+
 

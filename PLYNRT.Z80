@@ -241,12 +241,21 @@ test_clr_fx
           ld b,0:call instr_set_loop
           ld de,3:call phrase_select_row_at ; sync is at row 2
           call row_clr
+
       IF do_profile
           call tm_play_from_start
-          3 ** call tm_play
+          2 ** call tm_play
       ELSE
           call nrt_play_from_start
-          3 ** call play
+          2 ** call play
+      END
+;Sanity: sync buzzer registered 
+          ld a,(fx_by_track):or a:call z,fail
+
+      IF do_profile
+          call tm_play
+      ELSE
+          call play
       END
           ld a,(cut_list)
           or a:call z,fail
@@ -483,7 +492,7 @@ tm_play
 nrt_setup_play
           ld hl,psg_regs
           ld b,14
-untouched = &DD
+untouched = &F7
 .raz      ld (hl),untouched:inc l:djnz .raz
 
           call init_timer
