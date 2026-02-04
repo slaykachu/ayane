@@ -8,7 +8,10 @@ use_widget = 0          ; 1 for trackui
 ; Song & Track handling for ayane (map/songlist)
 ; -----------------------------------------------
 
-; 2026
+; 2026       
+; -- alpha 3 --
+ ; Feb
+     ; 1: Add track_select_last_phrase
 ; -- alpha 2 --
  ; Jan       
      ;17: Remove used_tracks (was write only)     
@@ -39,6 +42,7 @@ use_widget = 0          ; 1 for trackui
     ; Song_select_track             
     ; track_get_event_at
     ; track_select_phrase_at
+    ; track_select_last_phrase
 
 ; Track update -------
 ; --------------------
@@ -1660,6 +1664,19 @@ Set_transpose_at_t
           jr set_event
 
 
+track_select_last_phrase
+;--------------------
+          call scope_bk_track ; when coming from phrasui
+          ld hl,time_inf
+          call track_select_phrase_at
+          ld a,evt_change_phrase_lsb
+          call track_get_event_at
+          ld hl,fetched_t0
+          ld de,time_param
+          push de
+          call copy_time
+          pop hl
+;enchaine
 track_select_phrase_at
 ;---------------------
 ; Given t, selected phrase spanning from t0..t1 such than t0 <= t < t1
@@ -1668,7 +1685,7 @@ track_select_phrase_at
 ;Out: If such phrase, NZ, phrase selected
                   ; HL = t - time at start of phrase MOD phrase duration
                   ; Carry if first iteration of phrase
-    ; Otherwise, Z       
+    ; Otherwise, Z (for phrasui to detect end of track)
           call scope_bk_track
           push ix
           push de
@@ -1982,7 +1999,6 @@ track_get_last_hook
 ;out: de = pnt last timestamp
           call scope_bk_track ; when coming from phrasui
           ld hl,time_inf
-          call track_get_hook_at
 ;enchaine
 track_get_hook_at
 ;----------------
@@ -2470,6 +2486,7 @@ aum_stack_
 ; we must store literals.
 ; The alternative would be a static array of litterals.
   ; -> Faster but requires &80 bytes.
+          ALIGN(4)
 tmp_lit FILL 4,0:CHECK_CONFINE(tmp_lit)
 tmp_arg = tmp_lit
 tmp_binary FILL 4,0:CHECK_CONFINE(tmp_binary)
@@ -2477,11 +2494,10 @@ tmp_ext_args FILL MAX_EXT_PARAMETERS * 2,0:CHECK_CONFINE(tmp_ext_args)
 
           ALIGN(&0100)
 aum_regs
-;32 regs * 4 = &80.
+;4 * (32 regs * 4)
       FILL MAX_FRAMES * FRAME_REGS_SIZE,0 ; fill for easier debugs
 aum_regs_
 
+
 track_end
-
-
 

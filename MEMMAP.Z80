@@ -40,8 +40,8 @@ chunk_module = &0472
 ;timer = &0A61
 
       IF dev_checks
-instr_module = &0ECC
-chung = &108F           ; phrasuit (for test)
+instr_module = &0EE0
+chung = &10A7           ; phrasuit (for test)
 ; -- phraseui, uiloop, salo (via playsong.o)
 ppi   = &1590
 piano = &15EF
@@ -54,50 +54,50 @@ uiloop = &1BFF
 ;padding
 phrase = &1C90
 track_module = &2450
-fx_module = &3200
-ply   = &3204           ;needed for events signatures
+fx_module = &3300
+ply   = &3304           ;needed for events signatures
 fx_set_phrase_jp = ply+&13
 evt_set_transpose_lsb = ply+&C2 AND &FF ; track
 evt_change_phrase_lsb = ply+&E1 AND &FF ; "
 evt_track_loop_lsb = ply+&EF AND &FF ; "
 
-playsong_module = &36A2
+playsong_module = &37A2
 ; -- salo
-shortcut = &3730
-init_module = &37C1
+shortcut = &3830
+init_module = &38C1
 
 ; -- Ayane
 code_main = &3D20
 
       ELSE
 
-instr_module = &0E4C
-chung = &0FCC
+instr_module = &0E20
+chung = &0FB9
 ;13b0 "AYA!  " what's that
 ;then free?
 ; -- phraseui, uiloop, salo (via playsong.o)
 ppi   = &1490
-piano = &14FF
+piano = &14EF
 ; --  uiloop
-instrui = &1620
-instrsel = &1A39
+instrui = &1610
+instrsel = &1A29
 uiloop = &1AE0
 ; ---- uiloop end ----
 ; -- phrasui, salo
 ;padding
 phrase = &1B90
 track_module = &2350
-fx_module = &3100
-ply   = &3104
+fx_module = &3200
+ply   = &3204
 fx_set_phrase_jp = ply+5
-evt_set_transpose_lsb = ply+&7E AND &FF
-evt_change_phrase_lsb = ply+&8F AND &FF
-evt_track_loop_lsb = ply+&9D AND &FF
+evt_set_transpose_lsb = ply+&70 AND &FF
+evt_change_phrase_lsb = ply+&81 AND &FF
+evt_track_loop_lsb = ply+&8F AND &FF
 
-playsong_module = &35A2
+playsong_module = &36A2
 ; -- salo
-shortcut = &3630
-init_module = &36C1
+shortcut = &3730
+init_module = &37C1
 
 ; -- Ayane
 code_main = &3C20
@@ -206,7 +206,7 @@ fonte_small = &4800
 disp  = &48D8           ; start of code after fonts
 pianoui = &4F10
 phrasui = &5630
-disp_ayane = &5E40      ; other modules imported by ayane.o
+disp_ayane = &5EA0      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
 
@@ -226,7 +226,7 @@ fx_by_track = workzone + &0100 ; MAX_TRACKS*track_fx_size
 ; (8100, 8110, 8120, 8130 ...)
 ; n**(type, event pnt)
 salo                    ; &8200
-tmp_buf_nrt SKIP &0100  ; well except salo-nrt!
+tmp_buf_nrt SKIP &0600  ; well except salo-nrt!
 field_module = &8BB0
 ged   = &8C7C
 free_ram_for_nrt = field_module ; used by salo-nrt, tracknrt

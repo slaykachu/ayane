@@ -3,6 +3,9 @@ todo  = 1
 do_brittle = 0
 
 ; ----- 2026 ----------
+; -- alpha 3 --
+ ; Feb
+    ;  3 Add test_track_select_last_phrase
 ; -- alpha 2 --
  ; Jan
     ; 16 Add test_track_set_loop_at
@@ -78,7 +81,7 @@ chunk0 = track_events_/&0100 - 1
       IMPORT "const.i"
       IMPORT "import.i"
       IMPORT "macro.i"
-          ASSERT(dev==1) ; other use assert mecanism, not init
+          ASSERT(dev==1) ; otherwith use assert mecanism, not brk
 
 ; Ensure proper alignement (and consistent addresses for easier dbg)
           IMPORT_SHARED_DEPS_ALL()
@@ -89,7 +92,7 @@ chunk0 = track_events_/&0100 - 1
       IMPORT "phrase.o" ; song_select_new_phrase
       ORG track_module
       IMPORT "track.o"
-      ORG fx_module
+   ;   ORG fx_module
    ;   IMPORT "ply.o"    ; for evt_* (evt_set_transpose & co)
     ;  ORG ppi
       IMPORT "testlib.o"
@@ -156,6 +159,7 @@ tests
           call test_get_phrase_implicit_repeat
           call test_track_select_phrase_far
           call test_track_select_phrase_past_end
+          call test_track_select_last_phrase
           call test_t0_when_repeat
           call test_t1_with_transpose
           call test_track_get_state_at
@@ -408,7 +412,7 @@ test_ld_sub_flag
           ld hl,.byc
           call eval
 ; Addtionnal check AHL= 0
-          or h:or l:call nz,fail
+          or h:or l:call nz,nrtfail
           ret
 
 ; Note: value in in0 shouldn't matter
@@ -425,8 +429,8 @@ test_flag_lifted
 
           ld hl,.byc
           call eval
-          call z,fail
-          call nc,fail
+          call z,nrtfail
+          call nc,nrtfail
           ret
 
 .in   BYTE 1,0,0
@@ -606,8 +610,8 @@ test_init_track_module
 ; Must point in track_events area
           inc hl        ; skip LSB
           ld a,(hl):inc hl
-          cp track_events/&0100:call c,fail
-          cp track_events_/&0100:call nc,fail
+          cp track_events/&0100:call c,nrtfail
+          cp track_events_/&0100:call nc,nrtfail
       IF tf_struct_size - 2
   !! oversight
       END
@@ -1102,7 +1106,7 @@ test_get_event_hook_at
           ld hl,get_hook_at
           call eval
           pop de
-          or a:sbc hl,de:add hl,de:call nz,fail
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
           ret
 
 .t0       TIME(0)
@@ -1113,8 +1117,8 @@ check_hook_address
 ; One chunk might already have been created. So lenient test.
 ; Still brittle, though!
           ld a,h
-          cp chunk0-1:call c,fail
-          cp chunk0+1:call nc,fail
+          cp chunk0-1:call c,nrtfail
+          cp chunk0+1:call nc,nrtfail
           ret
 
 test_set_event_hook_at
@@ -1131,7 +1135,7 @@ test_set_event_hook_at
 ;now there must be a link
           pop hl
           inc hl
-          ld a,(hl):or a:call z,fail
+          ld a,(hl):or a:call z,nrtfail
           ret
 
 .test
@@ -1167,8 +1171,8 @@ test_prepend_event
       END
           ld hl,(tracks)
           ld a,h
-          cp track_events/&0100:call c,fail
-          cp track_events_/&0100:call nc,fail
+          cp track_events/&0100:call c,nrtfail
+          cp track_events_/&0100:call nc,nrtfail
           push hl
 ; Check structure (a bit brittle, we might just check duration)
           ld de,.ref_evt0
@@ -1184,8 +1188,8 @@ test_prepend_event
           ld h,(hl):ld l,a
           ld a,h
 ; same pool
-          cp track_events/&0100:call c,fail
-          cp track_events_/&0100:call nc,fail
+          cp track_events/&0100:call c,nrtfail
+          cp track_events_/&0100:call nc,nrtfail
 ; Check structure (a bit brittle, we might just check duration)
           ld de,.ref_evt
           ld b,evt_size
@@ -1204,7 +1208,7 @@ test_prepend_event
 ; there must be a link. We assume in the same chunk
 ; (a bit brittle, nevermind. Important part is that's not 0
           ld a,(hl)
-          cp h:call nz,fail
+          cp h:call nz,nrtfail
           inc hl
 ; now check duration
           ld e,(hl):inc hl
@@ -1223,7 +1227,7 @@ dur1  = 1
 ; there must be a link. We assume in the same chunk
 ; (a bit brittle, nevermind. Important part is that's not 0
           ld a,(hl)
-          cp h:call nz,fail
+          cp h:call nz,nrtfail
           inc hl
 ; now check duration
           ld e,(hl):inc hl
@@ -1250,16 +1254,16 @@ test_track_get_hook_at
           ld hl,time0
           call track_get_hook_at
 ; no next hook (brittle if we decide to plug "end of track" hook?)
-          ld a,(hl):or a:call nz,fail
+          ld a,(hl):or a:call nz,nrtfail
           inc hl
-          ld a,(hl):or a:call nz,fail
+          ld a,(hl):or a:call nz,nrtfail
           inc hl
 ; now points to duration. the value doesn't matter
           evt0_link ** inc hl ; skip duration
 ; check no events here
-          ld a,(hl):or a:call nz,fail
+          ld a,(hl):or a:call nz,nrtfail
           inc hl
-          ld a,(hl):or a:call nz,fail
+          ld a,(hl):or a:call nz,nrtfail
           ret
 
 test_track_get_hook_t1
@@ -1273,7 +1277,7 @@ test_track_get_hook_t1
           call track_get_hook_at
           ld hl,(aum_regs + t1*4)
           ld de,last_duration
-          or a:sbc hl,de:add hl,de:call nz,fail
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
           ret
 
 test_track_get_event_at
@@ -1284,7 +1288,7 @@ test_track_get_event_at
 ; No such event yet
           ld hl,time0
           ld a,evt_set_transpose_lsb
-          call track_get_event_at:call nz,fail
+          call track_get_event_at:call nz,nrtfail
 
           ld a,val1
           ld hl,time14
@@ -1293,7 +1297,7 @@ test_track_get_event_at
 ; Before evt: return Z
           ld hl,time13
           ld a,evt_set_transpose_lsb
-          call track_get_event_at:call nz,fail
+          call track_get_event_at:call nz,nrtfail
 
 ; Start of evt: NZ 
           ld a,val1
@@ -1302,7 +1306,7 @@ test_track_get_event_at
 
 ; Past end: return Z
           ld hl,time_far
-          call track_get_event_at:call nz,fail
+          call track_get_event_at:call nz,nrtfail
 
 ; With other kind of event in-between
           call nrt_dummy_phrase
@@ -1362,13 +1366,13 @@ test_set_phrase_after
           xor a
           ld hl,time0
           ld de,0
-          call check_phrase:call nc,fail
+          call check_phrase:call nc,nrtfail
 
 ; -- ask a bit later
           xor a
           ld hl,time325
           ld de,325
-          call check_phrase:call nc,fail
+          call check_phrase:call nc,nrtfail
 
 ; -- now add unrelated event in between -> must return same result
           ld a,val1
@@ -1377,7 +1381,7 @@ test_set_phrase_after
           xor a
           ld hl,time325
           ld de,325
-          call check_phrase:call nc,fail
+          call check_phrase:call nc,nrtfail
           ret
 
 test_set_phrase_far
@@ -1393,13 +1397,13 @@ test_set_phrase_far
           xor a
           ld hl,time_far
           ld de,0
-          call check_phrase:call nc,fail
+          call check_phrase:call nc,nrtfail
 
 ; -- ask a bit later
           xor a
           ld hl,time_far'
           ld de,&0777
-          call check_phrase:call nc,fail
+          call check_phrase:call nc,nrtfail
           ret
 
 test_get_phrase_implicit_repeat
@@ -1424,21 +1428,21 @@ dummy_dur' = 100
 
 ;Sanity checks                    
           xor a:ld hl,time0:ld de,0:call check_phrase
-          call nc,fail  ; 1st iter
+          call nc,nrtfail ; 1st iter
           xor a:ld hl,time6:ld de,6:call check_phrase
-          call nc,fail  ; 1st iter
+          call nc,nrtfail ; 1st iter
           ld a,1:ld hl,time14:ld de,0:call check_phrase
-          call nc,fail  ; 1st iter
+          call nc,nrtfail ; 1st iter
 ;Real checks
           xor a:ld hl,time7:ld de,7 - dummy_dur:call check_phrase
-          call c,fail   ; 2nd iter
+          call c,nrtfail ; 2nd iter
           xor a:ld hl,time13:ld de,13 - dummy_dur:call check_phrase
-          call c,fail   ; 2nd iter
+          call c,nrtfail ; 2nd iter
           ld a,1:ld hl,time20:ld de,20 - 14:call check_phrase
-          call nc,fail  ; 1st iter   
+          call nc,nrtfail ; 1st iter   
 .expected = [325 - 14] MOD dummy_dur'
           ld a,1:ld hl,time325:ld de,.expected:call check_phrase
-          call c,fail   ; nth iter
+          call c,nrtfail ; nth iter
           ret
 
 test_track_select_phrase_far
@@ -1485,6 +1489,21 @@ test_track_select_phrase_past_end
           call nz,nrtfail
           ret
 
+test_track_select_last_phrase
+          call nrt_init
+          call nrt_dummy_phrase
+          xor a:ld hl,time0:call Set_phrase_at_t
+          xor a:ld hl,time20:call Set_phrase_at_t
+          ld a,1:call song_select_new_phrase
+          call song_get_current_phrase
+          cp 1:call nz,nrtfail
+
+          call track_select_last_phrase:call z,nrtfail
+          ld hl,(fetched_t0)
+          ld de,20:or a:sbc hl,de:add hl,de:call nz,nrtfail
+          call song_get_current_phrase
+          or a:call nz,nrtfail
+          ret
 
 test_t0_when_repeat
 ; The variable /fetched_t0/ is used by phraseui as start point
@@ -1572,13 +1591,13 @@ test_track_get_state_at
           ld a,42:ld hl,time14:call Set_transpose_at_t
 
           ld hl,time6:call track_get_state_at
-          cp 0:call nz,fail
+          cp 0:call nz,nrtfail
           ld hl,time7:call track_get_state_at
-          cp 24:call nz,fail
+          cp 24:call nz,nrtfail
           ld hl,time13:call track_get_state_at
-          cp 24:call nz,fail
+          cp 24:call nz,nrtfail
           ld hl,time14:call track_get_state_at
-          cp 42:call nz,fail
+          cp 42:call nz,nrtfail
           ret
 
 
@@ -1603,7 +1622,7 @@ test_track_set_loop_at
 
           ld hl,time6
           call track_get_state_at
-          cp 10:call nz,fail
+          cp 10:call nz,nrtfail
           ret
 
 time0     TIME(0)
@@ -1652,13 +1671,13 @@ check_phrase
 ; --- Now via proper API
           pop hl
           call track_select_phrase_at
-          call z,fail
+          call z,nrtfail
           pop de
           pop bc        ; B = expected id (was a) 
           push af
-          or a:sbc hl,de:add hl,de:call nz,fail ; time offset
-          call song_get_current_phrase:call z,fail
-          cp b:call nz,fail
+          or a:sbc hl,de:add hl,de:call nz,nrtfail ; time offset
+          call song_get_current_phrase:call z,nrtfail
+          cp b:call nz,nrtfail
           pop af
           ret
 
@@ -1670,10 +1689,10 @@ check_
 ; Note: some copy/paste of track_get_phrase_at, with additional test
           push af:push de
           call track_get_event_at
-          call z,fail   ; hook not found
+          call z,nrtfail ; hook not found
           ex (sp),hl
 ;Expected value (now hl) = return param (de)? 
-          or a:sbc hl,de:add hl,de:call nz,fail
+          or a:sbc hl,de:add hl,de:call nz,nrtfail
 ;-- check no other such same directive
           pop hl
       IF evt_param - 1
@@ -1682,7 +1701,7 @@ check_
           pop af
           idsz+evt_type ** dec hl
           call goto_event
-          call nz,fail
+          call nz,nrtfail
           ret
 
 test_subsong_add_track
@@ -1692,17 +1711,17 @@ test_subsong_add_track
 ; !! no, subsong with tracks already created by nrt_init
           xor a:call Subsong_add
           ld hl,.param:ld c,2:call Subsong_add_track
-          call Song_get_first_track:call z,fail
-          cp 1:call nz,fail
-          call Song_get_next_track:call nz,fail
+          call Song_get_first_track:call z,nrtfail
+          cp 1:call nz,nrtfail
+          call Song_get_next_track:call nz,nrtfail
       ELSE
-          call Song_get_first_track:call z,fail
-          cp 1:call nz,fail
-          call Song_get_next_track:call z,fail
-          cp 2:call nz,fail
-          call Song_get_next_track:call z,fail
-          cp 3:call nz,fail
-          call Song_get_next_track:call nz,fail
+          call Song_get_first_track:call z,nrtfail
+          cp 1:call nz,nrtfail
+          call Song_get_next_track:call z,nrtfail
+          cp 2:call nz,nrtfail
+          call Song_get_next_track:call z,nrtfail
+          cp 3:call nz,nrtfail
+          call Song_get_next_track:call nz,nrtfail
       END
           ret
 .param BYTE 1           ; track id
@@ -1714,20 +1733,20 @@ test_default_loop
 ; !!! NO; discarded
           call nrt_init
 
-          call Song_get_first_track:call z,fail
+          call Song_get_first_track:call z,nrtfail
           call get_track_header
 
           ld e,(hl):inc hl
           ld d,(hl):dec hl ; first hook
 .lp
-          ld a,(hl):inc hl:or (hl):dec hl:call z,fail ; no null link
+          ld a,(hl):inc hl:or (hl):dec hl:call z,nrtfail ; no null link
           ld a,(hl):inc hl
           ld h,(hl):ld l,a
           bit 7,h       ; stops when mets loop
           jr z,.lp
 ; loop must be to first event
           res 7,h
-          or a:sbc hl,de:call nz,fail
+          or a:sbc hl,de:call nz,nrtfail
           ret
 
 test_get_timestamp_from_hook
@@ -1766,7 +1785,7 @@ test_get_timestamp_from_hook
 ;Out: HL preserved
           push hl
           push de
-          call get_timestamp_from_hook:call nc,fail
+          call get_timestamp_from_hook:call nc,nrtfail
           pop de
           ld l,c:ld h,b
           ld b,3
@@ -1783,12 +1802,12 @@ test_Song_attach_empty_phrases
           call Song_select_track
           ld hl,time0
           call track_select_phrase_at
-          call z,fail
-          call nc,fail  ; 1st iter
-          ld a,l:or h:call nz,fail
+          call z,nrtfail
+          call nc,nrtfail ; 1st iter
+          ld a,l:or h:call nz,nrtfail
           pop bc
           call song_get_current_phrase
-          cp b:call nz,fail
+          cp b:call nz,nrtfail
           ld a,b
           inc a
           cp 4
@@ -1823,9 +1842,9 @@ _outputchan = 2
           ld b,9        ; For now, only one bank available!
 .lp
           push bc
-          call song_select_new_phrase:call nc,fail
+          call song_select_new_phrase:call nc,nrtfail
 !!! replaced by Set_phrase_at_t
-          call track_append_current_phrase:call nc,fail
+          call track_append_current_phrase:call nc,nrtfail
           pop bc
           djnz .lp
           ret

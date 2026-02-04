@@ -1,10 +1,13 @@
 ; ----- Manual test of phrase editor -----
-do_nrt = 1              ; 0: manual test
+do_nrt = 0              ; 0: manual test
 dev_checks' = 1
 short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
-with_loop = 1
+with_loop = 0
 
 ; 2026         
+  ; -- Alpha 3 --
+  ; Feb
+      ; 4: Add test_goto_last_phrase
   ; -- Alpha 2 --
   ; Jan 
       ;16: Add with_loop
@@ -90,7 +93,7 @@ note2 = &26             ; D-2
       ELSE
           ld a,0
       END
-          call phrase_select_new_row:call nc,fail
+          call phrase_select_new_row:call nc,nrtfail
           ld a,note1:call row_set_note
           ld a,1:call row_set_instr
           ld de,delai_ui_default:call phrase_select_row_at
@@ -112,7 +115,7 @@ note2 = &26             ; D-2
           ld a,1:call song_select_new_phrase
 note3 = &34
           ld a,nrt_phrase1_dur
-          call phrase_select_new_row:call nc,fail
+          call phrase_select_new_row:call nc,nrtfail
           ld a,note3:call row_set_note
       IF 1-do_nrt
           ld a,1:call row_set_instr ; to test replay
@@ -126,7 +129,7 @@ note3 = &34
           ld a,2:call song_select_new_phrase
 note4 = &43
           ld a,200      ; no repeat
-          call phrase_select_new_row:call nc,fail
+          call phrase_select_new_row:call nc,nrtfail
           ld a,note4:call row_set_note
       IF 1-do_nrt
           ld a,1:call row_set_instr
@@ -164,6 +167,12 @@ maybe_set_loop
       END
           ret
 
+time0     TIME(0)
+time6     TIME(6)
+time24    TIME(24)
+time96    TIME(96)
+time300   TIME(300)
+
       IF do_nrt
 ; -----------------------------
       MACRO TEST_RUN test_data
@@ -200,6 +209,8 @@ sentinelle = 0
 
 tests
           ld a,&F7:ld (0),a
+          call test_goto_last_phrase
+      BRK
           call test_refresh_state
           call test_refresh_page
           call test_row_dwn_to_repeated_phrase
@@ -214,6 +225,7 @@ tests
       END
           call test_note_2nd_row
           call test_clr
+          call test_goto_last_phrase
           call test_fuzz
           ret
 
@@ -440,9 +452,18 @@ test_prev_page
           END_OF_NRT_SEQUENCE()
       BYTE nrtend
 
+test_goto_last_phrase
+          call dev_setup
+          ld a,3:call song_select_new_phrase
+          ld a,42:call phrase_select_new_row:call nc,nrtfail
+          ld a,3:ld hl,time300:call Set_phrase_at_t
+          call goto_last_phrase
+          ld hl,(time_cur)
+          ld de,300:or a:sbc hl,de:add hl,de:call nz,nrtfail
+          ret
+
 test_fuzz
           call dev_setup
-keys_buffer = tmp_buf_nrt
           ld ix,.keys
           ld iyl,31
           call fuzz_keys
@@ -566,10 +587,10 @@ scr_hw_roll
 
 nrt_set_cursor
 ; Cursor is 1-indexed      
-          ld a,h:or a:call z,fail
-          cp 80:call nc,fail
-          ld a,l:or a:call z,fail
-          cp nrt_height:call nc,fail
+          ld a,h:or a:call z,nrtfail
+          cp 80:call nc,nrtfail
+          ld a,l:or a:call z,nrtfail
+          cp nrt_height:call nc,nrtfail
           ld (iotest_cursor),hl
           ld hl,&CACA   ; mimic firmware trashing hl
           scf
@@ -693,7 +714,7 @@ wid_row# = 3
 .no_nl
           xor (hl)
           and ixl       ; no-op or remove focus flag
-          call nz,fail
+          call nz,nrtfail
           inc de:inc hl
           jr .comp
 
@@ -709,15 +730,11 @@ nrt_nl = 13
 nrt_sequence_pnt WORD 
 iotest_cursor WORD &0101 ; As txt_set_cursor H=column L=line (1-based)
 
-      SKIP -$ AND &FF
-iotest_screen SKIP nrt_screen_
+          ASSERT(tmp_buf_nrt AND &FF == 0)
+keys_buffer = tmp_buf_nrt
+iotest_screen = tmp_buf_nrt + &0100
 
       END
-
-time0     TIME(0)
-time6     TIME(6)
-time24    TIME(24)
-time96    TIME(96)
 
 ho
           LIMIT(ramlimit)

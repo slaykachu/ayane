@@ -1,8 +1,13 @@
 ; <<<< Phrase Editor >>>>
 todo  = 0
 ; 2026
-  ; Jan
 ; -- Alpha2 --
+  ; Feb
+      ;01 CTRL-f0/f.: go to first/last phrase
+        ; pre_view/post_view: handle when "scrolling" more than one page
+                          ; (well we couldn't do that before, could we?)
+; -- Alpha2 --
+  ; Jan
       ;19 Do not transpose /note_c_10/
       ;17 Handle track loop
       ;13 CTRL-f0/f.
@@ -26,14 +31,7 @@ dev_checks' = 1 - release
       IMPORT "import.i"
       IMPORT "gedwidid.i"
           IMPORT_PHRASUI_DEPS() ; other deps below
-.savepc
-      ORG field_module
-      IF release
-      LOAD "ayagedr.bin"
-      ELSE
-      LOAD "ayagedd.bin"
-      END
-      ORG .savepc
+; ged loaded at the end to help with visu
 
 gedeihen_init = ged
 gedeihen_set_hooks = ged+2
@@ -202,7 +200,7 @@ k_ml
       BYTE kup:WORD row_up
       BYTE kcup:WORD row_ctrl_up
       BYTE kcf+0:WORD goto_top
-      BYTE kcfdot:WORD goto_bottom
+      BYTE kcfdot:WORD goto_last_phrase
       BYTE krgt:WORD next_track
       BYTE kcrgt:WORD next_track
       BYTE klft:WORD prev_track
@@ -345,24 +343,68 @@ _edit_row_com
 
 goto_top
 ;-------
-          ld hl,0
-          jp refresh_row
+          ld hl,time_cur
+          call set_time_zero
+          jp refresh_from_time_cur
 
-goto_bottom
-;----------
+goto_last_phrase
+;---------------
+goto_implicit = 0
+      IF goto_implicit
+!! not intuitive
+; Goto to last (implicit) phrase start
+; E.g. if last phrase:
+    ; track 1: At x, duration 16
+    ; track 2: At x, duration 64
+; Will go to x+64-16
+      ELSE
+; Goto to start of last phrase (across all tracks)
+      END
+
+          ld hl,time_cur:call set_time_zero ; to collect max
+      IF goto_implicit
+          ld hl,&FFFF:ld (tmp_min_duration),hl
+      END
+          ld b,3
+.tlp
+          push bc
+          ld a,4:sub b:call Song_select_track
+          call track_select_last_phrase
+      IF goto_implicit
           call phrase_get_duration
-          ex de,hl
-          call get_delai_ui
-          ld c,a
-          ld b,0
-          or a:sbc hl,bc
-          jp refresh_row
+          ld hl,(tmp_min_duration)
+          or a:sbc hl,de:jr c,.okmin
+          ld (tmp_min_duration),de
+.okmin
+          ld hl,time_tmp
+          push hl
+          ld bc,fetched_t0
+          call add_ihl_ibc_de
+          pop hl
+      ELSE
+          ld hl,fetched_t0
+      END
+;max(last,max_pos)
+          ld de,time_cur
+          call cp_ide_ihl
+          call c,copy_time
+
+          pop bc
+          djnz .tlp
+
+      IF goto_implicit
+          ld hl,time_cur
+          ld de,(tmp_min_duration)
+          call sub_ihl_de_clipped
+      END
+
+          ld a,(track_cur):call Song_select_track
+          jp refresh_from_time_cur
 
 goto_last
 ;--------
 ; bottom of phrase might be further than end of track 
-; (when loop in middle of phrase), using goto_bottom in that case
-; would lead to infinite loop    
+; (when loop in middle of phrase)
           call track_get_last_hook
           ex de,hl
           ld de,time_cur
@@ -430,15 +472,9 @@ refresh_row_
       END
 refresh_row__
 ; -- Get offset from top (and check if out of view port)
-          ld bc,time_cur
-          ld hl,time_at_top
-          call sub_ade_ibc_ihl
-          jr c,.pre_view
-
-          or d:jr nz,.past_view
-          ld a,e
-          ld ix,0
-          call correct_y
+          call get_cur_minus_top
+          jr c,.pre_view ; cur < time_at_top
+          call check_past_view
           jr nc,.past_view
 
           inc a         ; ged cursor is 1-based
@@ -451,14 +487,23 @@ refresh_row__
           ret
 
 .pre_view
+; shift up one page until time_cur is in view. Works both:
+  ; - when using e.g cursor up 
+  ; - when rewinding to arbitrary location
+; HL = time_at_top
           call get_page_shift
           call sub_ihl_de_clipped
+          call get_cur_minus_top ; only for Carry flag
+          jr c,.pre_view
           jr .refresh_view
 
 
 .past_view
           call get_page_shift
           call add_ihl_de
+          call get_cur_minus_top
+          call check_past_view
+          jr nc,.past_view
 .refresh_view
           call refresh_page
       IF dev_checks'
@@ -500,6 +545,21 @@ get_time_row
           ex de,hl
           pop hl
           ret
+
+get_cur_minus_top
+; Out: ADE = (cur-top).  Carry if cur < top
+          ld bc,time_cur
+          ld hl,time_at_top
+          jp sub_ade_ibc_ihl
+
+check_past_view
+; In: ADE = (cur-top)
+;OUT: Carry if in view
+    ; NC if past view
+          or d:ret nz   ; NC
+          ld a,e
+          ld ix,0
+          jp correct_y
 
 select_row_ui
 ;------------
@@ -991,6 +1051,9 @@ auto_skip BYTE 0        ; see do_next_id/do_skip_id
 must_refresh BYTE 0
 cur_y BYTE 0
 t0        TIME(0)       ; start of current phrase
+      IF goto_implicit
+tmp_min_duration WORD 0
+      END
 
 _savepc
       ORG phrasui_shared_vars
@@ -1034,3 +1097,13 @@ phrase_dup DECLARE_BITSET(MAX_PHRASES)
 
 phrasui_end
           LIMIT(disp_ayane)
+
+.savepc
+      ORG field_module
+      IF release
+      LOAD "ayagedr.bin"
+      ELSE
+      LOAD "ayagedd.bin"
+      END
+      ORG .savepc
+
