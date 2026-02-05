@@ -970,6 +970,20 @@ setup_phrase_ui
           ld hl,phrase_ui
           jp setup_widget
 ; ----------------------
+play_phrase
+;----------
+;copy out of bank
+          ld hl,t0
+          ld de,time_phrasui
+          push de
+          call copy_time
+          call phrase_get_duration
+          pop hl
+          call play_slice
+          call refresh_focus ; hack...
+          scf
+          ret
+
 space
 ;----          
 ;Play row and "row_dwn"
@@ -986,23 +1000,6 @@ consume_row
           or a:sbc hl,de
           ex de,hl
           ld hl,time_cur
-          call play_slice
-; Necessary for ged refresh when leaving field
-          scf
-          ret
-
-play_phrase
-;----------
-;copy out of bank
-          ld hl,t0
-          ld de,time_phrasui
-          push de
-          call copy_time
-          call phrase_get_duration
-          pop hl
-          call play_slice
-          jp refresh_focus ; hack...
-
 ;enchaine
 play_slice
 ;.........
@@ -1057,6 +1054,7 @@ play_slice
           pop de
           call play_song_cpt
           call restore_state_ui
+; Necessary for ged refresh when leaving field
           scf
           ret
 
