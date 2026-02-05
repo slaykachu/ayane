@@ -63,8 +63,8 @@ evt_track_loop_lsb = ply+&EF AND &FF ; "
 
 playsong_module = &37A2
 ; -- salo
-shortcut = &3830
-init_module = &38C1
+shortcut = &3850
+init_module = &38E1
 
 ; -- Ayane
 code_main = &3D20
@@ -96,8 +96,8 @@ evt_track_loop_lsb = ply+&8F AND &FF
 
 playsong_module = &36A2
 ; -- salo
-shortcut = &3730
-init_module = &37C1
+shortcut = &3750
+init_module = &37E1
 
 ; -- Ayane
 code_main = &3C20

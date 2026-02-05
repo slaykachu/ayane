@@ -2,8 +2,9 @@
 todo  = 0
 ; 2026
 ; -- Alpha2 --
-  ; Feb
-      ;01 CTRL-f0/f.: go to first/last phrase
+  ; Feb 
+      ; 4 CTRL-SPACE: play current phrase
+      ; 3 CTRL-f0/f.: go to first/last phrase
         ; pre_view/post_view: handle when "scrolling" more than one page
                           ; (well we couldn't do that before, could we?)
 ; -- Alpha2 --
@@ -41,8 +42,9 @@ gedeihen_enter = ged+9
 gedeihen_process = ged+12
 enter = ged+15
 refresh_nofocus = ged+18
-validate = ged+21
-update_pos_y = ged+24
+refresh_focus = ged+21
+validate = ged+24
+update_pos_y = ged+27
 
 phrasui_code
           jp phrase_cold_refresh
@@ -59,8 +61,8 @@ phrase_cold_refresh
           ld de,state
           ld bc,state_
           ldir
- ; -- sync model
-          ld a,(track_cur):call Song_select_track
+ ; -- sync model 
+          call restore_cur_track
  ; -- ad-hod display
           call refresh_page
  ; -- gedeihen 
@@ -206,6 +208,7 @@ k_ml
       BYTE klft:WORD prev_track
       BYTE kclft:WORD prev_track
       BYTE " ":WORD space
+      BYTE kcspc:WORD play_phrase
       BYTE kreturn:WORD insert_row
       BYTE kcdel:WORD delete_row
       BYTE "R"-&40:WORD refresh_page ; debug
@@ -398,7 +401,7 @@ goto_implicit = 0
           call sub_ihl_de_clipped
       END
 
-          ld a,(track_cur):call Song_select_track
+          call restore_cur_track
           jp refresh_from_time_cur
 
 goto_last
@@ -862,9 +865,9 @@ refresh_page
           ld a,ixh:add track_wid:ld ixh,a
           pop bc
           djnz .track_lp
-
-          ld a,(track_cur):call Song_select_track
-
+;enchaine
+restore_state_ui
+          call restore_cur_track
           call refresh_state_cur
           jp select_row_ui
 
@@ -981,21 +984,47 @@ consume_row
           call get_next_row
           call get_time_row
           or a:sbc hl,de
+          ex de,hl
+          ld hl,time_cur
+          call play_slice
+; Necessary for ged refresh when leaving field
+          scf
+          ret
+
+play_phrase
+;----------
+;copy out of bank
+          ld hl,t0
+          ld de,time_phrasui
+          push de
+          call copy_time
+          call phrase_get_duration
+          pop hl
+          call play_slice
+          jp refresh_focus ; hack...
+
+;enchaine
+play_slice
+;.........
+;IN: HL = time pnt
+   ; DE = duration
+          push de
           push hl
           call Amorce_song ; for sane default
-;fast forward
+;fastforward
+          pop hl
           ld a,1
 .tracklp
-          push af
+          push hl:push af:push hl
+; Get pointer on row start for ply
           call Song_select_track
       IF todo
 ; reuse refresh_state_cur? 
     ; - less code
     ; - give current transpose
       END
-          ld hl,time_cur
           call track_select_phrase_at
-          call get_time_row
+          ex de,hl
           call phrase_seek_row_at
           ld de,&FFFF   ; flag no row
           jr nc,.done
@@ -1009,9 +1038,9 @@ consume_row
           ex de,hl
           call skip_all_ext
 .done
-          push hl
+;transfer_state 
+          ex (sp),hl    ; hl=time, (sp) = row pnt
           push de
-          ld hl,time_cur
           call track_get_state_at
           ld b,a
           pop de
@@ -1020,22 +1049,21 @@ consume_row
           push af
           call set_track_stack
           pop af
+          pop hl
           inc a
           cp 4
           jr c,.tracklp
 
-          pop bc        ; duration to play
-          ld a,c        ; only LSB 
+          pop de
           call play_song_cpt
-; restore
-          ld a,(track_cur)
-          call Song_select_track
-; Necessary for ged refresh when leaving field
-          call refresh_state_cur
-          call select_row_ui
+          call restore_state_ui
           scf
           ret
 
+restore_cur_track
+; restore for ui
+          ld a,(track_cur)
+          jp Song_select_track
 
 ; ----------------------
 note_empty BYTE "---",0

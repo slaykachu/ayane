@@ -1,9 +1,14 @@
 ; <<< Play song >>>
 
-;2026 Jan 2: play_song_cpt: must scope bk (when called for PHRASUI)
-        ; 1: Add set_track_stack for replay from arbitrary point
+;2026
+ ;--alpha 3--
+  ; Feb 4: play_song_cpt: cpt on 16 bits
+         ; set_track_stack: more checks
+ ;--alpha 2--
+  ; Jan 2: play_song_cpt: must scope bk (when called for PHRASUI)
+      ; 1: Add set_track_stack for replay from arbitrary point
 
-dev_checks' = 0
+dev_checks' = 1
 
       IMPORT "memmap.i"
       IMPORT "macro.i"
@@ -14,6 +19,7 @@ dev_checks' = 0
       IMPORT "piano.o"  ; reuse code
       IMPORT "ply.o"
       IMPORT "timer.o"
+      IMPORT "assert.o"
           ASSERT($ == .refpc) ; deps must have been imported beforehand
 
 playsong_code
@@ -24,13 +30,16 @@ set_track_stack
 ; In: A = track # (1-based)
     ; B = transpose
     ;HL = pnt in phrase 
-    ;DE = delai before row (0 if immediate)
+    ;DE = delai before row (0 if immediate, ffff if no row)
     ;Amorce_song called
           push hl
           push de
       IF dev_checks'
           or a:call z,mess
           cp 4:call nc,mess ; tmp. TO be replaced by MAX_TRACKS
+          ld d,a
+          ld a,h:and &C0:cp &40:call nz,mess
+          ld a,d
       END
 ;stack pnt (1 -> track_stack itself)
           ld hl,track_stack+1 - size_per_track
@@ -62,12 +71,12 @@ play_song
 ;--------
 ; In: Amorce_song or set_track_stack called
 ; Out: N/A (We loop until ESC pressed)
-          xor a
+          ld de,0
 play_song_cpt
 ;------------
-; A = nb iter (0 = inf)
+; DE = nb iter (0 = inf)
 ; Out: N/A (We loop until ESC pressed or cpt exhausted)
-          ld (play_cpt+1),a
+          ld (play_cpt+1),de
           call scope_bk_base ; For return to PHRASUI
           call _prelude
           xor a:ld (.keyprev+1),a ; consider space pressed
@@ -104,14 +113,15 @@ play_song_cpt
 
           call play     ; regs for next frame
 
-          SUB_TM_CALL(12+4)
+          SUB_TM_CALL(5+9+4)
           ex af,af
-.play_cpt ld a,0
-          or a:jr z,.ok ; already 0: until key press
-          dec a:ld (.play_cpt+1),a
+.play_cpt ld hl,0
+          ld a,l:or h:jr z,.ok ; already 0: until key press
+          dec hl:ld (.play_cpt+1),hl
+          ld a,l:or h
           jp z,_stop_play
-          SUB_TM''(8-1)
+          SUB_TM''(12-1)
 .ok
           ex af,af
           jr .play_song_lp
-
+hi
