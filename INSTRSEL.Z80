@@ -1,5 +1,8 @@
 ; <<<<<<<< Instrument selector >>>>>>>>>
 ; 2026
+; -- alpha3 --
+  ; Feb  5 ui_get_name: return empty string if focus
+                      ; so typed char isn't appended to "<new string>"
 ; -- alpha2 --
   ; Jan 22 ui_set_name: use New_instr_ayane_if_empty to ensure
                       ; at least one row.
@@ -128,12 +131,17 @@ ui_set_name
           ret
 
 ui_get_name
+          ld b,a        ; focus
           call instr_does_exist
+          jp nz,instr_get_name
+          ld a,b:or a
           ld hl,.empty_txt
           ret z
-          jp instr_get_name
+          ld hl,any_zero
+          ret
 
-.empty_txt BYTE "<New instr>",0
+.empty_txt BYTE "<New instr>"
+any_zero BYTE 0
 
 cancel
           UNHANDLED(kesc) ; Caller can process exit
