@@ -2,7 +2,9 @@
 ;2026
 ; -- alpha3 --
 ; Feb
-  ; 4 Expose refresh_focus
+  ; 4 text_field_on_enter: use wv_edit_buffer and set fe_selected=0
+                         ; so edit won't clear the field
+    ; Expose refresh_focus
 ; -- alpha1 --
 ; Jan
   ;15 multiline: must return "unhandled" when ins/del fields null.
@@ -2156,8 +2158,10 @@ disp_text_custom
 
 text_field_on_enter
           CALL_STATE(text_field_getter)
-          ld de,wv_tmp_buffer
+          ld de,wv_edit_buffer
           call copy_nt
+;for instr selector: don't flag it as selected to allow edit
+          xor a:ld (fe_selected),a
           scf
           ret
 
