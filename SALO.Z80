@@ -1,6 +1,9 @@
 ;   <<<<< SAVE/LOAD module >>>>>
-;--- Alpha 1 ---
+;--- Alpha 3 ---
 ; 2026
+ ; Feb 5: Also /Init_chung/ before loading (fix issue #10)
+
+;--- Alpha 1 ---
  ; Jan:      
   ;17: Use new track_set_loop_at
   ;14: load/save instr name
@@ -417,6 +420,7 @@ load
           push bc
           push de
           ld hl,tag_ayane:call check_tag
+          call Init_chung
           call Reset_tracks_and_subsongs
           call phrase_reset
 
