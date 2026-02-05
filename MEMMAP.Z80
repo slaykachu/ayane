@@ -33,9 +33,9 @@ code_start = &40
 ; -- All
 
 memcpc = &40
-scankey = &0211
-conv  = &0222
-chunk_module = &0472
+scankey = &0214
+conv  = &0225
+chunk_module = &0475
 ;periods_module = &057F
 ;timer = &0A61
 

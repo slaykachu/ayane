@@ -3,6 +3,9 @@
 ; ---------------------------
 
 ; 2026
+ ;--- alpha 3 ---
+  ; Feb
+   ; 5: Plug status_init in assert.hook_bandaya
  ;--- alpha 2 ---
   ; Jan
    ;22: discriminate reenter_jp/reenter_safe_jp
@@ -178,6 +181,7 @@ err_too_big = 2
 start
 ;---------          
           call set_sp_backup
+          ld hl,status_init:ld (hook_bandaya),hl
 ; Entry point after io_postlude
           ENTER(ayane_entry)
 ; Entry point after error (avoid infinite assert)
@@ -375,13 +379,16 @@ io_postlude
           ld de,r2*&0100 + r2'
           call r2_transition
       END
+          call status_init
+          jp reenter_last
+
+status_init
           call connect_bk_io
           call clearstatus ; while c0 connected
           call connect_bk_base
           call ui_init_band ; !! also set instr 1 
           ei
-          call status_on
-          jp reenter_last
+          jp status_on
 
 ;-----------------------------------------------
 ; Commands
