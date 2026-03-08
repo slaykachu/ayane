@@ -6,6 +6,7 @@ todo  = 1
 ; 2025  
 ; ----- v0l2 ------
  ; Mar
+  ; 24: Handle constant /pattern_size/ 
   ; 21 Encode song loop
   ; 20 Fix empty row handling: was replaced by instr_null 
            ; (since unconditional reading of instr)
@@ -644,7 +645,15 @@ track_lp
 .hooklp
           push hl
           idsz ** inc hl
+      IF pattern_size
+;Constant size. We don't encode it, but check it matches
+          ld a,pattern_size AND &FF:cp (hl):call nz,fail
+          inc hl
+          ld a,pattern_size / &0100:cp (hl):call nz,fail
+          inc hl
+      ELSE
           2 ** call poke_ldi ; duration
+      END
 ; Now follow list of event 
           call Next_node
 ; Might be empty (intermediate hook)
@@ -705,7 +714,11 @@ track_lp
           push af
           call connect_bk_compile
           xor a
+      IF pattern_size
+          ld (de),a:inc de ;no transpose
+      ELSE
       3 ** [ld (de),a:inc de] ; no duration, no transpose
+      END
 ; Link with bit 15 set: track reset instead of phrase link
           ldi
           ld a,(hl):inc hl
@@ -838,8 +851,8 @@ last_row WORD
 ; Set them after analysis phase
       END
 ;--instr
-_use_instr_arp BYTE 0
-_use_instr_pitch BYTE 1
+_use_instr_arp BYTE 1   ; 1 for minimala
+_use_instr_pitch BYTE 0 ; 0 for minimala
 _use_flags BYTE 0       ; 0: Infer from noise value
 _use_noise BYTE 1       ; 1 for kim
 _use_hard_env BYTE 0

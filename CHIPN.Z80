@@ -9,6 +9,12 @@ hack  = 1
   ; - patterns
   ; - instruments
 
+; 2026
+; Mar 8 create_instr: fix bug .chipdownarp_noise wasn't picked for
+                    ; constant noise
+    ; 7 chipvib: proper vibrato correction
+
+
 ; 2025
 ; ----- v0j2 -----
   ; Mar
@@ -350,7 +356,7 @@ create_instr
 
           ld bc,(noise)
           ld a,c:or b:jr z,.chipdown
-          ld a,c:jr nz,.instr_default
+          ld a,c:or a:jp nz,.instr_default
 ;Constant noise
           ld a,(fx)
           or a:jr z,.chipdownarp_noise
@@ -620,6 +626,7 @@ poke_fx
       END
           ld bc,-1
           ld a,1        ; will add -2 
+
           jr .okdirection
 
 .no_slow_porta
@@ -693,8 +700,9 @@ poke_fx
           ld a,c
       IF hack_minimala
 ; Hack for minimala.chp, as we don't do proportional vibrato
-          cp 12:ld c,&21:jr z,.okhack
-          inc a:srl a:ld c,a
+          cp &0A:ld c,3:jr z,.okhack
+          cp &09:ld c,2:jr z,.okhack
+          ld c,a
       ELSE
       IF hack_4k08
 ; hack for 4k08.

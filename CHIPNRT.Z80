@@ -1,6 +1,6 @@
 ; tests chipnsfx convertion
 do_play = 1             ; 0: check  1: play tune
-is_minimala = 0         ;0: --4k08-- kim9 (40 years md)
+is_minimala = 1         ;0: --4k08-- kim9 (40 years md)
 
 ; 2025
   ; Mar
@@ -155,7 +155,6 @@ chp_module
       ELSE
 ;      LOAD "4k08.chq"   ; with header
 ;      LOAD ":40y/kim9.chq" ; binary version
-;      LOAD ":40y/kima.chq" ; binary version
+      LOAD ":40y/kima.chq" ; binary version
 ;      LOAD ":40y/kim0.chp"
-      LOAD ":40y/kimc.chp"
       END

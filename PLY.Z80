@@ -2,6 +2,8 @@ todo  = 1
 may_optim = 1
 ; <<<<<< bouts de player, player debout. Not your ayerage player! >>>>>>
 
+; 2026 Mar 8: handle pattern_size = 0
+
 ; Execution outline:
  ; ---- /track_loop/
    ; Check RDVs
@@ -93,6 +95,7 @@ hist
 ; \/\/\/ 2025 \/\/\/\/\
 ; ----- Ayane v0l2 -----
   ; Mar
+; Mar 24: Handle constant /pattern_size/ 
    ;21 Handle loop for compiled version  
       IF todo
          ; (in-tool use link, check if it's done properly)
@@ -513,9 +516,15 @@ track_reset
 ; We'll update pointer once we've processed events (see CHANGE_PHRASE)
 ; The pushed DE is dummy value so we can update RDV
           push de
-; +duration for next RDV
+; +duration for next RDV 
+      IF [1-ayane] AND [pattern_size > 0] ; ayane: always dynamic
+;Constant: must read
+          ld d,b
+          ld a,c:add pattern_size:ld e,a:jr nc,$+3:inc d
+      ELSE
           ld a,(hl):inc hl:add c:ld e,a
           ld a,(hl):inc hl:adc b:ld d,a
+      END
           push de
           pop de        ; skip rdv
           pop de        ; skip pnt
@@ -820,7 +829,7 @@ track_end
           inc hl
           ld (tick+1),hl
 savesp    ld sp,&3131
-          ret
+;          ret
 
 ;-------------------------------------
 psg
