@@ -259,6 +259,7 @@ _del_note
 ._del_note_com
           call pre_modif
           call row_del_note
+          call refresh_nofocus
           jr edit_row_next
 
 has_instr
@@ -282,6 +283,7 @@ _del_instr
           jp z,consume_goto_next
           call pre_modif
           call row_del_instr
+          call refresh_nofocus
           jr edit_row_next
 
 row_get_instr_ui
@@ -317,6 +319,7 @@ _del_vol
           jp z,consume_goto_next
           call pre_modif
           call row_del_vol
+          call refresh_nofocus
           jr edit_row_next
 
 is_empty
