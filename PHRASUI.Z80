@@ -1,6 +1,10 @@
 ; <<<< Phrase Editor >>>>
 todo  = 0
 ; 2026
+; -- Alpha3 --
+  ; Apr 6 refresh_row: don't call CALL_ENTER after update_pos_y
+        ; skip_or_next: call refresh_nofocus
+            ; (fix #11 residual cursor when deleting a note)
 ; -- Alpha2 --
   ; Feb 
       ; 4 CTRL-SPACE: play current phrase
@@ -26,7 +30,7 @@ todo  = 0
       IMPORT "const.i"  ; kclr
 dev_checks' = 1 - release
 
-      IMPORT "memmap.i" ; BK_DISP
+      IMPORT "memmap.i" ; BK_DISP                       
       IMPORT "macro.i"
           ASSERT($ AND &C000 == &4000) ; must be imported
       IMPORT "import.i"
@@ -40,7 +44,7 @@ setup_widget = ged+4
 gedeihen_disp = ged+6
 gedeihen_enter = ged+9
 gedeihen_process = ged+12
-enter = ged+15
+;enter = ged+15
 refresh_nofocus = ged+18
 refresh_focus = ged+21
 validate = ged+24
@@ -106,6 +110,8 @@ phrase_ui_process
           jr z,.skip_or_next
           call refresh_page
           call refresh_row_from_time_cur ; needed for CTRL-DEL / RETURN
+;Needed to fix #11: residual cursor 
+          call refresh_nofocus
 .skip_or_next
 do_next_id = 1
 do_skip_id = 2
@@ -116,11 +122,11 @@ do_skip_id = 2
           dec a
           jp z,row_dwn
  ; After row edited: skip exactly delai
-          call refresh_nofocus ; needed for ?
           call get_time_row
           call get_delai_ui
           ld l,a:ld h,0:add hl,de
-          jp refresh_row
+          call refresh_row
+          ret
 
 ; ---------------------
 phrase_ui
@@ -421,7 +427,8 @@ goto_last
           ld d,0
           pop hl
           call sub_ihl_de_clipped
-          jp refresh_from_time_cur
+          call refresh_state_cur
+          jp select_row_ui
 
 row_dwn
 ;------     
@@ -477,18 +484,25 @@ refresh_row_
 ;          ld (dbg+1),a
       END
 refresh_row__
-; -- Get offset from top (and check if out of view port)
+; -- Get cursor just to check if out of view port
           call get_cur_minus_top
           jr c,.pre_view ; cur < time_at_top
-          call check_past_view
+          call get_cursor_y
           jr nc,.past_view
 
-          inc a         ; ged cursor is 1-based
-          call update_pos_y ; focus on new line
-
           call select_row_ui
-
-          call enter    ; see rational in update_pos_y
+; Must re-read offset from top, in case select_row_ui changed cur time 
+; (happens when out of range, and /goto_last/)
+          call get_cur_minus_top
+      IF dev_checks'
+          call c,mess
+      END
+          call get_cursor_y
+      IF dev_checks'
+          call nc,mess
+      END
+          inc a         ; ged cursor is 1-based
+          call update_pos_y ; + focus on new line
           GED_HANDLED() ; when coming for e.g. edit_row_com
           ret
 
@@ -508,7 +522,7 @@ refresh_row__
           call get_page_shift
           call add_ihl_de
           call get_cur_minus_top
-          call check_past_view
+          call get_cursor_y
           jr nc,.past_view
 .refresh_view
           call refresh_page
@@ -558,9 +572,9 @@ get_cur_minus_top
           ld hl,time_at_top
           jp sub_ade_ibc_ihl
 
-check_past_view
+get_cursor_y
 ; In: ADE = (cur-top)
-;OUT: Carry if in view
+;OUT: Carry if in view  A=cursor y
     ; NC if past view
           or d:ret nz   ; NC
           ld a,e

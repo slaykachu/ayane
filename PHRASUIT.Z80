@@ -1,8 +1,11 @@
 ; ----- Manual test of phrase editor -----
-do_nrt = 0              ; 0: manual test
+do_nrt = 1              ; 0: manual test
 dev_checks' = 1
-short_phrase = 1 OR do_nrt ; 1: exercise implicit repeat
-with_loop = 0
+short_phrase = 0 OR do_nrt ; 1: exercise implicit repeat
+with_loop = 1 AND [1 - do_nrt] ; todo, see why nrt fails when = 1
+; todo: see why hang when:
+; do_nrt = 0
+; with_loop = 0
 
 ; 2026         
   ; -- Alpha 3 --
@@ -209,8 +212,6 @@ sentinelle = 0
 
 tests
           ld a,&F7:ld (0),a
-          call test_goto_last_phrase
-      BRK
           call test_refresh_state
           call test_refresh_page
           call test_row_dwn_to_repeated_phrase

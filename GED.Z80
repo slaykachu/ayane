@@ -1,6 +1,10 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
 ;2026
 ; -- alpha3 --
+; Apr 
+  ; 6 update_pos_y: use ENTER_COMMON ourself
+      ; -> so no refresh with focus (fix spurious cursor after del when
+         ; page is refreshed due to duplicate)
 ; Feb
   ; 4 text_field_on_enter: use wv_edit_buffer and set fe_selected=0
                          ; so edit won't clear the field
@@ -237,10 +241,7 @@ handler_table WORD
 ; Handler may return an event. Cf use case 1 for rationale.
 
       MACRO ENTER_COMMON
-          xor a:ld (is_modified),a
-          call clean_edit_buffer
-          call setup_field_editor
-          call call_state_on_enter
+          call _enter_common
           call nc,mess  ; Case not handled.
       ENDM
 
@@ -2046,9 +2047,6 @@ _ml_is_reachable
 update_pos_y
 ;Used by phrasui to dynamically change widget's pos_y
 ;In: a= offset y 
-;Out: !!! client must call /enter/ to refresh state for root.
-; (e.g. instr set on previous line but not new line, we must go through
-  ; w_optional again)
           push af
 ; Hack: needed to reset X position (at start of field)
       IF todo
@@ -2058,6 +2056,10 @@ update_pos_y
           call set_root_state
           pop af
           SET_STATE_BYTE(widget_pos_y)
+;Refresh state from root.
+; (e.g. instr set on previous line but not new line, we must go through
+  ; w_optional again)
+          ENTER_COMMON()
           ret
 
 ;1/ didn't work  2/ phrasui uses gedeihen_init anyway
@@ -3324,6 +3326,11 @@ _call_state_indirect
           ret z         ; NC then
           jp jp_bc_ext
 
+_enter_common
+          xor a:ld (is_modified),a
+          call clean_edit_buffer
+          call setup_field_editor
+;enchaine
 call_state_on_enter
           ld c,on_enter
           jr _call_state
