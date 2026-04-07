@@ -2,7 +2,8 @@
 todo  = 0
 ; 2026
 ; -- Alpha3 --
-  ; Apr 6 refresh_row: don't call CALL_ENTER after update_pos_y
+  ; Apr 7 _del_note: Also delete instr (fix #12)
+      ; 6 refresh_row: don't call CALL_ENTER after update_pos_y
         ; skip_or_next: call refresh_nofocus
             ; (fix #11 residual cursor when deleting a note)
 ; -- Alpha2 --
@@ -265,6 +266,7 @@ _del_note
 ._del_note_com
           call pre_modif
           call row_del_note
+          call row_del_instr
           call refresh_nofocus
           jr edit_row_next
 
