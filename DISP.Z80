@@ -6,6 +6,8 @@ dev_checks' = 1
 
 screen' = &4000         ; for status
 
+; -- Alpha 3 ---
+ ; Apr 12: status_clear_from: wasn't clearing all lines
 ; -- Alpha 2 --
  ; Jan 7: dh_text: fix update dh_scrpos
 
@@ -856,6 +858,7 @@ status_error
           call status_str_at
           ld a,":":call status_char
           call status_hexa_hl
+display_press_a_key_and_wait
           ld bc,txt_press_a_key+&8000
           call status_str
 ;sanity if assert comming while playing
@@ -985,11 +988,10 @@ status_clear_from
 ;Out: AF BC trashed
           call status_set_cursor
 
-; C:= width to clear (-1 for ldir)
-          ld a,r1'*2 -1
-          sub e
+; C:= width to clear
+          ld a,r1'*2
+          sub d
           ld c,a
-          ret z
 
           call status_prelude
           ld b,8
@@ -998,7 +1000,10 @@ status_clear_from
           push de
           ld l,e:ld h,d
           inc de
-          ld b,0:ld (hl),b:ldir
+          ld b,0:ld (hl),b
+          dec c:jr z,.okldir
+          ldir
+.okldir
           pop de
           pop bc
           ld a,d:add 8:ld d,a

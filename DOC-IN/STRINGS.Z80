@@ -24,3 +24,8 @@ txt_mess
 txt_press_a_key
       BYTE " Press a key",0
 
+txt_open BYTE "Open:",0
+txt_save BYTE "Save:",0
+
+txt_ctrl_a_b_c
+      BYTE "CTRL-A/B/C Drive A/B/Cat",0

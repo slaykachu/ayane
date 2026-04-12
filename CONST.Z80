@@ -1,8 +1,8 @@
 ; ---- Shared constants and struct def -----
 
-release = 0
+release = 1
 dev   = 1-release
-dev_checks = dev AND 0
+dev_checks = dev AND 1
 
 ; Unit is nop, as timer.current_clock 
 ; The slowest replay is then 65535 / 312 / 64 = 3.28 frames
@@ -208,6 +208,7 @@ x_pos_note = x_pos_octave + 12
 x_pos_command = 5       ; open/save
 x_pos_error = 10
 instr_name_width = 22
+x_pos_ctrl_a_b_c = 71
 ;-------------------------
 
 ; --------------------------
@@ -270,5 +271,6 @@ programming_error = &BE00 ; TODO: use except
 km_wait_key = &BB18
 
       ORG savepc,saveobj ; restore
+
 
 

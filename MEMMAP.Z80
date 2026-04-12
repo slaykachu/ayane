@@ -220,6 +220,8 @@ workzone SKIP &0200     ; salo, &8100:pianoui (tmp for display)
 tmp_buf = workzone      ; ayane, instrui
 salo_buf1 = workzone
 track_tmp = workzone + &80
+tmp_filename = workzone + &80
+; avoid clash since tmp_buf overwriten by status_init after cat
 salo_buf2 = workzone + &0100
 fx_by_track = workzone + &0100 ; MAX_TRACKS*track_fx_size 
 ; Reserve &100 so we can easily go from one track to the next

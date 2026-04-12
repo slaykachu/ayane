@@ -4,21 +4,21 @@
 
 CTRL-H for Help.
 
------ Alpha 2. 22 Jan 2026. -----------------
- - Phrase Editor:
-    - More editing facilities 
-    - Show row #, phrase id and transposition
-    - Display transposed notes
-    - Clear status line
-    - Fix display at end of song
-    - Fix infinite loop when transpose in middle of phrase 
- - Instrument selector: Can edit instrument name
+----- Alpha 3. 12 Apr 2026. -----------------
+- Fix issue #13:  Row isn't refreshed after DEL.
+- Fix issue #11:  Residual cursor when editing a note.
+- Fix issue #10:  Proper reset before loading ".aya" module.
+- Phrase editor:  CTRL-f0/f. go to first/last phrase
+- Phrase editor:  CTRL-SPACE will play current phrase 
+- Instr selector: More convenient name editing
+- Open/Save:      No need to type ".aya" extension
+- Open/Save:      CTRL-C to display cat, CTRL-A/B to change drive
 
 --- Known bugs ------------------------------
-#6: Some spurious artefacts with timer FX
+#8: Timer FXs: Some spurious artefacts
+#7: Timer FXs: Phase shift when FX is paused
 #4: C#4 PSG period rounded to 226 instead of 225
 #3: Instrument editor is too slugish. Plus, sometimes screen flickers
 #1: Timer FXs (sync-buzzer) dephasing relative to PSG square tone
     With pitch=0, no phase shifting should occur. Yet it does
     Mitigation: Deactivate PSG tone!
-

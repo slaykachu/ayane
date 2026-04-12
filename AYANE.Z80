@@ -4,6 +4,9 @@
 
 ; 2026
  ;--- alpha 3 ---
+  ; Apr
+   ;11: Add CAT (CTRL-C), |A and |B (CTRL-A/B)
+   ; 7: Automaticaly add ".aya" for load/save
   ; Feb
    ; 5: Plug status_init in assert.hook_bandaya
  ;--- alpha 2 ---
@@ -104,11 +107,17 @@ CRTC_R1_STATUS = 48     ; Setup BYTE widget
       END
 CRTC_R1_IO = 40         ; todo: check if used by disp
 CRTC_R2_IO = 46
-MAX_FILENAME_SIZE = 90  ; room for open: and cursor
+MAX_FILENAME_SIZE = 63  ; room for open: and "CRTL-A/B/C"
 
 km_reset = &BB03
 km_read_key = &BB09
 km_test_key = &BB1E
+
+txt_set_cursor = &BB75
+scr_get_position = &BC0B
+disc_catalog = &BC9B
+kl_find_name = &BCD4
+kl_far_pchl = &1B
 
 full_init = init_module
 dummy_instr_ui = init_module+2
@@ -202,7 +211,7 @@ start
           push hl
           CALL_DISP_BK(copy_filename) ; for display
           pop hl
-          ld de,tmp_buf
+          ld de,tmp_filename
           CALL_DISP_BK(copy_nt) ; for open_file
           jp open_file
       END
@@ -228,10 +237,13 @@ _ui_process_com
 ;_fallback
           ld c,a
           ld hl,shortcuts
+;enchaine
+scan_key_jp
           call scan_key
           ld a,c
           ret nc
           jp hl
+
 
 help
           JP_DISP(_help)
@@ -346,6 +358,7 @@ io_prelude
 ; Also, allow to use page C0:4000       
 ;Out: HL= tmp_buf
     ; BC= meta size (0 for now)
+    ; BK_IO (&c0) connected
 metadata_size = 0
           call status_off ; first so that cls is faster!
        ;   CALL_DISP_BK(cls)
@@ -356,11 +369,29 @@ metadata_size = 0
           ld de,io
           ld bc,io0_
           ldir
-          ld hl,tmp_buf
-      IF metadata_size  ; bc at 0 here
+          ld de,tmp_filename
+          push de
+          call maybe_add_extension
+          pop hl
+
+          ld bc,&7F00+BK_IO:out (c),c
           ld bc,metadata_size
-      END
           ret
+
+maybe_add_extension
+; In: DE: buffer
+          ld b,MAX_FILENAME_SIZE - 5
+.check_lp
+          ld a,(de):cp ".":ret z ;Don't change existing one
+          or a:jr z,.check_cont
+          inc de
+          djnz .check_lp
+.check_cont
+; Ajoute l'extension 
+          ld hl,extension_aya
+          jp copy_nt
+extension_aya BYTE ".aya",0
+
 
 _error
           ld a,err_io
@@ -395,7 +426,8 @@ status_init
 ;-----------------------------------------------
 
 open_command
-;-----------                        
+;-----------
+          ld bc,txt_open + &8000
           CALL_DISP_BK(edit_filename)
           ret nc
 open_file
@@ -408,6 +440,7 @@ open_file
 
 save_command
 ;-----------                        
+          ld bc,txt_save + &8000
           CALL_DISP_BK(edit_filename)
           ret nc
 ;Out of bank: save_file doesn't reconnect bk. 
@@ -416,6 +449,63 @@ save_command
           call save_file
           jp io_postlude
 
+      IF 0
+cat
+;--
+;As command: display "press a key" before returning 
+          call cat_common
+          call status_init ; Necessary to see "press a key"
+          LOCATION(x_pos_command,y_pos_last_line)
+          CALL_STATUS(status_set_cursor)
+          CALL_STATUS(display_press_a_key_and_wait)
+          call clear_status_last_line
+ ;          jp SCR_INIT   ; needed if mode has been changed
+          jp reenter_last
+      END
+
+drive_a
+;------
+          ld hl,rsx_a
+          jr drive_common
+
+drive_b
+;------
+          ld hl,rsx_b
+drive_common
+          call kl_find_name
+          ret nc
+          xor a
+          call kl_far_pchl
+;enchaine
+cat_common
+;---------                 
+;not so common anymore:
+;!!! only  used while editing filename
+          call io_prelude
+          ld hl,&0102
+          call txt_set_cursor
+          ld de,disc_buffer
+          call disc_catalog
+          call offset_firm_to_rupt ; sync if cat has scrolled.
+          call status_init
+;enchaine
+refresh_filename_line
+          LOCATION(x_pos_command-5,y_pos_last_line)
+cur_txt_command = $+1
+          ld bc,txt_open ; or txt_save
+          CALL_STATUS(status_str_at)
+          LOCATION(x_pos_ctrl_a_b_c,y_pos_last_line)
+          ld bc,txt_ctrl_a_b_c + &8000
+          CALL_STATUS(status_str_at)
+          ret
+
+offset_firm_to_rupt
+; Sync firm offset to rupture.
+          call scr_get_position
+          ld a,h:srl a:rr l
+          or &30:ld h,a
+          ld (offset),hl
+          ret
 
 clear_status_last_line
           LOCATION(0,y_pos_last_line)
@@ -427,6 +517,7 @@ clear_status_last_line
 ;-----------------------------------------------
 reenter_last
 ; Go back to last "screen" after selectors/help
+          ld hl,&3000:ld (offset),hl ; reset after scrolling cat
           call reset_sp
 reenter_jp = $+1
           jp &BE00
@@ -446,11 +537,19 @@ shortcuts
       BYTE kcspc:WORD play_song
       BYTE "O"-&40:WORD open_command
       BYTE "S"-&40:WORD save_command
+; No need since available from open/save
+;      BYTE "C"-&40:WORD cat
 ;misc
       IF allow_exit
       BYTE kesc:WORD exit
       END
-;      BYTE "o":WORD open
+      BYTE 0
+
+shortcuts'
+;While editing filename
+      BYTE "A"-&40:WORD drive_a
+      BYTE "B"-&40:WORD drive_b
+      BYTE "C"-&40:WORD cat_common
       BYTE 0
 
 
@@ -533,7 +632,6 @@ messages_error
       BYTE "message 1",0
       BYTE "message 2",0
 
-_txt_open BYTE "Open:",0
 
 start_disp_bk
           call init_disp_bk
@@ -666,14 +764,28 @@ field_refresh_wait_key
           call km_wait_key
           cp kesc:ret z ; ESC: NC
           cp kreturn:ccf ; C & Z: Return
-          ret           ; NZ if otherkeys
+          push af       ; C, NZ for other keys
+; Allow CTRL-A/B/C while editing filename
+          push bc:push de:push hl
+          ld c,a
+shortcut_hook = $+1     ; future: only allow that for filename
+          ld hl,shortcuts'
+;No need to connect disp specifically,
+;but ensure proper bank is re-connected at return
+          call call_disp:WORD scan_key_jp
+          pop hl:pop de:pop bc
+          pop af        ; C, NZ if other key
+          ret
 
 
 ; ----------------------------------
 edit_filename
-;in bk disp for name handling    
+;In: bc: txt open/save
+;In bk disp for name handling    
+          ld (cur_txt_command),bc
+          call refresh_filename_line
           ld hl,name_module
-          ld de,tmp_buf
+          ld de,tmp_filename
           push de
           call copy_nt
           pop hl
@@ -690,6 +802,8 @@ copy_filename
           scf
           ret
 
+rsx_a BYTE "A"+&80
+rsx_b BYTE "B"+&80
 
 ; ----------------------------------
           LIMIT(strings)
