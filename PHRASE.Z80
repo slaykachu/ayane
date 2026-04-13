@@ -7,7 +7,10 @@ do_add_empty_row = 0
 ; 2026    
  ; -- alpha 3 --
   ; Apr
-   ;13: phrase_get_rows#: s/skip_all/goto_next_row
+   ;13: skip_nfx: fix skipping of param: always word.
+          ; (fx signature was dropped a lot time ago, but this
+            ;code wasn't in sync)
+      ; phrase_get_rows#: s/skip_all/goto_next_row
                        ; otherwise eoc not followed
  ; -- alpha 2 --
   ; Jan       
@@ -1115,22 +1118,9 @@ skip_one_fx
 
           rra:jr nc,scom_nop
 
-          push af
-          call get_fx_sign
-
-; 000000-> no more param
-; ????01-> byte
-; ????10-> word
-; ????11-> word (table)
-
-sof_param_lp
-          or a:jr z,sof_param_end
-
-          inc hl
-          srl a
-          srl a:jr nc,sof_param_lp ; case 01
-          inc hl
-          jr sof_param_lp
+;All params: one word
+          inc l:inc l
+          ret
 
 sof_param_end
           pop af
@@ -1140,22 +1130,6 @@ scom_nop
 ;todo: TM management
           ret
 
-get_fx_sign
-; here we already point to fx_init
-; out: hl+=2 (addr fx consumed)
-
-          push de
-          ld e,(hl):inc hl
-          ld d,(hl):inc hl
-          dec e
-
-      IF dev_checks'
-;Player (and then fxs) out of bank.
-          ld a,d:cp &40:call nc,mess
-      END
-          ld a,(de)
-          pop de
-          ret
 
 
 

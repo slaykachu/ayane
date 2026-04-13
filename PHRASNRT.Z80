@@ -3,7 +3,8 @@
 ; 2026
 ; -- alpha3 -- 
 ; Apr
-  ; 23: Add test_phrase_full
+  ; 23: Add test_phrase
+      ; Add test_phrase_full
 ; -- alpha2 -- 
 ; Jan          
   ; 19: Fix test itself: cannot encode note >= 128 anymore
@@ -46,20 +47,30 @@
 ; Aug  8: Use testlib for init
         ; Add test_phrase_get_rows#
 ; Jun 12: Just version
+fail  = &BE00
 
       ORG &0100
       ENT tests
 
  ;      IMPORT "testlib.o"  ; unnecessary deps
+      IMPORT "memmap.i" ; for phrases_, fx_module
       IMPORT "phrase.o"
-      IMPORT "memmap.i" ; for phrases_
       IMPORT "chunk.o"  ; for Init_chunk_module
       IMPORT "memcpc.o" ; connect_bk_phrase
+      IF 0
+; Doesn't need after all
+; -- ply dependencies
+      IMPORT "instr.o"
+      IMPORT "song.o"
+      IMPORT "tracknub.o"
+      ORG fx_module     ; fx.o imported by ply
+      IMPORT "ply.o"
+      END
 
-fail  = &BE00
-
+      ORG free_ram_for_nrt
 tests
           call test_init
+          call test_skip_eoc
           call test_phrase_get_rows#
           call test_phrase_get_row_at
           call test_phrase_get_row_at'
@@ -110,6 +121,17 @@ test_init
           call nrt_init
           call song_get_current_phrase
           or a:call nz,fail
+          ret
+
+test_skip_eoc
+;------------
+          call nrt_init
+          xor a:call song_select_new_phrase
+          call connect_phrase_begin
+;sanity check
+          ld a,l:cp phrase_start:call nz,fail
+          call skip_all
+          ld a,l:cp phrase_start+5:call nz,fail
           ret
 
 test_phrase_get_rows#
@@ -1006,5 +1028,5 @@ helper_phrase_set_rows
       SKIP -$ AND &FF
 nrt_buf SKIP &0100
 
-      SKIP ramlimit - $
+      SKIP ramlimit' - $
 
