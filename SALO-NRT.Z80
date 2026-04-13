@@ -1,5 +1,7 @@
 ; <<<< Tests salo and generate libs >>>>
 ; 2026
+; -- Alpha3 --
+   ; Apr 13. test_assets: try with full phrase
 ; -- Alpha2 --
    ; Jan 21. test_big: Add test play
        ; 17. test_assets: actually test track loop
@@ -213,6 +215,17 @@ phrase4 = 4
           ld a,phrase4  ; skip id 1,2,3
           call song_select_new_phrase
           call check_save_load_save
+; -- Full phrase         
+          ld b,64
+.setrows
+          push bc
+          ld a,6:call phrase_select_new_row
+          pop bc
+          push bc
+          ld a,64:sub b:call row_set_note
+          ld a,1:call row_set_instr
+          pop bc
+          djnz .setrows
 ; - Empty track                              
           ld a,1        ; id
           ld bc,&0100   ; output and mix mode

@@ -5,6 +5,10 @@ do_add_empty_row = 0
       END
 
 ; 2026    
+ ; -- alpha 3 --
+  ; Apr
+   ;13: phrase_get_rows#: s/skip_all/goto_next_row
+                       ; otherwise eoc not followed
  ; -- alpha 2 --
   ; Jan       
    ;19: row_set_note/row_get_note: New note encoding
@@ -686,7 +690,7 @@ phrase_get_rows#
           call is_end_of_phrase
           jr z,.done
           inc c
-          call skip_all
+          call goto_next_row
           jr .lp
 .done
           ld a,c
@@ -1052,7 +1056,8 @@ skip_all_ext
           call scope_bk_phrase
 skip_all
 ; See /goto_next_row/ to follow eoc as well
-;In:  HL: start of row
+;In:  HL: start of row 
+        ; can be fake row eoc (for shift_in_row)
 ;Out: HL: post skip. BC, DE preserved.
           SKIP_LENGTH()
 skip_post_length
@@ -1097,8 +1102,8 @@ skip_nfx
 
           ld c,mask_fx0
           ld a,(hl):inc l
-          ld (dbg1),hl
-          ld (dbg2),a
+;          ld (dbg1),hl
+;          ld (dbg2),a
           inc b:dec b
           ret z
 skip_fxlp call skip_one_fx:sla c:djnz skip_fxlp
@@ -1198,6 +1203,7 @@ connect_current_row
           ld hl,(va_row_pnt)
       IF dev_checks'
           inc h:dec h:call z,mess
+          call is_end_of_phrase:call z,mess
       END
           pop af
           ret

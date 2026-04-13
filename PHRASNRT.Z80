@@ -1,6 +1,9 @@
 ; ---- Tests for phrase.o ----
 
 ; 2026
+; -- alpha3 -- 
+; Apr
+  ; 23: Add test_phrase_full
 ; -- alpha2 -- 
 ; Jan          
   ; 19: Fix test itself: cannot encode note >= 128 anymore
@@ -84,6 +87,7 @@ tests
           call test_phrase_delete_row_at
           call test_phrase_delete_row_before_end
           call test_phrase_stable_delete_row_at
+          call test_phrase_full
 
           call test_unpack_row_at
           call test_unpack_row_at'
@@ -743,6 +747,17 @@ test_phrase_stable_delete_row_at
           call _check_phrase_delete_row_at
           ret
 
+test_phrase_full
+          call nrt_init
+          xor a:call song_select_new_phrase
+          ld b,64:call helper_phrase_set_rows
+          call phrase_get_duration
+          inc c:dec c:call nz,fail
+          ld hl,nrt_delai*64:or a:sbc hl,de:call nz,fail
+          call phrase_get_rows#
+          cp 64:call nz,fail
+          ret
+
 test_unpack_row_at
           call nrt_init
           call dummy_phrase
@@ -973,6 +988,19 @@ dummy_phrase_64_rows
           ld de,0:call phrase_select_row_at
 note4 = 4
           ld a,note4:call row_set_note
+          ret
+
+helper_phrase_set_rows
+;in b: rows#
+.setrows
+          push bc
+          ld a,nrt_delai:call phrase_select_new_row
+          pop bc
+          push bc
+          ld a,64:sub b:call row_set_note
+          ld a,1:call row_set_instr
+          pop bc
+          djnz .setrows
           ret
 
       SKIP -$ AND &FF
