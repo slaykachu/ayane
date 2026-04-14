@@ -2,7 +2,10 @@
 todo  = 0
 ; 2026
 ; -- Alpha3 --
-  ; Apr 7 _del_note: Also delete instr (fix #12)
+  ; Apr
+      ;14 Fix regression Apr 6 (refresh_nofocus must also be called
+                               ;when not refreshing)
+      ; 7 _del_note: Also delete instr (fix #12)
       ; 6 refresh_row: don't call CALL_ENTER after update_pos_y
         ; skip_or_next: call refresh_nofocus
             ; (fix #11 residual cursor when deleting a note)
@@ -108,12 +111,14 @@ phrase_ui_process
           ld hl,phrase_dup:call bs_get:call z_to_val
           ld hl,must_refresh
           or (hl)
-          jr z,.skip_or_next
+          jr z,.okrefresh
           call refresh_page
           call refresh_row_from_time_cur ; needed for CTRL-DEL / RETURN
-;Needed to fix #11: residual cursor 
+.okrefresh
+;Needed to fix #11: residual cursor
           call refresh_nofocus
 .skip_or_next
+;auto skip?
 do_next_id = 1
 do_skip_id = 2
           ld a,(auto_skip)
@@ -267,7 +272,7 @@ _del_note
           call pre_modif
           call row_del_note
           call row_del_instr
-          call refresh_nofocus
+;          call refresh_nofocus
           jr edit_row_next
 
 has_instr
@@ -291,7 +296,7 @@ _del_instr
           jp z,consume_goto_next
           call pre_modif
           call row_del_instr
-          call refresh_nofocus
+ ;         call refresh_nofocus
           jr edit_row_next
 
 row_get_instr_ui
@@ -327,7 +332,7 @@ _del_vol
           jp z,consume_goto_next
           call pre_modif
           call row_del_vol
-          call refresh_nofocus
+  ;        call refresh_nofocus
           jr edit_row_next
 
 is_empty

@@ -5,9 +5,10 @@
 CTRL-H for Help.
 
 ----- Alpha 3. 12 Apr 2026. -----------------
-- Fix issue #13:  Row isn't refreshed after DEL.
-- Fix issue #11:  Residual cursor when editing a note.
-- Fix issue #10:  Proper reset before loading ".aya" module.
+- Fix issue #14:  Save fails with phrases too full
+- Fix issue #13:  Row isn't refreshed after DEL
+- Fix issue #11:  Residual cursor when editing a note
+- Fix issue #10:  Proper reset before loading ".aya" module
 - Phrase editor:  CTRL-f0/f. go to first/last phrase
 - Phrase editor:  CTRL-SPACE will play current phrase 
 - Instr selector: More convenient name editing
