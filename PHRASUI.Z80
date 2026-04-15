@@ -3,7 +3,8 @@ todo  = 0
 ; 2026
 ; -- Alpha3 --
   ; Apr
-      ;14 Fix regression Apr 6 (refresh_nofocus must also be called
+      ;14 _del_note Fix refresh of cleared instr 
+        ; Fix regression Apr 6 (refresh_nofocus must also be called
                                ;when not refreshing)
       ; 7 _del_note: Also delete instr (fix #12)
       ; 6 refresh_row: don't call CALL_ENTER after update_pos_y
@@ -272,6 +273,7 @@ _del_note
           call pre_modif
           call row_del_note
           call row_del_instr
+          call validate ; needed to activate w_refresh
 ;          call refresh_nofocus
           jr edit_row_next
 
