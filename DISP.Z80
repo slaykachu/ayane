@@ -7,7 +7,8 @@ dev_checks' = 1
 screen' = &4000         ; for status
 
 ; -- Alpha 3 ---
- ; Apr 12: status_clear_from: wasn't clearing all lines
+ ; Apr 18: Fix #16 flicker with 'ei' in disp_ret_ and status_ret
+     ; 12: status_clear_from: wasn't clearing all lines
 ; -- Alpha 2 --
  ; Jan 7: dh_text: fix update dh_scrpos
 
@@ -236,6 +237,7 @@ disp_ret
           res 3,h
           ex de,hl
 disp_ret_
+          ei
           ld sp,(vo_savesp)
 _disp_ret_
           ld (vo_scrpos),de
@@ -1093,12 +1095,13 @@ _status_chr
           JP_FROM_C1(disp_chr_internal_)
 
 status_ret
+          ei
+          ld sp,(vo_status_savesp)
           ld de,1-&2000
           add hl,de
           res 3,h
           ld (vo_status_pos),hl
           ex de,hl
-          ld sp,(vo_status_savesp)
           ret
 
 vo_status_savesp WORD 0
