@@ -1,14 +1,16 @@
------ Welcome in Ayane. For Bun! ------------
- - Code: m_dr_m (Dogma 2)
- - Piano: Sim1
+----- Welcome in Ayane. For Bun! ------------         ___
+ - Code: m_dr_m                                ..,-'''   '''-,..
+ - Piano:  Sim1                           \\\ \\ \  DOGMA 2 ,/ // ///
+CTRL-H for Help                                   '--_____--
 
-CTRL-H for Help.
-
------ Alpha 3. 12 Apr 2026. -----------------
-- Fix issue #14:  Save fails with phrases too full
-- Fix issue #13:  Row isn't refreshed after DEL
-- Fix issue #11:  Residual cursor when editing a note
-- Fix issue #10:  Proper reset before loading ".aya" module
+----- Alpha 3. 15 Apr 2026. -----------------
+- Fix #16: Status bar flickering while editing filename
+- Fix #15: Buzzer hard env not restored after syncbuzz stops
+- Fix #14: Save fails with phrases too full
+- Fix #13: Row isn't refreshed after DEL
+- Fix #12: Instr must be cleared when DELeting note
+- Fix #11: Residual cursor when editing a note
+- Fix #10: Proper reset before loading ".aya" module. Thanks AST
 - Phrase editor:  CTRL-f0/f. go to first/last phrase
 - Phrase editor:  CTRL-SPACE will play current phrase 
 - Instr selector: More convenient name editing
@@ -21,5 +23,3 @@ CTRL-H for Help.
 #4: C#4 PSG period rounded to 226 instead of 225
 #3: Instrument editor is too slugish. Plus, sometimes screen flickers
 #1: Timer FXs (sync-buzzer) dephasing relative to PSG square tone
-    With pitch=0, no phase shifting should occur. Yet it does
-    Mitigation: Deactivate PSG tone!
