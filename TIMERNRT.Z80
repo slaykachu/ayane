@@ -21,6 +21,9 @@ do_profile = 1
       END
 
 ; /\/\/\/ 2026 \/\/\/\/\/
+   ; --- alpha 3 ---
+  ; Apr 15 test_change_sync_buzzer: fix ref
+;!!!! todo: check why ref changes when do_profile = 1
    ; --- alpha 2 ---
   ; Jan 23 Remove obsolete test_waitlines
          ; Fix tests themselves:
@@ -792,7 +795,14 @@ ref1
 .clockref = clock0
       ELSE
 ;well set_reg13_insert_and_program was trigerred, so clock +period
-.clockref = clock0 + &D4D4 + shift1 ; not shift0 ???
+      IF do_profile
+      IF todo
+;check that
+      END
+.clockref = clock0 + &D4D4 + shift1 ; ???????
+      ELSE
+.clockref = clock0 + &D4D4 + shift0
+      END
       END
       BYTE [.clockref AND &FF] / 2 ; cpt
       BYTE anchor+hdr_cpt AND &FF ; link to next event

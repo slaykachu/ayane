@@ -5,11 +5,17 @@ need_speed = 1
 border_col = &54
 border_col' = &44
 
-; 2026 Jan 23: Don't invoke INIT_LISTS ourselves. ply will call preplay
+; 2026
+ ; -- alpha3 --
+  ; Apr 15: Fix #14 Buzzer hard env not restored after sync buzz stop
+              ; By adding active_sync# and forcing bit4 of reg13
+                 ; when it drops to 0
+ ; -- alpha2 --
+  ; Jan 23: Don't invoke INIT_LISTS ourselves. ply will call preplay
              ; Fix timing /chgend/
              ; Don't use PSG_L_HL_FAST (cont)
-         ; 22: Don't use PSG_L_HL_FAST, as Zik can hear it
-         ; 19: Use ARP_CLIP
+      ; 22: Don't use PSG_L_HL_FAST, as Zik can hear it
+      ; 19: Use ARP_CLIP
 
 MAX_FX_CHANGE_PARAMS = 5 ; type, evtpnt. Syncbuzz: env, period 
 MAX_TIMER_FXS = 15      ; used here only -> no ui check.
@@ -475,7 +481,7 @@ init_timer
 ; evt pnt = 0 : nevermind as no fx
           ld (hl),a:inc l
           djnz .raz
-
+          ld (active_sync#),a
           ret
 
 timer_code              ; for dev checks in instr.o
@@ -581,7 +587,7 @@ change_pnt = $+1
 
 .start
 ; Setup code as new event
-setup_tm = 48 + 20      ; until sbr_setup_tm 
+setup_tm = 48 + 26      ; until sbr_setup_tm 
           ld (hl),fx_type_sync_buzzer
           inc l
 ; --- Allocate slot in /events/
@@ -599,6 +605,9 @@ setup_tm = 48 + 20      ; until sbr_setup_tm
           ld (hl),e:inc l
 ; For next fx on same track
           ld (fx_by_track_pnt),hl
+
+; --- Update
+          ld hl,active_sync#:inc (hl)
 
 ; --- Insert event in event table
           ASSERT(hdr_cpt == hdr_link_free+1)
@@ -783,9 +792,8 @@ correct_tm = 6          ; don't count last ex af to compensate djnz
 
           CLOSE_LISTS()
 
-cut_tm = close_lists_tm + 11 ; Until .cutend (taken)
+cut_tm = close_lists_tm + 9 ; Until .cutend (taken)
           ld bc,cut_list
-          ld h,events/&0100
 .cutlp
 cut_tm_lp = 17
           ld a,(bc)
@@ -803,9 +811,9 @@ cut_tm_lp = 17
 ;change_params
 ; Change params of running fx.
 ; Can be called before or after psg
-change_params_tm = 10   ; until chgend taken
+change_params_tm = 11   ; until chgend taken
 
-          ex de,hl      ; d=events/&100
+          ld d,events/&0100
           ld hl,change_list
 .chglp
           ld a,(hl)
@@ -910,14 +918,24 @@ _do_cut
 ; In a: evt pnt
       IF dev_checks
           CHECK_EVENT_OFFSET(hdr_code)
-          ld a,(bc)     ; restore
-          SUB_TM''(9)
+          SUB_TM''(7)
       END
-cut_tm1 = 29            ; until jr race1 (taken)
+cut_tm1 = 51            ; until jr race1 (taken)
+
+;-- Re-trigger for normal buzz when no more sync buzz (issue #14)
+      IF todo
+; don't do that when cutting other fx!!
+      END
+          ld hl,active_sync#:dec (hl)
+          ld hl,psg_regs+13:ld a,(hl)
+          ld e,&10:jr nz,$+3:or e
+          ld (hl),a
 
 ; -- release event (free_slot)
 ; (1) event.hdr_link_next = free
 ; (2) free_slot.pnt = event
+          ld a,(bc)
+          ld h,events/&0100
           add hdr_link_free - hdr_code
           ld l,a
           ld a,(free_slot) ;  
@@ -958,7 +976,7 @@ removelp_tm = 14
           call z,mess'
       ELSE
 removelp_tm = 13
-          jr z,.mess
+          jr z,.exit    ;mess, nothing we can do
       END
       IF todo
 ;Use SUB_TM_CALL. But then check how to avoid race condition
@@ -971,7 +989,7 @@ removelp_tm = 13
 .removefound
           ld a,(hl)
           ld (de),a
-.mess
+.exit
           RET_ROUT'(cut_tm1 + cut_tm2 + 4 + cut_tm_lp)
 
 .race1
@@ -1000,7 +1018,11 @@ cut_tm3 = 8             ; until jr .skip_hl' (taken)
           ld l,(hl)
           add (hl)
           CPT_TO_CODE()
+
+;-- For re-trigger for normal buzz (issue #14)
           exx
+          ld hl,psg_regs+13
+          set 4,(hl)
           RET_ROUT(cut_tm1 + cut_tm3 + 14 + cut_tm_lp) ;(68) 
 
 ;-------------------------------------
@@ -1120,6 +1142,7 @@ rasters BYTE border_col,border_col'
 
 free_slot WORD events
 replay_period_in_nops WORD replay_default
+active_sync# BYTE 0
 
 nrt_msb_tm BYTE &F7
 dbg_tm_marker BYTE &F7  ; tm of next event

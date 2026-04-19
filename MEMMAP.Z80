@@ -40,15 +40,15 @@ chunk_module = &0475
 ;timer = &0A61
 
       IF dev_checks
-instr_module = &0EE0
-chung = &10A7           ; phrasuit (for test)
+instr_module = &0EF0
+chung = &10B7           ; phrasuit (for test)
 ; -- phraseui, uiloop, salo (via playsong.o)
-ppi   = &1590
-piano = &15EF
+ppi   = &15A0
+piano = &15FF
 ; --  uiloop
-instrui = &1749
-instrsel = &1B69
-uiloop = &1BFF
+instrui = &1759
+instrsel = &1B79
+uiloop = &1C0F
 ; ---- uiloop end ----
 ; -- phrasui, salo
 ;padding
@@ -71,17 +71,17 @@ code_main = &3D20
 
       ELSE
 
-instr_module = &0E20
-chung = &0FB9
+instr_module = &0E60
+chung = &0FD9
 ;13b0 "AYA!  " what's that
 ;then free?
 ; -- phraseui, uiloop, salo (via playsong.o)
-ppi   = &1490
-piano = &14EF
+ppi   = &14B0
+piano = &150F
 ; --  uiloop
-instrui = &1610
-instrsel = &1A29
-uiloop = &1AE0
+instrui = &1630
+instrsel = &1A49
+uiloop = &1B00
 ; ---- uiloop end ----
 ; -- phrasui, salo
 ;padding
@@ -231,7 +231,7 @@ salo                    ; &8200
 tmp_buf_nrt SKIP &0600  ; well except salo-nrt!
 field_module = &8BB0
 ged   = &8C7C
-free_ram_for_nrt = field_module ; used by salo-nrt, tracknrt
+free_ram_for_nrt = field_module ; used by salo-nrt, tracknrt, phrasnrt
 ;free room &9e70-&9eff
 bandaya = &9F00
 

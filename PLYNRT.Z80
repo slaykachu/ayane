@@ -1,6 +1,8 @@
 ; Tests ply.o            
 do_profile = 1
-; 2026
+; 2026   
+; --- alpha3
+      ;15 Add test_buzz_after_sync (already ok)
 ; --- alpha2 --
   ; Jan     
       ;17 Add test_track_loop
@@ -47,6 +49,8 @@ track1 = tracks+4       ; track 0 empty (reserved)
 fail  = &BE00
 
 tests
+          call test_buzz_after_sync
+      BRK
       IF do_profile
           call test_profiling
           call test_timer_nop
@@ -61,6 +65,7 @@ tests
           call test_clr
           call test_clr_fx
           call test_sync_buzzer
+          call test_buzz_after_sync
           call test_endoftrack
           call test_track_loop
           ret
@@ -283,6 +288,41 @@ test_sync_buzzer
           djnz .lp
           ret
 
+test_buzz_after_sync
+;-------------------
+          call nrt_init
+          call dummy_instr_sync ; 1
+          call dummy_instr_buzz_loop ; 2
+          call nrt_dummy_phrase
+          call nrt_dummy_phrase1
+
+;Goto frame 3 (past instr0)
+      IF do_profile
+          call tm_play_from_start
+          call tm_play
+          call tm_play
+          call tm_play
+      ELSE
+          call nrt_play_from_start
+          call play
+          call play
+          call play
+      END
+          ld hl,.ref
+          ld de,psg_regs
+          ld b,14
+          call compare_sized
+          ret
+
+.ref
+      WORD &EEE4
+      WORD &EEE4
+      FILL 3,untouched
+      BYTE &3D
+      BYTE 0,&10,0
+      BYTE &EF,0
+      BYTE nrt_buzz
+
 test_endoftrack
 ;--------------
 ; track handling should be no-op after end
@@ -355,6 +395,25 @@ nrt_phrase0_in_track1
           ld hl,rdv0
           call Set_phrase_at_t
           ret
+
+nrt_dummy_phrase1
+; --- dummy phrase with instr 2
+          ld a,1:call song_select_new_phrase
+nrt_duration = 12
+          ld a,nrt_duration
+          call phrase_select_new_row:call nc,fail
+          ld a,0:call row_set_note
+          ld a,2:call row_set_instr
+;enchaine
+; --- dummy track
+nrt_phrase1_in_track2
+          ld a,2:call Song_select_track
+          ld a,1
+          ld hl,rdv0
+          call Set_phrase_at_t
+          ret
+
+
 
 rdv0  FILL 3,0
 
@@ -530,6 +589,35 @@ MAX_TM = &80
 tmp
           SUB_TM(3)
           ret
+
+;-----------------------------
+dummy_instr_buzz_loop
+;--------------------
+          ld a,2        ; id (0 is reserved)
+          ld c,0        ; nb params
+          call New_instr_ayane
+          xor a
+          ld de,row_buzz_loop
+          call helper_setrow
+          ld b,0:call instr_set_loop
+          ret
+
+row_buzz_loop
+      BYTE 0:WORD 0:BYTE &38,0
+          VOL_HARD()
+nrt_buzz = &0A
+      BYTE nrt_buzz
+      FILL fx0_type - [$-row_buzz_loop],0
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_null
+      FILL instr_fx_size-2,0
+      WORD fx_end
+      IF instr_row_size_max - [$-row_buzz_loop]
+ !!! incomplete
+      END
+
+;-----------------------------
 
 timer_nop
 ;--------         
