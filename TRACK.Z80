@@ -1761,7 +1761,8 @@ track_get_state_at
 ; For now, state consists on only transpose
 ; In: hl = pnt to t
 ; Out: A = transpose
-     ; hl preserved
+     ; hl preserved    
+     ; set fetched_event, fetched_t0, fetched_t1  
           call scope_bk_track
           push hl:push ix
           ld a,evt_set_transpose_lsb
@@ -2470,7 +2471,7 @@ fetched_event WORD 0
 timestamp TIME(0)
 previous_timestamp TIME(0)
 time_param TIME(0)
-
+time_phrasui TIME(0)
 ;-----------------
 ; AUM Variables     
 ;-----------------
