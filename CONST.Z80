@@ -16,7 +16,8 @@ replay_default = replay_50_08Hz
 delai_ui_default = 6
 diapason_default = 440*128
 
-MAX_INSTRS = 99         ; instrsel
+MAX_INSTRS = 99         ; instrsel, memmap
+; !!! Actually 98 since 0 used for instr_clr
 MAX_PHRASES = 99        ; 99 for ui. shall be extended
 MAX_TRACKS = 16         ; used by track, ply, salo
 MAX_FX_BY_INSTR = 2     ; 7 max (see timer.fxcutend)
@@ -25,7 +26,7 @@ MAX_FX_BY_INSTR = 2     ; 7 max (see timer.fxcutend)
 note_c_0_encoding = -128 ; Notes are signed, for ovf detection
 note_c_10 = 10 * 12     ; C-10 -> period 0 
 note_clr = 127          ; *not* encoded as is, just for "unpack_row_at"
-instr_clr = -1          ; still allow for 254 instruments
+instr_clr = 0
 
 ;ply, salo, comp
 type_evt_comment = 0

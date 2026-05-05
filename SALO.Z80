@@ -1,6 +1,8 @@
 ;   <<<<< SAVE/LOAD module >>>>>
-;--- Alpha 3 ---
 ; 2026
+;--- Alpha 4 ---
+ ; May 5: Use MAX_INSTRS
+;--- Alpha 3 ---
  ; Feb 5: Also /Init_chung/ before loading (fix issue #10)
 
 ;--- Alpha 1 ---
@@ -1198,7 +1200,7 @@ save
 .instr_next
           pop af
           inc a
-          cp 254        ; 254: reserved for mute. 255 for sentinelle
+          cp MAX_INSTRS
           jp nz,.instr_lp
 
           SAVE_END_OF_LIST() ; no more instrs

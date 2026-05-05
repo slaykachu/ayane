@@ -170,8 +170,8 @@ row_link = 2
       IF dev_checks'
 _check_instr_pnt
           push de
-          ld de,tables:or a:sbc hl,de:add hl,de:call c,mess
-          ld de,tables_:or a:sbc hl,de:add hl,de:call nc,mess
+          ld de,instr_pool:or a:sbc hl,de:add hl,de:call c,mess
+          ld de,instr_pool_:or a:sbc hl,de:add hl,de:call nc,mess
           pop de
           ret
 
@@ -246,7 +246,7 @@ song_reset_chung
           ld hl,instr_idx
           ld de,instr_head_name
           ASSERT(instr_idx AND &FF == 0)
-          ld b,l
+          ld b,MAX_INSTRS
 .raz      ld (hl),instr_null AND &FF
           add hl,de
           ld (hl),0:inc hl ; clear name pnt
@@ -412,7 +412,8 @@ instr_ayane_append_rows
 ;----------------------
 ; Ayane's version: full row.
 ; Only used by chipn.
-
+; in: b = # rows 
+    ; hl = data rows
           call _prelude
 .rowlp
           ld a,instr_row_size_max
@@ -685,8 +686,9 @@ instr_append_empty_row
           call instr_goto_last_row
       IF dev_checks'
 ;link can be in row itself or instr header
+;(cannot use _check_instr_pnt)
           ld a,h
-          cp tables/&0100:call c,mess
+          cp instr_pool/&0100:call c,mess
           cp instr_idx_/&0100:call nc,mess
       END
           ld (hl),e:inc hl
@@ -759,8 +761,8 @@ instr_goto_row
           inc c         ; row_counter
       IF dev_checks'
           ld a,d
-          cp tables/&0100:call c,mess
-          cp tables_/&0100:call nc,mess
+          cp instr_pool/&0100:call c,mess
+          cp instr_pool_/&0100:call nc,mess
       END
           ex de,hl
 .entry
@@ -1070,7 +1072,7 @@ allocate
           ld de,(va_free_pnt)
           ld l,a:ld h,0:add hl,de
           push bc
-          ld bc,tables_
+          ld bc,instr_pool_
           or a:sbc hl,bc:add hl,bc:call nc,memory_full
           pop bc
           ld (va_free_pnt),hl
@@ -1150,7 +1152,7 @@ def
 ; otherwise orgams set high $ = 7cxx, which is inconvenient
       BYTE "Aya!"       ; sign: For sanity checks (unused for now)
 null_string BYTE 0
-      WORD tables       ; va_free_nt: pnt in free zone
+      WORD instr_pool   ; va_free_nt: pnt in free zone
 def_size = $-def
 
 save_pc = $

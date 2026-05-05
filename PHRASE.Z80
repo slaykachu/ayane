@@ -596,6 +596,9 @@ phrase_set_blank_row_at
           dec b:jr z,.padok
 ;put max duration
           ld (hl),&FF
+      IF dev_checks'
+          call is_end_of_phrase:call z,mess
+      END
           call skip_all
           call insert_new_row
           inc bc        ; bc -= &ff (with dec b at padlp)
@@ -666,9 +669,6 @@ phrase_set_blank_row_at
 insert_new_row
 ;In:  HL= start of row
 ;Out: HL= same (start of inserted row)
-      IF todo
-; what if eoc, and new row doesn't fit?
-      END
           push bc:push de
           ld e,l:ld d,h
           ld c,pos_flags+flags_sz+reserved_byte
@@ -985,7 +985,7 @@ row_del_vol
 
 row_clr
 ;------
-; Set 'clr' flag (instr 127 so no special test to make
+; Set 'clr' flag (instr 0 so no special test to make)
           call row_del_note
           call row_del_vol
           ld a,instr_clr
@@ -1044,13 +1044,14 @@ row_is_clr
           call scope_bk_phrase
           call row_get_instr_
           ret z
-          cp instr_clr
+          ASSERT(instr_clr == 0)
+          or a
 flip_z
           jr z,.nz
           cp a
           ret
 .nz
-          or a          ; here we know a<>0
+          push bc:ld b,0:inc b:pop bc
           ret
 
 ;-------------------------------

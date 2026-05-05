@@ -152,8 +152,8 @@ instr_default
           ld h,(hl):ld l,a
       IF dev_checks
 ; If wrong, typically BK_INSTR wasn't connected
-          ld a,h:cp tables/&0100:call c,mess
-          cp tables_/&0100:call nc,mess
+          ld a,h:cp instr_pool/&0100:call c,mess
+          cp instr_pool_/&0100:call nc,mess
 ; no loop in header.
           bit loop_bit,h:call nz,mess
           SUB_TM''(16)

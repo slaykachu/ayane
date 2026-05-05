@@ -1,10 +1,13 @@
 ; Tests ply.o            
-do_profile = 1
+do_profile = 0
 ; 2026   
+; --- alpha4
+  ; May
+      ; 6 Code in free_ram_for_nrt (since no space left before ramlimit)
 ; --- alpha3
+  ; Jan     
       ;15 Add test_buzz_after_sync (already ok)
 ; --- alpha2 --
-  ; Jan     
       ;17 Add test_track_loop
         ; Fix assemble when do_profile = 0
         ; Fix nrt_setup_play. init_timer was never called!?
@@ -48,9 +51,9 @@ track1 = tracks+4       ; track 0 empty (reserved)
 ; ------------------------------------------------
 fail  = &BE00
 
+      ORG free_ram_for_nrt
+
 tests
-          call test_buzz_after_sync
-      BRK
       IF do_profile
           call test_profiling
           call test_timer_nop
@@ -627,11 +630,11 @@ timer_nop
           exx
           ret
 
-      SKIP ramlimit - $
-
 ; Put at the end to respect ORG order (workaround bug#108)
 ; No more room befor ramlimit
-      ORG free_ram_for_nrt
       IMPORT ":orgrel/prof.o"
+
+hi
+      SKIP ramlimit' - $
 
 
