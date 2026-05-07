@@ -13,12 +13,14 @@ MAX_CHIP_INSTR# = 32
 
         ; 2026  
           ; May
-           ;  6 - poke_noise: fix rounding (was poking 1 when no noise)
+           ;  8 Skip ".." instrument (portamento)
+                ; was previously poked as instrument 71!
+           ;  6 poke_noise: fix rounding (was poking 1 when no noise)
           ; Apr
-           ; 22 - poke_noise: support alternated noise value (&7f).
+           ; 22 poke_noise: support alternated noise value (&7f).
                             ; support only first frame       (&80).
-              ; - collect max length in pattern for each instr
-           ; 21 - Merge changes from minimala_ok: 
+              ; collect max length in pattern for each instr
+           ; 21 Merge changes from minimala_ok: 
     ; create_instr: fix bug .chipdownarp_noise wasn't picked for
                     ; constant noise
     ; chipvib: proper vibrato correction
@@ -294,6 +296,15 @@ patterns
           call row_set_note
           call connect_bk_chip
           ld a,":":call consume_char
+; ".." is portamento. For now, skip it
+      IF todo
+; handle it (or at least warn)
+      END
+          ld a,(hl):cp ".":jr nz,.setinstr
+          call consume_char
+          call consume_char
+          jr .okinstr
+.setinstr
           call hexXX2val
           ld (cur_instr),a
           call row_set_instr
@@ -301,6 +312,7 @@ patterns
           call get_start_row_pnt
           ld a,(cur_row):ld (hl),a
           pop hl
+.okinstr
           call connect_bk_chip
           jr .ok_note
 
