@@ -1,0 +1,69 @@
+; <<<< Helper to convert chipnsfx to .aya >>>>
+
+; 2025
+  ; Oct 15: Reorder to fit in RAM. 
+  ; Aug  8: Fix ram occupation
+          ; Use testlib.init_for_test
+
+      IMPORT "memmap.i"
+
+      ORG 0:BRK
+
+      ORG code_start
+      ENT start
+
+      IMPORT "import.i"
+          IMPORT_SALO_DEPS()
+      IMPORT "phrase.o" ; phrase_reset
+      IMPORT "track.o"  ; Reset_tracks_and_subsongs
+; testlib and salo at the end (doesn't fit here)
+fail  = &BE00
+hu
+      SKIP ramlimit - $
+
+      ORG salo
+      IMPORT "salo.o"
+      IMPORT "testlib.o"
+      IMPORT "chipn.o"
+
+start
+; Import chipnsfx, and save as ayane module
+          call init_helper
+          ld hl,vampchip
+          call conv_chipn
+          ld hl,aya1
+          ld bc,0
+          call save_file:call nc,fail
+
+; For test purpose, load and save
+          call init_helper
+          ld hl,aya1
+          ld bc,0
+          call load_file
+          call nc,fail
+          ld hl,aya'
+          ld bc,0
+          call save_file:call nc,fail
+          ret
+
+init_helper
+          call init_for_test
+          call phrase_reset
+          call Reset_tracks_and_subsongs
+          ret
+
+;aya1 BYTE "testdata/vampire1.aya",0
+;aya' BYTE "testdata/vampire'.aya",0
+aya1  BYTE "testdata/4k-2026.aya",0
+;aya'  BYTE "testdata/4k-2026'.aya",0
+aya'  BYTE "4k.aya",0
+
+hi
+      SKIP workzone_chipn - $
+
+      BANK BK_IO        ; &c0
+      ORG imported_module
+vampchip
+      LOAD "4k-2026.chp" ; with header
+;      LOAD "ums:chp/vampire1.chq" ; with header
+

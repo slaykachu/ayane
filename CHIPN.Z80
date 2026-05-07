@@ -3,12 +3,33 @@ hack_4k08 = 0
 hack_kim9 = 0
 hack  = 1
 dev_checks = 1
+MAX_CHIP_INSTR# = 32
          ; Convertion for chip'n'sfx
 
         ; TOC:  
           ; - song_map
           ; - patterns
           ; - instruments
+
+        ; 2026  
+          ; May
+           ;  6 - poke_noise: fix rounding (was poking 1 when no noise)
+          ; Apr
+           ; 22 - poke_noise: support alternated noise value (&7f).
+                            ; support only first frame       (&80).
+              ; - collect max length in pattern for each instr
+           ; 21 - Merge changes from minimala_ok: 
+    ; create_instr: fix bug .chipdownarp_noise wasn't picked for
+                    ; constant noise
+    ; chipvib: proper vibrato correction
+              ; - song_select_new_phrase: must save hl now
+              ; - phrase_select_new_row:  idem + doesn't return Carry 
+              ; - Deactivate special chipn instrument
+              ; - instr: actually in hexa
+use_instr_chip_down_arp = 0
+use_instr_chip_down_arp_noise = 0
+use_instr_chip_down_vib = 0
+use_instr_chip_down_vib_noise = 0
 
         ; 2025  
         ; ----- v0aq -----
@@ -91,7 +112,7 @@ v0l2  = 1               ; Activate changes for kim9.chp
 
  ; Needed as chipconv.o also import "salo.o"
  ; And we use phrase and track (Song_add_map) as well.
-          IMPORT_SALO_DEPS(1)
+          IMPORT_SALO_DEPS()
       IMPORT "plyconf.i" ; tmp hack: some stuff deactivated
 
 connect_bk_chip = connect_bk_io
@@ -185,7 +206,11 @@ song_map
 ; ------
 patterns
 ; ------
-
+          push hl
+          ld hl,max_length_per_instr
+          ld b,MAX_CHIP_INSTR#
+.raz      ld (hl),0:inc hl:djnz .raz
+          pop hl
 .patlp                  ; each pattern
           ld a,(hl):cp "="
           jp z,.patend
@@ -210,11 +235,16 @@ patterns
           ld a,c
       END
 
-          call song_select_new_phrase:call nc,fail
+          push hl
+          call song_select_new_phrase
+          pop hl
+          call nc,fail
+          xor a:ld (cur_row),a
+          ld a,instr_none:ld (cur_instr),a
 .rowlp
           call connect_bk_chip
           call is_nl
-          jr z,.rowend
+          jp z,.rowend
 
           ld a," ":call consume_char
 ;----
@@ -222,19 +252,27 @@ patterns
 ;----             
       IF todo
 ;If same note: don't flag it
+;!!! but update_max_length must be called
       END
           ld a,(hl)
-          cp ".":jr z,.no_note
+          cp ".":jp z,.no_note
       IF v0l2
           cp "=":jr z,.break
       END
 
+          push hl
+          call update_max_length
+
 ; set delai to 0, proper delai added at end of iteration
           xor a
-          call phrase_select_new_row:call nc,fail
+          call phrase_select_new_row
+          pop hl
           call connect_bk_chip
 
-          ld a,(hl):inc hl
+          ld a,(hl)
+          cp "^":jr z,.clear
+
+          inc hl
           add notes AND &FF - "A":ld e,a
           ld d,notes/&0100
           ld a,(de):ld c,a
@@ -256,8 +294,13 @@ patterns
           call row_set_note
           call connect_bk_chip
           ld a,":":call consume_char
-          call decXX2val
+          call hexXX2val
+          ld (cur_instr),a
           call row_set_instr
+          push hl
+          call get_start_row_pnt
+          ld a,(cur_row):ld (hl),a
+          pop hl
           call connect_bk_chip
           jr .ok_note
 
@@ -272,16 +315,28 @@ patterns
           jr .ok_note
       END
 
+.clear
+          call consume_inline:BYTE "^^^:..",0
+          push hl
+          call row_clr
+          pop hl
+          ld a,instr_none:ld (cur_instr),a
+          jr .ok_note
 
 .no_note
           call consume_inline:BYTE "...:..",0
 ;enchaine
 .ok_note
-          ld a,(delai)
-          call row_add_duration
+          push hl
+          ld a,(delai):call row_add_duration
+          ld hl,cur_row:inc (hl)
+          pop hl
           jp .rowlp
 
 .rowend
+          push hl
+          call update_max_length
+          pop hl
           call skip_nl
           jp .patlp
 .patend
@@ -339,22 +394,7 @@ max_rows = &20          ; hack to avoid memfull when registering instr
           call hexXX2val:ld c,a ; step
           ld (noise),bc
           call consume_space
-   ; poke noise even in default instrument is not used in the end 
-   ; done even if noise = 0 (save test) 
-          ld a,c
-          cp &7F:call z,to_be_implemented
-          cp &80:call z,to_be_implemented
-          push hl
-          ld hl,workzone + instr_noise
-          ld de,instr_row_size_max
-          ld a,b
-          ld b,max_rows
-.noiselp
-          ld (hl),a:3 ** srl (hl)
-          add hl,de
-          add c
-          djnz .noiselp
-          pop hl
+          call poke_noise
 ;fx
           call hexX2val
           push af
@@ -392,7 +432,7 @@ create_instr
 
           ld bc,(noise)
           ld a,c:or b:jr z,.chipdown
-          ld a,c:jr nz,.instr_default
+          ld a,c:or a:jr nz,.instr_default
 ;Constant noise
           ld a,(fx)
           or a:jr z,.chipdownarp_noise
@@ -488,6 +528,7 @@ create_instr
           jr .instr_default
       END
 
+      IF use_instr_chip_down_vib OR use_instr_chip_down_vib_noise
 .chipdownvib_com
 ; Flatten pitch "table"
           ld hl,workzone + instr_pitch
@@ -509,6 +550,7 @@ create_instr
           ld b,0        ; vib: loop at 0
           call instr_set_loop
           ret
+      END
 
 .instr_default
       IF use_instr_default
@@ -596,6 +638,29 @@ create_instr
           pop bc
       END
 
+; Clip instr len to actually used (to avoid mem full)
+          ld a,(cur_instr)
+      IF dev_checks
+          cp instr_none:call z,mess
+      END
+          push hl
+          push bc
+          call get_start_row_pnt
+          ld bc,max_length_per_instr - start_row_per_instr
+          add hl,bc
+          ld e,(hl)
+          ld d,0
+          ld l,d:ld h,d
+          ld a,(delai)
+.mul      add hl,de
+          dec a
+          jr nz,.mul
+          pop bc
+          inc h:dec h:jr nz,.okinstrlen
+          ld a,b:cp l:jr c,.okinstrlen
+          ld b,l
+.okinstrlen
+          pop hl
           call instr_ayane_append_rows
           pop bc
           dec b
@@ -617,6 +682,46 @@ create_instr
 ; ----------------------------------------
 ; Helpers high level
 ; ----------------------------------------
+poke_noise
+; In: B = X
+    ; C = Y
+   ; poke noise even if default instrument is not used in the end 
+   ; and done even if noise = 0 (save test) 
+          push hl
+          ld hl,workzone + instr_noise
+          ld de,instr_row_size_max
+          ld a,c
+          cp &7F:jr z,.noise_alt
+          cp &80:jr z,.only_first_frame
+          ld a,b
+          ld b,max_rows
+.noiselp
+          ld (hl),a:3 ** srl (hl):jr nc,$+3:inc (hl)
+          add hl,de
+          add c
+          djnz .noiselp
+          pop hl
+          ret
+
+.noise_alt
+; Poke X and -X alternatively
+          ld a,b:3 ** srl a:jr nz,$+3:inc a
+          ld c,a
+          ld a,32:sub c
+          ld b,max_rows / 2
+.noise_altlp
+          ld (hl),c:add hl,de
+          ld (hl),a:add hl,de
+          djnz .noise_altlp
+          pop hl
+          ret
+
+.only_first_frame
+          3 ** srl b:jr nz,$+3:inc b
+          ld (hl),b
+          pop hl
+          ret
+
       IF v0l2
 poke_fx
 ; A= fx
@@ -745,7 +850,8 @@ poke_fx
       IF hack_kim9
           ld a,6        ; Boum1 volume too low after that 
       ELSE
-          call to_be_implemented ; compute length wrt volume fading
+       ;   call to_be_implemented ; compute length wrt volume fading
+          ld a,12       ; temp hack 4k-2026
       END
       END
           push af
@@ -773,8 +879,9 @@ poke_fx
           ld a,c
       IF hack_minimala
 ; Hack for minimala.chp, as we don't do proportional vibrato
-          cp 12:ld c,&21:jr z,.okhack
-          inc a:srl a:ld c,a
+          cp &0A:ld c,3:jr z,.okhack
+          cp &09:ld c,2:jr z,.okhack
+          ld c,a
       ELSE
       IF hack_4k08
 ; hack for 4k08.
@@ -1043,6 +1150,32 @@ get_arp_Y
           ld c,-12
           ret
 
+update_max_length
+; collect length (in rows#) of cur_instr
+;OUT: HL = pnt in start_row_per_instr
+instr_none = -1
+          ld a,(cur_instr):cp instr_none
+          ret z
+          call get_start_row_pnt
+          ld b,(hl)
+          push hl
+          ld a,(cur_row):sub b
+          ld bc,max_length_per_instr - start_row_per_instr
+          add hl,bc
+          cp (hl)
+          jr c,$+3:ld (hl),a ; update max
+          pop hl
+          ret
+
+get_start_row_pnt
+;IN: A = instr #
+;OUT: HL = pnt 
+          ld h,start_row_per_instr / &0100
+          add start_row_per_instr AND &FF:ld l,a
+          ret nc
+          inc h
+          ret
+
 ; Variables (temp)
 delai BYTE 
 global_transpose BYTE 
@@ -1054,5 +1187,8 @@ XY    WORD
 fx_rows# BYTE 
 fx_loop_rows# BYTE 
 cur_instr BYTE 
+cur_row BYTE 
+start_row_per_instr SKIP MAX_CHIP_INSTR#
+max_length_per_instr SKIP MAX_CHIP_INSTR#
 
 hi
