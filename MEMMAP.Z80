@@ -1,5 +1,8 @@
 ; ========= Shared buffers and variables ==========
-; 2026 May
+; 2026 May  
+         ;  8 Even more room for instruments:
+                 ; instr_pool: s/&5000/&4e00  (less room for events)
+                 ; still not enough for 4k-2026.chp
          ;  4 More room for instruments
 ; 2025 Dec
          ; 24 Reorder to get rid of ayalib.o
@@ -142,14 +145,12 @@ phrases_ = &7600        ; end
 ;tracks    ; for now tracks defined in track.o: index itself
 track_events
 
-; -- tables (instr rows, arpeggios, ...)
-      ORG &5000
+; -- tables: instr rows. Future: arpeggios, ...
+      ORG &4E00
 track_events_
-;tables                  ; might lower it. check hb4: which place would
 instr_pool
       ORG &7700
 instr_pool_
-;tables_
 subsongs SKIP &0100     ; &100 for chained list with just LSB
       ORG &7800         ; simplify instr pnt computation for ply
 instr_idx SKIP instr_head_size*[MAX_INSTRS+1] ; chung, ply

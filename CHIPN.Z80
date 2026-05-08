@@ -13,7 +13,8 @@ MAX_CHIP_INSTR# = 32
 
         ; 2026  
           ; May
-           ;  8 Skip ".." instrument (portamento)
+           ;  8 Double /workzone_size/ (for 4k-2026)
+           ;  7 Skip ".." instrument (portamento)
                 ; was previously poked as instrument 71!
            ;  6 poke_noise: fix rounding (was poking 1 when no noise)
           ; Apr
@@ -120,7 +121,7 @@ v0l2  = 1               ; Activate changes for kim9.chp
 connect_bk_chip = connect_bk_io
 workzone_chipn = &9800  ; After testlib+chipn in chipconv.o!
 workzone = workzone_chipn
-workzone_size = &0600   ; actually less used, see /max_rows/
+workzone_size = &0A00
 
 fail  = &BE00
 to_be_implemented = &BE00
@@ -382,8 +383,8 @@ instruments
 ; we switch to chipnsfx like instr. 
 ;Well, some corner cases not handled (noise decreasing too slowly)
 
-;max_rows = workzone_size / instr_row_size_max
-max_rows = &20          ; hack to avoid memfull when registering instr
+max_rows = workzone_size / instr_row_size_max
+;max_rows = &20          ; hack to avoid memfull when registering instr
 
           push hl
           ld hl,workzone
