@@ -1,6 +1,9 @@
-; <<<<< chung: gestion chunk? + instr >>>>>
- ; -- alpha 2 --
+; <<<<< chung: gestion instr >>>>>
 ; 2026
+ ; -- alpha 4 --
+  ; May  8. [clean-up] Remove stored_table_start/back
+                     ; (was write only and wasted a chunk)
+ ; -- alpha 2 --
   ; Jan 22. Add New_instr_ayane_if_empty
           ; Fix /def/ overwritten (not detected by orgams!?!)
       ; 14. Add instr_set_name, instr_get_name
@@ -254,20 +257,8 @@ song_reset_chung
           instr_head_size - instr_head_name - 2 ** inc hl
           djnz .raz
 
-      IF todo
-;TODO: free stored_table_start before hand
-; !!!    memory leak
-      END
-; Note: can't reuse new_chunk_ext, as it put a sentinel with current
-      ; track for auto-loop.
-  ;- No current_track at this point! (would trigger all kind of asserts)
-  ;- Wouldn't make sense for table anyway.
-          call New_heap_chunk
-          ret nc
-          call connect_bk_base
-          ld (stored_table_start),hl
-          ld (stored_table_back),hl ; for l = bk
-          ret           ; Carry
+          scf           ; hu? still needed?
+          ret
 
 fill      ld (hl),a:inc l:jr nz,fill
           ret
@@ -1180,12 +1171,10 @@ zero_size = $-zero_start
 ; ---- Must be zeroed at ayane init, but not song reset ----
 
 zero_chung
-stored_table_start WORD  ; chunk id. Needed for free (unused now)
+      WORD              ; free (keep >1 for ldir!!)
 zero_chung_ = $-zero_chung
 
 ; ----
-stored_table_back WORD  ; ID of last chunk for append_raw_in_chunk
-
       ORG save_pc       ; for host
 
           LIMIT(ppi)
