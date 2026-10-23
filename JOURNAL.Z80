@@ -249,14 +249,16 @@ compiled_version
 ; -> Don't read note
 ;!! We use LSB(instr)=0, requiring compiled data to be aligned (XX00) 
 
- End of Track: Loop/Stop via link (+&8000 and 0 respectively)
-   ; More natural than using events, in regards to hook insertion
-      ; (links are moved naturally when appending a hook,
-        ;whereas events should be detected, and moved manually)
-   ; A bit slower (as we test at each hook). Nevermind for now.
-   ; !! Not the same design as for phrase loop
-      ; -> Well rows aren't linked, so it's normal to have <> handling
-      ; -> Don't need forced harmonisation
+ End of Track: Loop via event on **dedicated** hook 
+   ; More natural than link on previous hook
+       ; - inserting an event between this hook and loop timestamp
+           ; would require to detect the loop link and move it
+         ; See commit 19 Jan 2026
+   ; (note: we still use link, for generic treatment by the player)
+   ; Same design as for phrase loop
+   ; Same design as for compiled version 
+   ; Will allow to change params at loop time
+
 compiled_version
 ; The hooks are flattened, so link trick isn't applicable
 ; Plus, we don't use arbitrary event code
