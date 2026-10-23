@@ -2,6 +2,10 @@
 do_play = 1             ; 0: check  1: play tune
 is_minimala = 0         ;0: --4k08-- kim9 (40 years md)
 
+; /////// 2026 ////////
+; ---- Alpha 4 ---- 
+ ; Oct 23: vampire1.chp path in current drive 
+ ; Apr 21: Use code_start
 ; /////// 2025 ////////
 ; ---- v0.0aq ----
  ; Sep
@@ -13,12 +17,10 @@ is_minimala = 0         ;0: --4k08-- kim9 (40 years md)
  ; Feb
    ; 27 Fix hl'=timer_noop when sfx=1 (was in hL)
 
-      ORG &0100
-      ENT tests
-
       IMPORT "memmap.i"
       IMPORT "import.i"
-
+      ORG code_start
+      ENT tests
       IMPORT "chipn.o"
       IMPORT "ply.o"
       IMPORT "track.o"  ; just for Song_get_first_track!
@@ -183,6 +185,6 @@ chp_module
 ;      LOAD ":40y/kima.chq" ; binary version
     ;  LOAD ":40y/kim0.chp"
 ;      LOAD ":40y/kimc.chp"
-      LOAD "ums:chp/vampire1.chp"
+      LOAD ":chp/vampire1.chp"
       END
 
