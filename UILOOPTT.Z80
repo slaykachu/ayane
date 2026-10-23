@@ -84,7 +84,8 @@ hi
 ; -----------------------------------     
           ASSERT(uiloop_code == uiloop)
 
-      IF dev_checks
+      IF dev_checks AND 0
+;why was that?
       SAVE "set const.dev_checks=0",0,0
       ELSE
       IF release

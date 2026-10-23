@@ -33,6 +33,9 @@ ho
           IMPORT_PIANOUI()
           IMPORT_STRINGS()
 hu
+      IMPORT "timer.o"  ; nrt_marker
+          ASSERT(nrt_marker == 0) ; only for timernrt
+
           ASSERT($ <= uiloop) ;from ayalib: deps already imported
       ORG uiloop
 ;---------------------------------------------
@@ -178,4 +181,5 @@ uiloop_end
           ASSERT(instr_code == instr_module)
  ;          ASSERT(ppi_code == ppi)   ; not imported directly
           ASSERT(piano_code == piano)
+          ASSERT(gedeihen_code == ged)
       END
