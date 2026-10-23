@@ -1,0 +1,151 @@
+; <<< Manually test disp routine and clients: status/help >>>
+
+; 2025
+   ; Nov 16: Broken
+
+   ; Aug 1: remove test /set_help_at_int3/ (YAGNIY)
+
+      ORG &1000
+      ENT start
+
+r1    = 40              ; for main page
+
+      IMPORT "memmap.i"
+      IMPORT "const.i"
+      IMPORT "import.i"
+      IMPORT "conv.o"   ; disp's dep to be imported beforehand
+      IMPORT "memcpc.o"
+      IMPORT "help.o"
+      BANK BK_DISP
+          IMPORT_DISP()
+
+;----------------------------------
+      MACRO LOCATION x,y
+          ld de,x*&0100 + y
+      ENDM
+
+      MACRO SET_CRTC reg,val
+          ld bc,&BC00+reg:out (c),c
+          ld bc,&BD00+val:out (c),c
+      ENDM
+
+      MACRO CALL_DISP adr
+ ; Disp routine: bk connection C7 done in disp-jp
+          call adr
+      ENDM
+
+      MACRO CALL_DS adr
+ ; ds="disp status" status_* in disp.o
+ ; disp-jp does the connection
+      IF BK_DISP - &C7
+ !!!! review
+      END
+          call adr
+      ENDM
+
+      MACRO CALL_STATUS adr
+; status.o (c1)                    
+; reconnect BK
+          call call_status:WORD adr
+      ENDM
+
+      MACRO CALL_HELP adr
+ ; Routine in help.o called directly: same as disp (bank &c7)
+      IF BK_DISP - &C7
+ !!!! review
+      END
+          call call_disp:WORD adr
+      ENDM
+;----------------------------------
+
+start
+; - Ensure proper init 
+; - Needed for bank reconnection by disp-jp dispatch.
+          ld a,&C0:call connect_a
+
+          ld a,r1:CALL_DISP(init_disp)
+
+          call test_disp
+          call test_help
+          call test_status
+          call &BB06
+          ret
+
+test_disp
+; Simple check cls+text
+          CALL_DISP(cls)
+          ld bc,.txt:CALL_DISP(disp_text)
+          ret
+.txt  BYTE "Bonzour",0
+
+test_help
+  ; Init offset
+      ;    CALL_HELP(set_help_at_int3)
+          ld bc,.doc
+          CALL_HELP(display_page)
+
+          ret
+.doc
+      BYTE "line 1",0
+      BYTE "line 2",0
+      BYTE -1
+
+test_status
+; Page &4000 with markers
+          SET_CRTC(1,48)
+          SET_CRTC(3,&FC)
+          SET_CRTC(2,50)
+          SET_CRTC(12,&10)
+          ld hl,&4000:ld de,&4001:ld bc,&03FF:ld (hl),&AA:ldir
+
+; Routines in disp:             
+          ld de,0
+          ld bc,.msg
+          CALL_DS(status_str_at)
+
+; Routines in status          
+    ;      ld de,&0206
+    ;      ld hl,.question
+    ;      CALL_STATUS(disp_infos_com)
+
+; Bandaya fields 
+          ld bc,.fields
+          ld de,0       ; top left
+.flp
+          push de
+          CALL_DS(status_str_at)
+          pop de
+          inc e
+          ld a,(bc):or a
+          jr nz,.flp
+
+          LOCATION(x_pos_octave,y_pos_octave)
+          ld a,3:CALL_DS(status_deci_a_at)
+          LOCATION(x_pos_instr#,y_pos_instr#)
+          ld a,1:CALL_DS(status_deci_a_pad0_at)
+          ret
+
+.msg  BYTE "ayaya!",0
+.question BYTE "Ca poutre ?",0
+.fields
+      BYTE "  /    / /  | //  /_    ////      --5 Aug 2025--",0
+      BYTE "   /  /  /  |/ /  / /   /  /      (f6/f9)  Octave",0
+      BYTE " ///  /  /  /  /  /  /  ///       (CTRL-I) Instr   :",0
+      BYTE "/  /   /_/  / /|  /  /  /    ",0
+      BYTE "////     /  // |  / /    /    ",0
+      BYTE 0
+
+      BANK BK_DISP
+      ORG &4000
+
+;      IMPORT "help.o"   ; memcpc must have been imported
+      ORG $+&8000,$$    ; c1
+    ;  IMPORT "status.o"
+      IF $-&8000 != $$
+  !! out of sync
+      END
+      ORG $$            ; restore $
+
+      IF $ > &8000
+   !! out of bank
+      END
