@@ -1,5 +1,7 @@
 ; <<<< Tests salo and generate libs >>>>
-; 2026
+; 2026          
+; -- Alpha4 --
+   ; May 6. Add test_instr -> passing
 ; -- Alpha3 --
    ; Apr 13. test_assets: try with full phrase
 ; -- Alpha2 --
@@ -69,6 +71,7 @@ tests
           call test_save_empty_phrase
           call test_load_empty_module ; also test save-load-save
           call test_assets
+          call test_instr
           call test_big
           ret
 
@@ -321,6 +324,15 @@ time_far WORD &8000:BYTE 2 ; more than &10000 ticks away
           ld de,[note + div/2]/div:or a:sbc hl,de:add hl,de
           call nz,failnrt
       ENDM
+
+test_instr
+;---------
+; For now just check it doesn't assert
+          call nrt_init
+          ld hl,instr_name
+          ld bc,0
+          call load_file:call nc,failnrt
+          ret
 
 test_big
 ;-------
@@ -608,6 +620,7 @@ destnrt = &5E00
 destnrt2 = destnrt + destsize
           ASSERT(destnrt2 + destsize <= &8000)
 
+instr_name BYTE "testdata/instr.aya",0
 vampire_name BYTE "testdata/vampire1.aya",0
 
 hi

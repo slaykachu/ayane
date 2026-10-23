@@ -3,6 +3,10 @@ todo  = 1
 do_brittle = 0
 
 ; ----- 2026 ----------
+; -- alpha 4 --
+ ; Apr
+    ;  7 Add test_set_phrase_at_300 (already passing)
+    ;  5 Reorder code to fit in RAM
 ; -- alpha 3 --
  ; Feb
     ;  3 Add test_track_select_last_phrase
@@ -97,96 +101,7 @@ chunk0 = track_events_/&0100 - 1
     ;  ORG ppi
       IMPORT "testlib.o"
 
-tests
-          call nrt_init
-
-; ---- Recent
-
-; ---- UI (manual)
-      IF enable
-          call test_ui
-          call &BB06
-      END
-
-; ---- Tests AUM ------
-          call test_eval_operand
-          call test_ld_add
-          call test_ld_sub
-          call test_ld_sub_flag
-          call test_flag_lifted
-          call test_call_ext
-          call test_cp
-
-; ---- Tests setup ----- 
-          call test_init_track_module
-
-; ---- Tests routines coded in AUM ----
-          call test_add_field
-          call test_connect_head
-      IF enable_track_get_clip_at
-          call test_track_get_clip_at
-          call test_track_get_clip_at'
-          call test_fun
-      END
-   ;       call test_get_first_node  !! not needed
-      IF do_brittle
-          call test_track_draw_iter
-      END
-      IF enable
-          call test_collect_pred_succ_at
-          call test_proper_colors
-          call test_track_draw
-          call &BB06
-      END
-
-; ---- Test track creation / update -----
-      IF enable_track_get_clip_at
-          call test_select_new_track
-          call test_track_get_clip_at''
-      END
-          call test_get_event_hook_at
-          call test_set_event_hook_at
-      IF 0
- ;deactivated
-          call test_prepend_event
-      END
-          call test_track_get_hook_at
-          call test_track_get_hook_t1
-          call test_track_get_event_at
-          call test_set_transpose
-          call test_set_phrase_after
-          call test_set_phrase_far
-          call test_get_phrase_implicit_repeat
-          call test_track_select_phrase_far
-          call test_track_select_phrase_past_end
-          call test_track_select_last_phrase
-          call test_t0_when_repeat
-          call test_t1_with_transpose
-          call test_track_get_state_at
-          call test_track_set_loop_at
-
-; ---- Test subsong -----
-          call test_subsong_add_track
-  ;          call test_default_loop   !!not anymore
-          call test_get_timestamp_from_hook
-
-; --- Misc ---
-          call test_Song_attach_empty_phrases
-          ret
-
-nrt_init
-          ld a,".":call &BB5A
-;--- Clear bank for easier debug
-          ld bc,&7F00 + BK_TRACK:out (c),c
-          ld hl,&4000:ld de,&4001:ld bc,&3FFF:ld (hl),l:ldir
-
-          call init_for_test
-          call phrase_reset ; for dev checks. Not done by init?
-; as convienence for tests, create module and select first track
-          call New_module
-          ld a,1:call Song_select_track
-          ret
-
+;-------------------------------
 nrtfail = &BE00
 
       MACRO CHECK_DE_EQ n
@@ -280,95 +195,140 @@ nrtfail = &BE00
       WORD param
       ENDM
 
-
-; -----------------------------
-; MACRO for AUM virtual machine
-; -----------------------------   
-      MACRO LD2 dest,arg1
-; Variants to make for orgams' lack of overloading.
-      BYTE ld,dest,arg1
-      ENDM
-
-      MACRO LD3 dest,arg1,arg2
-; Variants to make for orgams' lack of overloading.
-      BYTE ld,dest,arg1,arg2
-      ENDM
-
-      MACRO LD4 dest,arg1,arg2,arg3
-; Variants to make for orgams' lack of overloading.
-      BYTE ld,dest,arg1,arg2,arg3
-      ENDM
-
-      MACRO FUN2 fun,arg1,arg2
-; Output result implicitly in out0, out1
-      BYTE fun2:WORD fun:BYTE arg1,arg2
-      ENDM
-
-      MACRO CALL_EXT11 rout,arg1
-      BYTE call_ext11:WORD rout:BYTE arg1
-      ENDM
-
-      MACRO CALL_EXT1'1 rout,arg1,arg2
-; Still one input parameter, but computed from 2 operands
-      BYTE call_ext11:WORD rout:BYTE arg1,arg2
-      ENDM
-
-      MACRO JP rout
-      BYTE jp:WORD rout
-      ENDM
-
-      MACRO JP_Z rout
-      BYTE jp + if_z:WORD rout
-      ENDM
-
-      MACRO JP_NZ rout
-      BYTE jp + if_nz:WORD rout
-      ENDM
-
-      MACRO JP_C rout
-      BYTE jp + if_c:WORD rout
-      ENDM
-
-      MACRO RET0
-      BYTE ret
-      ENDM
-
-      MACRO RET_Z
-      BYTE ret + if_z
-      ENDM
-
-      MACRO RET_C
-      BYTE ret + if_c
-      ENDM
-
-      MACRO RET_NC
-      BYTE ret + if_nc
-      ENDM
-
-      MACRO BRK
-      BYTE break
-      ENDM
-
-      MACRO BRK_Z
-      BYTE break + if_z
-      ENDM
-
-      MACRO BRK_NZ
-      BYTE break + if_nz
-      ENDM
-
-      MACRO BRK_NC
-      BYTE break + if_nc
-      ENDM
-
-
-NO_FLAGS = 0
+; From track.o (avoid ambiguity)
 
       MACRO SIGN in#,out#,flags
 ;Signatures.
 ;'flags' indicate which flags are returned by the routine.
       BYTE in#,out#,flags
       ENDM
+
+
+; ------------------------------
+;    Shared data for tests
+; ------------------------------
+          ASSERT($ < &4000) ; for aum checks
+
+      SKIP -$ AND &03   ; AUM expect confined registers
+
+_test_track0
+;Harcoded "index" for test purpose
+          TRACK_HEADER(_test_event_list,1)
+
+_test_track1
+          TRACK_HEADER(_test_event_list2,1)
+
+pad   FILL -$ AND &1F,&F7
+
+_test_event_list
+ev0_dur = 123
+ev1_dur = &FF00
+          TRACK_HOOK(_test_ev1,ev0_dur,0)
+_test_ev1
+          TRACK_HOOK(0,ev1_dur,0)
+
+pad2  SKIP -$ AND &0F
+
+_test_event_list2
+; same but with some event
+          TRACK_HOOK(_test_ev1',ev0_dur,evt_1)
+_test_ev1'
+          TRACK_HOOK(0,ev1_dur,0)
+evt_1     TRACK_EVENT(0,evt_set_transpose_lsb,&F7FF)
+
+
+
+tests
+          call nrt_init
+
+; ---- Recent
+          call test_set_phrase_at_300
+
+; ---- UI (manual)
+      IF enable
+          call test_ui
+          call &BB06
+      END
+
+; ---- Tests AUM ------
+          call test_eval_operand
+          call test_ld_add
+          call test_ld_sub
+          call test_ld_sub_flag
+          call test_flag_lifted
+          call test_call_ext
+          call test_cp
+
+; ---- Tests setup ----- 
+          call test_init_track_module
+
+; ---- Tests routines coded in AUM ----
+          call test_add_field
+          call test_connect_head
+      IF enable_track_get_clip_at
+          call test_track_get_clip_at
+          call test_track_get_clip_at'
+          call test_fun
+      END
+   ;       call test_get_first_node  !! not needed
+      IF do_brittle
+          call test_track_draw_iter
+      END
+      IF enable
+          call test_collect_pred_succ_at
+          call test_proper_colors
+          call test_track_draw
+          call &BB06
+      END
+
+; ---- Test track creation / update -----
+      IF enable_track_get_clip_at
+          call test_select_new_track
+          call test_track_get_clip_at''
+      END
+          call test_get_event_hook_at
+          call test_set_event_hook_at
+      IF 0
+ ;deactivated
+          call test_prepend_event
+      END
+          call test_track_get_hook_at
+          call test_track_get_hook_t1
+          call test_track_get_event_at
+          call test_set_transpose
+          call test_set_phrase_after
+          call test_set_phrase_at_300
+          call test_set_phrase_far
+          call test_get_phrase_implicit_repeat
+          call test_track_select_phrase_far
+          call test_track_select_phrase_past_end
+          call test_track_select_last_phrase
+          call test_t0_when_repeat
+          call test_t1_with_transpose
+          call test_track_get_state_at
+          call test_track_set_loop_at
+
+; ---- Test subsong -----
+          call test_subsong_add_track
+  ;          call test_default_loop   !!not anymore
+          call test_get_timestamp_from_hook
+
+; --- Misc ---
+          call test_Song_attach_empty_phrases
+          ret
+
+nrt_init
+          ld a,".":call &BB5A
+;--- Clear bank for easier debug
+          ld bc,&7F00 + BK_TRACK:out (c),c
+          ld hl,&4000:ld de,&4001:ld bc,&3FFF:ld (hl),l:ldir
+
+          call init_for_test
+          call phrase_reset ; for dev checks. Not done by init?
+; as convienence for tests, create module and select first track
+          call New_module
+          ld a,1:call Song_select_track
+          ret
 
 
 test_ld_add
@@ -591,6 +551,10 @@ test_connect_head
 ;Note: C is arbitrary, as the pointer is 16 bits
           CHECK_DE_EQ(_test_event_list)
           ret
+
+          LIMIT(ramlimit)
+
+      ORG free_ram_for_nrt
 
 test_init_track_module
 ;---------------------
@@ -1384,6 +1348,15 @@ test_set_phrase_after
           call check_phrase:call nc,nrtfail
           ret
 
+test_set_phrase_at_300
+;---------------------
+          call nrt_init
+          ld a,3:call song_select_new_phrase
+          ld a,42:call phrase_select_new_row:call nc,nrtfail
+          ld a,3:ld hl,time300:call Set_phrase_at_t
+          ret
+
+
 test_set_phrase_far
 ;------------------
 ; Check when hook must be place > &10000 ticks
@@ -1632,6 +1605,7 @@ time7     TIME(7)
 time13    TIME(13)
 time14    TIME(14)
 time20    TIME(20)
+time300   TIME(300)
 time325   TIME(325)
 time_end  TIME(last_duration)
 time_far WORD &CAFE:BYTE 2 ; > &10000
@@ -1906,36 +1880,6 @@ compare_sized
           djnz compare_sized
           ret
 
-; ------------------------------
-;    Shared data for tests
-; ------------------------------
-      SKIP -$ AND &03   ; AUM expect confined registers
-
-_test_track0
-;Harcoded "index" for test purpose
-          TRACK_HEADER(_test_event_list,1)
-
-_test_track1
-          TRACK_HEADER(_test_event_list2,1)
-
-pad   FILL -$ AND &1F,&F7
-
-_test_event_list
-ev0_dur = 123
-ev1_dur = &FF00
-          TRACK_HOOK(_test_ev1,ev0_dur,0)
-_test_ev1
-          TRACK_HOOK(0,ev1_dur,0)
-
-pad2  SKIP -$ AND &0F
-
-_test_event_list2
-; same but with some event
-          TRACK_HOOK(_test_ev1',ev0_dur,evt_1)
-_test_ev1'
-          TRACK_HOOK(0,ev1_dur,0)
-evt_1     TRACK_EVENT(0,evt_set_transpose_lsb,&F7FF)
-
-hi
-          LIMIT(ramlimit)
+hi'
+          LIMIT(ramlimit')
 
