@@ -1,11 +1,35 @@
 dev_checks = 1
-hack_minimala = 1
+hack_chp = 1
+hack_minimala = 0
+hack_kim = 1
 todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
+; 2025  
+; ----- v0l2 ------
+; Apr 14 Allow compiled_data in C000 (switch loop handling)
+       ; Dont put output channel # in songlist (crunchability)
+            ; -> must be revisited for multitrack per channel
+ ; Mar
+  ; 29: Handle is_pattern_indexed
+  ; 24: Handle constant /pattern_size/ 
+  ; 21 Encode song loop
+  ; 20 Fix empty row handling: was replaced by instr_null 
+           ; (since unconditional reading of instr)
+           ; Now: replaced by /no_instr_escape_code/, 
+                ; ply doing nothing in that case.
+    ; Fix looping: must add evt_change_phrase explicitly
+  ; 17
+   ; Fix IF guards
+   ; Track starts at 1
+   ; Fix bk connection at /defend/ (was corrupting bk base)
+   ; Fix comp_default (only pitch+noise)
+
 ; 2024  
+; ----- v0l ------
+  ; Jun    
+    ;20 is_last_row now returns Z instead of NZ.
 ; ----- v0i ------
-  ; Jun
     ; 8 Add comp_chip_down_vib_noise  |
           ; comp_chip_down_arp        | for 4k08.chp
 
@@ -32,19 +56,20 @@ todo  = 1
   ; ???  v0 extracted from chung vu
 
       IMPORT "memmap.i" ; for instr_head_rows and co
-      IMPORT "memcpc.o" ; for connect_bk_io
       IMPORT "const.i"
 ; For compiler_player adr and co.
 ; Note: we don't use flags (use_*...) here, they are setup for the tool.
       ; Instead, we use dynamic flag (_use_note_flag etc), meant to be
       ; set up after analysis.
       IMPORT "plyconf.i"
-      IMPORT "chung.o"
-      IMPORT "chunk.o"  ; Next_node
-      IMPORT "instr.o"  ; Note: version non compiled
-      IMPORT "phrase.o"
-      IMPORT "track.o"
+
       IMPORT "ply.o"
+      IMPORT "track.o"
+      IMPORT "phrase.o"
+      IMPORT "chung.o"
+      IMPORT "instr.o"  ; Note: version non compiled
+      IMPORT "chunk.o"  ; Next_node
+      IMPORT "memcpc.o" ; for connect_bk_io
 
 ;      IF ayane:ELSE
 ;!!! ayane must be = 1, to detect proper instruments
@@ -57,9 +82,10 @@ todo  = 1
 
 compiled_instr_null = compiled_player + 0
       IF hack_minimala
-compiled_instr_default = compiled_player + 0 ; Not used
-      ELSE
-!! todo: right value
+;compiled_instr_default = compiled_player + 0 ; Not used for minimal
+      END
+      IF hack_kim
+compiled_instr_default = compiled_player + &04 ; used for kim
       END
       IF 0
 ;minimala
@@ -67,9 +93,11 @@ compiled_instr_chip_down_vib = compiled_player + 4
 compiled_instr_chip_down_arp_noise = compiled_player + &4D
       ELSE
 ;4k08
-compiled_instr_chip_down_vib = compiled_player + 4
-compiled_instr_chip_down_arp = compiled_player + &4D
-compiled_instr_chip_down_vib_noise = compiled_player + &95
+;compiled_instr_chip_down_vib = compiled_player + 4
+;compiled_instr_chip_down_arp = compiled_player + &4D
+;compiled_instr_chip_down_vib_noise = compiled_player + &95
+compiled_instr_chip_down_vib = compiled_player + &36
+compiled_instr_chip_down_arp = compiled_player + &52
       END
 
 dest  = compiled_data
@@ -82,24 +110,37 @@ error_confine = &BE00
       END
 to_be_implemented = &BE00
 
+;------------------------------------------
+      MACRO CHECK_DEST
+      IF dev_checks
+          call _check_dest
+      END
+      ENDM
+
+;------------------------------------------
+
 compile
 ;------             
+;In: N/A
+;Out: de=start (connected)
+    ; hl=size
           ld de,dest+9  ; Leave room song list
 
 instruments
 ;..........
+          call connect_bk_compile
 
 ; Must add instr 0 = instr_null.
+; Since ply inconditionaly jump to one instrument
           ld hl,instr_map
-          push hl
           ld (hl),e:inc h
           ld (hl),d
 ; Type, no params
           ld a,compiled_instr_null AND &FF
           ld (de),a:inc de
 
+          ld hl,instr_map+1 ; l = instr #    
 ; We iterate on all possible instruments, as they are not contiguous 
-          pop hl:inc l  ; L= instr # 
 instr_lp
 ; Store instrument pnt in compiled file
 ; (note: done even for empty instrument, to free HL)
@@ -108,10 +149,12 @@ instr_lp
           ld (hl),d
 
           ld a,l
-          call Song_select_instr
+          call Song_select_instr ; connect bk base
           jp z,instr_next
 
           call get_instr_pnt
+          CHECK_DEST()
+
           ld a,(hl):inc hl
 ; instr_null not used in ayane module itself
 ;          cp instr_null AND &FF:jr z,comp_null
@@ -122,8 +165,10 @@ instr_lp
           cp instr_chip_down_vib AND &FF
           jp z,comp_chip_down_vib
       END
+      IF use_instr_chip_down_vib_noise
           cp instr_chip_down_vib_noise AND &FF
           jp z,comp_chip_down_vib_noise
+      END
       IF use_instr_chip_down_arp
           cp instr_chip_down_arp AND &FF
           jp z,comp_chip_down_arp
@@ -134,15 +179,7 @@ instr_lp
       END
       BRK               ; unexpected
 
-comp_null
-          ld a,compiled_instr_null AND &FF
-          ld (de),a:inc de
-          jp instr_next
-
 comp_default
-      IF hack_minimala
-          call mess     ; not used/compiled
-      ELSE
           call poke_init
           ld a,compiled_instr_default AND &FF
           call poke_a
@@ -153,7 +190,7 @@ comp_default
 .deflp
 ;de=dest (not buffer) for loop handling.
           call connect_bk_instr
-          call is_last_row:jr nz,.defend
+          call is_last_row:jp z,.defend
           call Next_node:call z,mess
 
           push af
@@ -164,9 +201,16 @@ comp_default
           ld (loop_pnt),de
 .loop_not_reached
           ld (last_row),de
-          inc de        ; room for link
 
           idsz ** inc hl ; skip link
+;-pre check before deconnecting instr
+          ld a,(_use_instr_arp):or a:jr z,.pre_noarp
+; arp must be premultiplied by two
+          ld a,(hl):rrca:call c,mess
+          jr .pre_okarp
+.pre_noarp
+          ld a,(hl):or a:call nz,mess
+.pre_okarp
           push de
           ld de,buffer
           push de
@@ -175,46 +219,76 @@ comp_default
           call connect_bk_compile
           pop hl
           pop de
+;link 
+          inc de        ; room for link (set below)
 ; - arpegio
 
       IF instr_arp
- !! review that
+ !! review that (expect arp column at 0)
       END
+          ld a,(_use_instr_arp)
+          or a:jr z,.no_instr_arp
           ldi
+          jr .ok_instr_arp
+.no_instr_arp
+; We pretend there is no arp. Check that (and skip field)
+          ld a,(hl):or a:call nz,mess
+          inc hl
+.ok_instr_arp
+
 ; - pitch   
       IF instr_pitch - 1
- !! review that
+ !! review that  ; (expect pitch column at 1)
       END
           ld a,(_use_instr_pitch)
           or a:jr z,.no_instr_pitch
-          call to_be_implemented
+          ldi
+          ldi
+          jr .ok_instr_pitch
 
 .no_instr_pitch
 ; Check it's null (and skip field)
 ; assume no pitch
           ld a,(hl):inc hl
           or (hl):inc hl:call nz,fail
+.ok_instr_pitch
 
 ; - r7 flags 
 ; For now copy flags
-      IF todo
-; infer noise flag from noise value
-; via flags _use_channel_open_flag  _use_noise
-      END
       IF instr_flags - 3
- !! review that
+ !! review that ; (expect flag column at 3)
       END
+          ld a,(_use_flags)
+          or a:jr z,.no_instr_flags
           ldi
+          jr .ok_instr_flags
+
+.no_instr_flags
+          inc hl
+.ok_instr_flags
 
 ; - noise
       IF instr_noise - 4
- !! review that
+ !! review that  ; (expect noise column at 4)
       END
+          ld a,(_use_noise)
+          or a:jr z,.no_instr_noise
           ldi
+          jr .ok_instr_noise
+
+.no_instr_noise
+          ld a,(hl)
+      IF hack_kim
+          cp 2:call nz,mess ; constant noise
+      ELSE
+          ld a,(hl):or a:call nz,mess ; there is noise!
+      END
+          inc hl
+.ok_instr_noise
 
 ; - vol
       IF instr_vol - 5
-  !! review that
+  !! review that  ; (expect vol column at 5)
       END
           ld a,(_use_hard_env):or a:jr z,.no_hard_env_vol
           call to_be_implemented
@@ -224,14 +298,20 @@ comp_default
           rrca:call c,mess ; NC: regular volume
           ld (de),a:inc de
 
+      IF use_hard_env AND 0 ; deactivated for chp
+!! review
+; Must use instr_hard_arp BYTE     ; for hard env period
+         ; instr_hard_pitch
 ; - hperiod
-      IF instr_hperiod - 6
+      IF instr_hperiod - 6 ; instr_
    !! review that
       END
           ld a,(_use_hard_env):or a:jr z,.no_hard_env
           call to_be_implemented
 .no_hard_env
+      END
 
+; Link to next row (check &100 confined)
           ld hl,(last_row)
           ld a,h:cp d:call nz,error_confine ; Expect instr fit in &100
           ld a,e:sub l:ld (hl),a ; relative link
@@ -240,13 +320,14 @@ comp_default
           pop bc
           pop af
           inc a
-          jr .deflp
+          jp .deflp
+
 .defend
+          call connect_bk_compile
           ld hl,(last_row)
           ld a,(loop_pnt)
           sub l:ld (hl),a
-          jr instr_next
-      END
+          jp instr_next
 
       IF use_instr_chip_down_vib
 comp_chip_down_vib
@@ -261,6 +342,8 @@ comp_chip_down_vib_noise
 ;.......................
           ld a,compiled_instr_chip_down_vib_noise AND &FF
           call setup_comp_chip_down_3
+      END
+      IF use_instr_chip_down_vib OR use_instr_chip_down_vib_noise
 com_chip_vib
       IF instr_head_rows - 1
  !! review! rows were expected after type
@@ -269,7 +352,7 @@ com_chip_vib
 .cdvlp
 ;de= dest (not buffer), for detection
           call connect_bk_instr
-          call is_last_row:jr nz,.cdvend
+          call is_last_row:jr z,.cdvend
           call Next_node:call z,mess
 
           push af
@@ -338,7 +421,7 @@ com_chip_arp
 .cdanlp
 ;de= dest (not buffer), for detection row loop
           call connect_bk_instr
-          call is_last_row:jr nz,_chip_finalize_table
+          call is_last_row:jr z,_chip_finalize_table
           call Next_node:call z,mess
 
           push af
@@ -380,29 +463,42 @@ instr_next
           inc l
           jp nz,instr_lp
 
-      IF hack_minimala
-; For minimala: assume instr fit in &100
+      IF is_instr_indexed
+; For chp: assume instr fit in &100
           ld a,d:cp dest/&0100:call nz,mess
       END
 
 phrases
 ;......
-
 ; Same principle: iter all phrases, skip non-existing ones
 ; We iterate on all possible instruments, as they are not contiguous 
+
+      IF is_compiled_phrase_indexed
+;reserve index (must fit in first &100 chunk)
+          ld (phrase_idx_pnt0),de
+          ld (phrase_idx_pnt),de
+          call song_get_phrases#
+          add a         ; one word per phrase
+          add e:jr z,.ok ; just fit
+          call c,mess   ; doesn't fit
+.ok
+          ld e,a
+      END
+
           ld hl,phrases_map ; L = phrase #
 phrases_lp
       IF dev_checks
-;Dest still in bank
-          ld a,d:cp &40:call c,mess
-          cp &80:call nc,mess
+;Dest still in page 4000 (or C000)
+          bit 6,d:call z,mess
       END
           push hl
-; Store instrument pnt in compiled file
-; (note: done even for empty instrument, to free HL)
+      IF is_compiled_phrase_indexed
+          ld a,(phrase_idx_pnt)
+          ld (hl),a
+      ELSE
           ld (hl),e:inc h
           ld (hl),d
-
+      END
           ld a,l
       IF hack_minimala
 ; skip empty residual pattern
@@ -416,6 +512,14 @@ phrases_lp
       ;    cp &1C:call nc,&BE00
           call song_select_phrase
           jp z,phrases_next
+
+      IF is_compiled_phrase_indexed
+          call connect_bk_compile
+          ld hl,(phrase_idx_pnt)
+          ld (hl),e:inc hl
+          ld (hl),d:inc hl
+          ld (phrase_idx_pnt),hl
+      END
 
           call poke_init
           call connect_phrase_begin
@@ -445,7 +549,7 @@ phrases_lp
 .okrow
           inc hl
           ld a,c
-      IF hack_minimala
+      IF hack_chp
 ; Replace duration 1 + &ff by 0. More precisily:
 ; &01, note  -> 0, note
 ; &ff, empty -> skip it
@@ -483,7 +587,7 @@ phrases_lp
           ld a,(_use_instr_flag):or a:jr z,.no_instr_flag
           call to_be_implemented
 .no_instr_flag
-      IF hack_minimala
+      IF hack_chp
 ; Flag always set. Expect for:
   ; - empty intermediate row (skipped above for minimala)
   ; - empty phrase (actually contains one empty row)
@@ -491,10 +595,14 @@ phrases_lp
 ; Empty row: neither instr nor note.
    ; - check that
           ld a,b:or a:call nz,mess
-   ; - put instr0 (instr_null) and dummy note
-          ld a,(instr_map)
+no_instr_escape_code = compiled_instr_null ; handled by ply
+      IF compiled_data AND &FF
+!! we rely on fact that at xx00, there is track list
+ ; (so 0 cannot be the LSB of a real instr)
+      END
+          xor a
           call poke_a
-          call poke_a   ; note: nevermind
+;Do not poke note in that case
           jr .ok_note
       ELSE
 ; Flag always set. We verify that
@@ -504,12 +612,10 @@ phrases_lp
           push hl
           ld l,(hl)
           ld h,instr_map / &0100
-      IF hack_minimala
-      IF dev_checks
+      IF hack_chp
 ; All instr in first &100, so only need for LSB
           inc h:ld a,(hl):dec h
           cp dest / &0100:call nz,mess
-      END
           ld a,(hl)
           call poke_a
       ELSE
@@ -548,23 +654,26 @@ phrases_next
 tracks
 ;.....           
           ld hl,dest    ; songlist
-          ld a,1        ; channel
+          ld a,1        ; track start at 1
 track_lp
       IF dev_checks
-;Dest still in bank
+;Dest still in page &4000 (or &c000)
+          bit 6,d:call z,mess
+;Check index and track in same page. 
+;Not an actual constraint, but for now help detect bugs.
           push af
-          ld a,d:cp &40:call c,mess
-          cp &80:call nc,mess
+          ld a,d:xor h:and &C0:call nz,mess
           pop af
       END
+          push hl
           call connect_bk_compile
           ld (hl),e:inc hl
           ld (hl),d:inc hl
+      IF compile_output_channel
           ld (hl),a:inc hl
-          push hl
+      END
           push af
-          dec a
-          call get_track_pnt
+          call get_track_header
           call poke_init
           call connect_bk_track
           call Next_node ; From header to head of list of hooks
@@ -572,21 +681,30 @@ track_lp
 .hooklp
           push hl
           idsz ** inc hl
+      IF pattern_size
+;Constant size. We don't encode it, but check it matches
+          ld a,pattern_size AND &FF:cp (hl):call nz,fail
+          inc hl
+          ld a,pattern_size / &0100:cp (hl):call nz,fail
+          inc hl
+      ELSE
           2 ** call poke_ldi ; duration
+      END
 ; Now follow list of event 
           call Next_node
 ; Might be empty (intermediate hook)
 ; For now, not suported
           call z,to_be_implemented
-      IF hack_minimala
+      IF hack_chp
 ; For now, rely on the fact there is always transpose following by
 ; phrase (aka "static")
   ; -> No need for indirection (would take space)
   ; -> We could still leverage phrase looping (if same transpose)
           push hl
           idsz ** inc hl
-          ld a,(hl):inc hl
+          ld a,(hl)
           cp evt_set_transpose AND &FF:call nz,mess
+          inc hl
           call poke_ldi
           pop hl
           call Next_node
@@ -600,15 +718,17 @@ track_lp
           call connect_bk_phrase
           ld l,chunk_start+fc_index
           ld l,(hl)
-; We poke full address rather than id:
-   ; - no indirection
-   ; - *might* compress as well (ref needed!)
           ld h,phrases_map/&0100
           ld a,(hl):call poke_a
+      IF 1-is_compiled_phrase_indexed
+; We poke full address rather than id:
           inc h
           ld a,(hl):call poke_a
+      END
       ELSE
 .evtlp
+;tmp dbg
+          ld a,(&4525):cp &4A:call nz,&BE00
           push hl
           idsz ** inc hl
           ld a,(hl)
@@ -624,16 +744,49 @@ track_lp
 
           call poke_flush
           ld de,(dest_pnt)
-
+; Encode loop via fake event
           pop af
-          pop hl
+          pop hl        ;songlist
+          push af
+          call connect_bk_compile
+          xor a
+      IF pattern_size
+          ld (de),a:inc de ;no transpose
+      ELSE
+      3 ** [ld (de),a:inc de] ; no duration, no transpose
+      END
+      IF is_compiled_phrase_indexed
+; Escape code 00, which cannot be a valid phrase idx
+          xor a:ld (de),a:inc de
+          ldi
+          ldi
+      ELSE
+; Link with bit 15 flipped: track reset instead of phrase link
+          ldi
+          ld a,(hl):inc hl
+      IF compiled_data AND &8000
+      IF dev_checks
+          bit 7,a:call z,fail
+      END
+          res 7,a
+      ELSE
+      IF dev_checks
+          bit 7,a:call nz,fail
+      END
+          set 7,a
+      END
+          ld (de),a:inc de
+      END
+      IF compile_output_channel
+          inc hl        ; skip output in songlist
+      END
+          pop af
           inc a
           cp 4
-          jr c,track_lp
+          jp c,track_lp
 
-          call poke_flush
 ;Return de=start (connected), hl=size
-          ld hl,(dest_pnt)
+          ex de,hl      ; hl = current pnt
           ld de,dest
           or a:sbc hl,de
           call connect_bk_io
@@ -672,6 +825,14 @@ setup_comp_chip_down
 poke_init
 ;--------
 ;For trans-bk bufferization
+      IF dev_checks
+; Cannot be buffer itself! 
+; it must be the real destination
+          push af
+          ld a,d:cp buffer/&0100:call z,mess
+          pop af
+          CHECK_DEST()
+      END
           ld (dest_pnt),de
           ld de,buffer
           ret
@@ -681,6 +842,16 @@ poke_ldi
           ld a,(hl):inc hl
 ;enchaine
 poke_a
+      IF dev_checks
+          push af
+; We only have to test bk if poking directly in dest
+          ld a,d:cp buffer/&0100:jr z,.ok
+          CHECK_DEST()
+          call get_bk_connected
+          cp BK_IO:call nz,mess
+.ok
+          pop af
+      END
           ld (de),a
           inc e
           ret nz
@@ -702,6 +873,23 @@ dest_pnt = $+1
           ld de,buffer
           ret
 
+      IF dev_checks
+_check_dest
+          push af
+          ld a,d
+          cp buffer/&0100:jr z,.ok
+          cp dest/&0100:call c,mess
+          cp dest/&0100+8:call nc,mess ; limit for chp (minimala:&468)
+.ok
+          pop af
+          ret
+
+          push af
+          call get_bk_connected
+          cp BK_IO:call nz,mess
+          pop af
+          ret
+      END
 
       FILL -$ AND &FF,0
 buffer FILL 256,0
@@ -712,13 +900,18 @@ phrases_map FILL 512,0
 var
 loop_pnt WORD 
 last_row WORD 
+phrase_idx_pnt0 WORD 
+phrase_idx_pnt WORD 
 
 ; ----- Flags for compilation -----
       IF todo
 ; Set them after analysis phase
       END
 ;--instr
+_use_instr_arp BYTE 1
 _use_instr_pitch BYTE 0
+_use_flags BYTE 0       ; 0: Infer from noise value
+_use_noise BYTE 0       ; 0 for kim as noise is constant
 _use_hard_env BYTE 0
 ;--phrase
 _nb_fx BYTE 0
