@@ -5,6 +5,8 @@ hack_kim = 1
 todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
+; 2026 Out 24. Fix assembling (chipnsfx instruments no more supported)
+
 ; 2025  
 ; ----- v0l2 ------
 ; Apr 14 Allow compiled_data in C000 (switch loop handling)
@@ -161,22 +163,6 @@ instr_lp
           cp instr_null AND &FF:call z,mess
           cp instr_default AND &FF
           jr z,comp_default
-      IF use_instr_chip_down_vib
-          cp instr_chip_down_vib AND &FF
-          jp z,comp_chip_down_vib
-      END
-      IF use_instr_chip_down_vib_noise
-          cp instr_chip_down_vib_noise AND &FF
-          jp z,comp_chip_down_vib_noise
-      END
-      IF use_instr_chip_down_arp
-          cp instr_chip_down_arp AND &FF
-          jp z,comp_chip_down_arp
-      END
-      IF use_instr_chip_down_arp_noise
-          cp instr_chip_down_arp_noise AND &FF
-          jp z,comp_chip_down_arp_noise
-      END
       BRK               ; unexpected
 
 comp_default
@@ -329,128 +315,7 @@ comp_default
           sub l:ld (hl),a
           jp instr_next
 
-      IF use_instr_chip_down_vib
-comp_chip_down_vib
-          ld a,compiled_instr_chip_down_vib AND &FF
-          ld b,2
-          call setup_comp_chip_down
-          jr com_chip_vib
-      END
 
-      IF use_instr_chip_down_vib_noise
-comp_chip_down_vib_noise
-;.......................
-          ld a,compiled_instr_chip_down_vib_noise AND &FF
-          call setup_comp_chip_down_3
-      END
-      IF use_instr_chip_down_vib OR use_instr_chip_down_vib_noise
-com_chip_vib
-      IF instr_head_rows - 1
- !! review! rows were expected after type
-      END
-          xor a
-.cdvlp
-;de= dest (not buffer), for detection
-          call connect_bk_instr
-          call is_last_row:jr z,.cdvend
-          call Next_node:call z,mess
-
-          push af
-          push bc       ; save b=row
-          push hl
-          cp b
-          jr nz,.loop_not_reached
-          ld (loop_pnt),de
-.loop_not_reached
-          ld (last_row),de
-
-          idsz ** inc hl ; skip link
-chip_row_size = 2
-          push de
-          ld de,buffer
-          ld bc,chip_row_size
-          push de
-          ldir
-          call connect_bk_compile
-          pop hl
-          pop de
-          ld a,chip_row_size+1
-          ld (de),a
-          inc de
-;Just copy pitch
-          chip_row_size ** ldi
-          ld hl,(last_row)
-          ld a,h:cp d:call nz,error_confine ; expect instr fit in &100
-
-          pop hl
-          pop bc
-          pop af
-          inc a
-          jr .cdvlp
-.cdvend
-          call connect_bk_compile
-          ld hl,(last_row)
-          ld a,(loop_pnt)
-          sub l:ld (hl),a
-          jp instr_next
-      END
-
-
-      IF use_instr_chip_down_arp
-comp_chip_down_arp
-          ld a,compiled_instr_chip_down_arp AND &FF
-          ld b,2
-          call setup_comp_chip_down
-          jr com_chip_arp
-      END
-
-      IF use_instr_chip_down_arp_noise
-comp_chip_down_arp_noise
-;.......................
-          ld a,compiled_instr_chip_down_arp_noise AND &FF
-          call setup_comp_chip_down_3
-      IF need_room
-; Factorize table setup.
-; Here arp field (1 byte)
-      END
-      END
-
-      IF use_instr_chip_down_arp OR use_instr_chip_down_arp_noise
-com_chip_arp
-          xor a
-.cdanlp
-;de= dest (not buffer), for detection row loop
-          call connect_bk_instr
-          call is_last_row:jr z,_chip_finalize_table
-          call Next_node:call z,mess
-
-          push af
-          push bc       ; save b=row
-          push hl
-          cp b
-          jr nz,.loop_not_reached
-          ld (loop_pnt),de
-.loop_not_reached
-          ld (last_row),de
-
-          idsz ** inc hl ; skip link
-          ld c,(hl):inc hl
-          call connect_bk_compile
-chip_row_size' = 1
-          ld a,chip_row_size'+1
-          ld (de),a:inc de
-;Just copy arp (noise constant set with instr)
-          ld a,c
-          ld (de),a:inc de
-          ld hl,(last_row)
-          ld a,h:cp d:call nz,error_confine ; expect instr fit in &100
-
-          pop hl
-          pop bc
-          pop af
-          inc a
-          jr .cdanlp
-      END
 
 _chip_finalize_table
           call connect_bk_compile
