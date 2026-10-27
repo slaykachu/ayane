@@ -7,9 +7,9 @@ ayane = 1               ; 0: Stand-alone  1: In-tool player
 ;Buffer first, so we can better concatenate code+data
 compiled_instr_buf = &4000
 compiled_stack = &4100
+compiled_psg_regs = &4200
 compiled_player = &4220 ; instr.o + ply.o
 compiled_periods = [compiled_player AND &FF00] + &0200
-compiled_psg_regs = compiled_periods ; share zone
 ; tracklist, instr, phrase, tracks
 compiled_data = compiled_periods + &0100
 compiled_instr = compiled_data
@@ -66,5 +66,6 @@ default_use_hard_env = 1 ; "
 use_volume = use_track_volume OR use_phrase_volume
 use_noise = use_fx_noise OR use_instr_noise
 use_flags = use_instr_flag OR use_note_flag OR has_phrase_loop
+
 
 

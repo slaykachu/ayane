@@ -2,13 +2,16 @@
 todo  = 1
 need_room = 1
 
-; 2026 Jan 19: Add ARP_CLIP
+; 2026
+ ; Out 26: Harmonize: c0 at 0 for compiled player as well
+         ; macro.i must be imported in any case
+ ; Jan 19: Add ARP_CLIP
 
       IMPORT "plyconf.i"
       IMPORT "const.i"  ; note_c_10
+      IMPORT "macro.i"
 
       IF ayane
-      IMPORT "macro.i"
       IMPORT "memmap.i" ; diapason
       IMPORT "memcpc.o" ; scope_bk_base
       END
@@ -135,12 +138,9 @@ B     = &7E8C
  !! todo
       END
 
-; Align to midi notes. C0 (Double bass pedal) is 12.
-      IF 1-ayane
-; Room for psg register
-!! no, should act the same (for common wrap behavior)
-; -> update compile.o for custom psg_regs dest
-      END
+; Start at index 0 to ease clipping
+; Note(ah!): Shifted compared to midi. 
+           ; Our c0 (Double bass pedal) is midi code 12.
 c0
       WORD C,C#,D,D#,E,F,F#,G,G#,A,A#,B
 ;      WORD &0EEE,&0E18,&0D4D,&0C8E ; C   C#  D   D#
