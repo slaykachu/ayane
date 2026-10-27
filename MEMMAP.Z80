@@ -1,5 +1,7 @@
 ; ========= Shared buffers and variables ==========
-; 2026 May  
+; 2026 Out
+         ; 27 ply.events have moved to accomodate compiled version
+     ; May  
          ;  8 Even more room for instruments:
                  ; instr_pool: s/&5000/&4e00  (less room for events)
                  ; still not enough for 4k-2026.chp
@@ -62,9 +64,9 @@ track_module = &2550
 fx_module = &3400
 ply   = &3404           ;needed for events signatures
 fx_set_phrase_jp = ply+&13
-evt_set_transpose_lsb = ply+&C2 AND &FF ; track
-evt_change_phrase_lsb = ply+&E1 AND &FF ; "
-evt_track_loop_lsb = ply+&EF AND &FF ; "
+evt_set_transpose_lsb = ply+&27 AND &FF ; track.o
+evt_track_loop_lsb = ply+&46 AND &FF ; "
+evt_change_phrase_lsb = ply+&50 AND &FF ; "
 
 playsong_module = &38A2
 ; -- salo
@@ -95,9 +97,9 @@ track_module = &2350
 fx_module = &3200
 ply   = &3204
 fx_set_phrase_jp = ply+5
-evt_set_transpose_lsb = ply+&70 AND &FF
-evt_change_phrase_lsb = ply+&81 AND &FF
-evt_track_loop_lsb = ply+&8F AND &FF
+evt_set_transpose_lsb = ply+&19 AND &FF
+evt_track_loop_lsb = ply+&2A AND &FF
+evt_change_phrase_lsb = ply+&34 AND &FF
 
 playsong_module = &36A2
 ; -- salo

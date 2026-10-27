@@ -20,7 +20,10 @@ need_room = 1
 ; \/\/\/ 2026 \/\/\/\/\
 ; ----- Alpha5 -----
   ; Out
-   ;27 Only import "timer.o" if sfx (for compiled player)
+   ;27 Only import "timer.o" if sfx (for compiled player) 
+     ; ... but still need SUB_TM_CALL macro
+     ; Don't check *_lsb when ayane=0  
+     ; Move events and track_end for jr c,track_reset
 ; ----- Alpha2 -----
   ; Jan      
    ;22 Call preplay (cleaner than doing it in timer.set_timer_and_psg)
@@ -76,16 +79,20 @@ psg_regs = compiled_psg_regs
     ; - to know fx_code MSB
     ; - to put fx_set_phrase in same &100 area
 
-      IF nb_fx
-      IF sfx
-      IMPORT "timer.o"  ; Only for replay_period_in_nops
+      IF nb_fx AND sfx
+      IMPORT "timer.o"  ; replay_period_in_nops, SUB_TM_CALL
+      ELSE
+      MACRO SUB_TM_CALL n:ENDM ; no-op
       END
+      IF nb_fx
       IMPORT "fx.o"
 
+; Todo, move that before timer and co?
 ply_code
           jp Amorce_song
           jr play
 
+ ;     IF use_fx_set_phrase
 fx_set_phrase
           ASSERT($ == fx_set_phrase_jp)
 ; Fake FX: update row pnt.
@@ -244,11 +251,13 @@ change_phrase_tm = !! TODO
   !! review this
       END
 ;Done preemptively, as we must do it before push
-;Timer might be triggered a bit too soon, nevermind
-      IF ayane AND sfx
+;Timer might be triggered a bit too soon, nevermind   
+      IF sfx
+      IF ayane
 update_instr_tm = 61
       ELSE
- !!! todo
+ !!! todo     
+      END
       END
           EX_AF'()
           SUB_TM_CALL(update_instr_tm-1)
@@ -364,6 +373,86 @@ update_note_tm = 18
       END
       ENDM
 
+; ------
+; Events
+; Put here to reach track_reset
+; ------
+; From /evt_handle_loop/
+tm_evt_play_phrase = 11
+tm_evt_iter = 10+15+3
+; From /track_loop/
+      IF ayane
+tm_track_loop = 24
+      ELSE
+tm_track_loop = 17
+      END
+
+      MACRO SIGN_EVT type
+      IF ayane
+      BYTE type
+      END
+; Check confinement
+      IF $/&0100 - events/&0100
+ !! error confine
+      END
+      ENDM
+
+events
+
+          SIGN_EVT(type_evt_transpose)
+evt_set_transpose
+      IF ayane          ; needed by TRACK.O
+          ASSERT(evt_set_transpose_lsb == [$ AND &FF])
+      END
+          SET_TRANSPOSE()
+      IF ayane
+nxt_event_pnt ld hl,0
+      IF dev_checks
+          ld a,l:or h:call z,mess
+          EX_AF'()
+          SUB_TM(tm_evt_iter+set_transpose_tm+7+5)
+      ELSE
+          EX_AF'()
+          SUB_TM(tm_evt_iter+set_transpose_tm+7)
+      END
+      ELSE
+      IF sfx
+ !! todo: tm      
+      END
+      END
+          jp evt_handle_loop
+
+
+          SIGN_EVT(type_evt_loop)
+evt_track_loop
+      IF ayane          ; needed by TRACK.O
+          ASSERT(evt_track_loop_lsb == [$ AND &FF])
+      END
+; read back hook pnt
+          dec sp
+          dec sp
+          pop hl
+          EX_AF'()
+          SUB_TM(tm_evt_iter+8+3 - 3) ; -3: ???
+          jp track_reset
+
+          SIGN_EVT(type_evt_change_phrase)
+evt_change_phrase
+; Necessarily end of list
+          ASSERT(evt_change_phrase/&0100 == events/&0100) ;confine
+      IF ayane          ; needed by TRACK.O
+          ASSERT(evt_change_phrase_lsb == [$ AND &FF])
+      END
+          CHANGE_PHRASE()
+;We don't do the whole loop, since we jump to read_row directly
+          EX_AF'()
+;Only count tm1 + tm2 once!
+      IF todo
+; What if evt_set_transpose and then null link!?!
+      END
+          SUB_TM(tm_track_loop+tm_evt_iter+change_phrase_tm+4)
+          jp read_row
+
 ; ------------------------------------------------
 play
 ; ------------------------------------------------
@@ -422,9 +511,9 @@ track_loop
       IF ayane
 ;only needed if RDV. Nevermind
           ld bc,&7F00 + BK_TRACK:out (c),c
-tm1   = 24              ; until 'jr play_phrase' taken 
+          ASSERT(tm_track_loop == 24) ; until 'jr play_phrase' taken 
       ELSE
-tm1   = 17
+          ASSERT(tm_track_loop == 17)
       END
 
 tick      ld bc,0       ; Nb tick (1st iter:0)
@@ -496,8 +585,8 @@ track_reset
       IF ayane
 evt_handle_loop
 ;--------------
-tm_evt_play_phrase = 11 ; until jr play_phrase' (taken)
-tm_evt_iter = 10+15+3   ; until jp hl (play_phrase' not taken)
+          ASSERT(tm_evt_play_phrase == 11) ; until jr play_phrase' taken
+          ASSERT(tm_evt_iter == 10+15+3) ; until jp hl 
 ;following link
           ld e,(hl):inc hl
           ld d,(hl)
@@ -569,7 +658,7 @@ play_phrase
 ;----------
 ; -- RDV phrase event? (only 1 type: read_row)
 ; In 16 bits for crunchability / uniformity
-          SUB_TM(tm1+14)
+          SUB_TM(tm_track_loop+14)
           pop hl
           or a:sbc hl,bc
           pop hl        ; Next row position
@@ -669,9 +758,11 @@ tm_read_fx0 = 5 + _nofx0_tm ;  When jr taken
           SUB_TM''(23-1-_nofx0_tm) ; -1 for jr not taken
 _okfx0
 
-      IF nb_fx - 1      ; should be nb_fx > 1
+      IF nb_fx > 1
  !!! todo
       END
+      ELSE
+tm_read_fx0 = 0
       END
 
 read_instr
@@ -783,6 +874,8 @@ tick_pitch_tm = 0
 ; Jump to fx_0, fx_1, instr, and then track_loop   
           RET_ROUT(play_tick_tm + tick_vol_tm + tick_pitch_tm)
 
+
+
 track_end
 ;All tracks have been handled
           ld hl,(tick+1)
@@ -791,67 +884,6 @@ track_end
 savesp    ld sp,&3131
           RET_ROUT(15)
 
-; ------
-; Events
-; ------
-
-      MACRO SIGN_EVT type
-      IF ayane
-      BYTE type
-      END
-; Check confinement
-      IF $/&0100 - events/&0100
- !! error confine
-      END
-      ENDM
-
-
-events
-          SIGN_EVT(type_evt_transpose)
-evt_set_transpose
-          ASSERT(evt_set_transpose_lsb == [$ AND &FF])
-          SET_TRANSPOSE()
-      IF ayane
-nxt_event_pnt ld hl,0
-      IF dev_checks
-          ld a,l:or h:call z,mess
-          EX_AF'()
-          SUB_TM(tm_evt_iter+set_transpose_tm+7+5)
-      ELSE
-          EX_AF'()
-          SUB_TM(tm_evt_iter+set_transpose_tm+7)
-      END
-      ELSE
- !! todo: tm
-      END
-          jp evt_handle_loop
-
-          SIGN_EVT(type_evt_change_phrase)
-evt_change_phrase
-; Necessarily end of list
-          ASSERT(evt_change_phrase/&0100 == events/&0100) ;confine
-          ASSERT(evt_change_phrase_lsb == [$ AND &FF])
-          CHANGE_PHRASE()
-;We don't do the whole loop, since we jump to read_row directly
-          EX_AF'()
-;Only count tm1 + tm2 once!
-      IF todo
-; What if evt_set_transpose and then null link!?!
-      END
-          SUB_TM(tm1+tm_evt_iter+change_phrase_tm+4)
-          jp read_row
-
-          SIGN_EVT(type_evt_loop)
-evt_track_loop
-          ASSERT(evt_change_phrase/&0100 == events/&0100) ;confine
-          ASSERT(evt_track_loop_lsb == [$ AND &FF])
-; read back hook pnt
-          dec sp
-          dec sp
-          pop hl
-          EX_AF'()
-          SUB_TM(tm_evt_iter+8+3 - 3) ; -3: ???
-          jp track_reset
 
       IF ayane
 ; ----------------------
@@ -942,7 +974,7 @@ Amorce_song
           push hl
           call get_track_header
       ELSE
-          lb bc,&336 ; cpt, mask chan A
+          ld bc,&0336   ; cpt, mask chan A
 .tracklp
           push bc
       END
@@ -1080,9 +1112,7 @@ track_stack_init_size = $-track_stack_init + 2
       END
 save_org = $
 ho
-; We can eat into psg_regs: init routine overwritten, nevermind.
-;      FILL compiled_periods - $,0
-      SKIP compiled_periods + &30 - $
+      FILL compiled_periods - $,0 ; crunchability compiled player
       ORG compiled_stack
       END
 
