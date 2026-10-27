@@ -18,6 +18,9 @@ need_room = 1
  ; See /track_stack/
 
 ; \/\/\/ 2026 \/\/\/\/\
+; ----- Alpha5 -----
+  ; Out
+   ;27 Only import "timer.o" if sfx (for compiled player)
 ; ----- Alpha2 -----
   ; Jan      
    ;22 Call preplay (cleaner than doing it in timer.set_timer_and_psg)
@@ -74,7 +77,9 @@ psg_regs = compiled_psg_regs
     ; - to put fx_set_phrase in same &100 area
 
       IF nb_fx
+      IF sfx
       IMPORT "timer.o"  ; Only for replay_period_in_nops
+      END
       IMPORT "fx.o"
 
 ply_code
