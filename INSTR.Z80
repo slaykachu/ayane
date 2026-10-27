@@ -5,7 +5,9 @@ dev_checks' = 1         ; new checks
 ; Routine for each type of intruments:
       ; - instr_default
 
-;2026 
+;2026      
+ ;Out
+   ;27: Remove buggos static error message for compiled version
  ;Jan
    ;19: Use ARP_CLIP
    ; 5: instr_null must cut fx
@@ -165,7 +167,6 @@ instr_default
 .exec
       ELSE
 ;compiled: no indirection
- !! must handle instrument end then.
       END
 ; In:               
       IF use_volume
@@ -415,6 +416,11 @@ tm3'  = 14              ; until RET_ROUT'
       IF dev_checks
           inc de:ld a,(de):dec de
           cp timer_code/&0100:call c,&BE00
+;          cp timer_code/&0100:jr nc,.ok
+        ;  ld sp,(save_sp+1)
+;          ld sp,&BFA0
+;          call &BE00
+;.ok
           SUB_TM''(11)
       END
           ex de,hl
