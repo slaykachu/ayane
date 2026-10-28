@@ -1,22 +1,26 @@
 ; Tests compilation
 
+; 2026 Out 24. Fix assembling: use code_start, free_ram_for_nrt
+                             ; same IMPORT sequence than SALO-NRT
+             ; Files moved in TESTDATA/
 ; 2025 Mar 19. Adapt to kima.chp
              ; Test player before doing anything else
              ; Dump registers 
-
 ; 2024 May 14. Proper psg_regs and periods addresses.
 
 do_play = 0             ; 0: check  1: play tune  (if no return)
 
-      ORG &1000
-      ENT tests
-
       IMPORT "memmap.i"
-      IMPORT "plyconf.i" ; just for check below
+      IMPORT "import.i"
+      IMPORT "plyconf.i" ; just for check below    
       IF 1-ayane
  !! Compile: in-tool routine, so ayane must be set.
       END
 
+      ORG code_start
+          IMPORT_SALO_DEPS()
+      ORG init_module
+      ENT tests
       IMPORT "init.o"
       IMPORT "track.o"  ; for monitor
       IMPORT "memcpc.o"
@@ -99,7 +103,7 @@ frame_cpt ld hl,-1
     ;      or a:sbc hl,bc:call z,&BE00
     ;      ld a,&F7:ld (compiled_instr_default+1),a
       BRK
-!! out of sync table in memory vs expected by player
+;!! out of sync table in memory vs expected by player
           call aya_play
           ld a,(&411E):cp &24:call z,&BE00
 ;-- dumpregisters
@@ -181,14 +185,6 @@ dt    = playcomp - aya_start ; offset at storage area
           ld a,(dt+aya_init):cp &11:call nz,fail
           ret
 
-; ------------------------------
-
-data_start WORD 
-data_size WORD 
-
-      FILL -$ AND &FF,&F7
-dbg   FILL &0100,0
-; ------------------------------
 
 chip_play = &5000
 chip_sng = &7000
@@ -220,34 +216,43 @@ BK_REF = &C6
 
       BANK BK_REF
       ORG chip_play
-      LOAD "chipnsfx.out"
+      LOAD "testdata/chipnsfx.out"
 
       ORG chip_sng
-      LOAD "minimala.bin"
+      LOAD "testdata/minimala.bin"
 
       BANK BK_IO
       ORG &4000
 minimala
-  ;    LOAD "ums:music/tj/minimala.chq" ; with header
+      LOAD "testdata/minimala.chp"
   ;    LOAD "4k08.chq"   ; with header
-;      LOAD "ums:40y/kima.chp"
-      LOAD "ums:40y/kim0.chp" ; 2 patterns for test
+  ;    LOAD "ums:40y/kima.chp"
+  ;    LOAD "ums:40y/kim0.chp" ; 2 patterns for test
 
 ;Compile uses BK_IO, so put player in same bank
       SKIP &7D00 - $
 playcomp
-      IMPORT "out/kimd7-jp.o" ; Must be in sync
-      LOAD "out/plykimd7.bin"
+      IMPORT "testdata/kimd7-jp.o" ; Must be in sync
+      LOAD "testdata/plykimd7.bin"
 playcomp_ = $ - playcomp
       SKIP &8000 - $    ; limit
 
-      ORG freeroom
+      ORG free_ram_for_nrt
       IMPORT "compile.o"
       IMPORT "chipn.o"
+
+; ------------------------------
+
+data_start WORD 
+data_size WORD 
+
+      FILL -$ AND &FF,&F7
+dbg   FILL &0100,0
+; ------------------------------
+
+
       SKIP ramlimit' - $
 
 monitor
-      ORG tracks_index
-;
       ORG compiled_stack
 ; ply stack

@@ -5,7 +5,10 @@ hack_kim = 1
 todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
-; 2026 Out 24. Fix assembling (chipnsfx instruments no more supported)
+; 2026 
+; Out 27. Fix assembling: s/track.o/tracknub.o
+                        ; s/fail/mess
+    ; 24. Fix assembling (chipnsfx instruments no more supported)
 
 ; 2025  
 ; ----- v0l2 ------
@@ -65,8 +68,9 @@ todo  = 1
       ; set up after analysis.
       IMPORT "plyconf.i"
 
+      IMPORT "assert.o" ; mess
       IMPORT "ply.o"
-      IMPORT "track.o"
+      IMPORT "tracknub.o" ; get_track_header
       IMPORT "phrase.o"
       IMPORT "chung.o"
       IMPORT "instr.o"  ; Note: version non compiled
@@ -236,7 +240,7 @@ comp_default
 ; Check it's null (and skip field)
 ; assume no pitch
           ld a,(hl):inc hl
-          or (hl):inc hl:call nz,fail
+          or (hl):inc hl:call nz,mess
 .ok_instr_pitch
 
 ; - r7 flags 
@@ -548,9 +552,9 @@ track_lp
           idsz ** inc hl
       IF pattern_size
 ;Constant size. We don't encode it, but check it matches
-          ld a,pattern_size AND &FF:cp (hl):call nz,fail
+          ld a,pattern_size AND &FF:cp (hl):call nz,mess
           inc hl
-          ld a,pattern_size / &0100:cp (hl):call nz,fail
+          ld a,pattern_size / &0100:cp (hl):call nz,mess
           inc hl
       ELSE
           2 ** call poke_ldi ; duration
