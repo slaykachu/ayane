@@ -1,4 +1,6 @@
 ; ---- Init all modules ------
+; alpha5 27 Out 26 Remove supernumerous IMPORT_SHARED_DEPS 
+                 ; (done via IMPORT_SALO_DEPS)
 ; alpha1 25 Dec 25 Select instr1 for ui purpose
 ; v0.0at  6 Nov 25 Use import.i for consistency
 ; v0.0ao  7 Sep 25 full_init: Call Init_periods
@@ -11,14 +13,13 @@ todo  = 1
       IMPORT "import.i"
       IMPORT "memmap.i" ; uiloop
 
-          IMPORT_SHARED_DEPS()
-hu
           IMPORT_SALO_DEPS()
 ho
       IF use_widget
       IMPORT "widget.o" ; for init_widget
       END
       IMPORT "shortcut.o" ; setup_keys
+hu
       IMPORT "timer.o"  ; fx_null
 
 
