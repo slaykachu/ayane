@@ -20,10 +20,12 @@ need_room = 1
 ; \/\/\/ 2026 \/\/\/\/\
 ; ----- Alpha5 -----
   ; Out
-   ;27 Only import "timer.o" if sfx (for compiled player) 
-     ; ... but still need SUB_TM_CALL macro
-     ; Don't check *_lsb when ayane=0  
-     ; Move events and track_end for jr c,track_reset
+   ;27 For compiled player (ayane=0 release=1):
+        ; Amorce_song: ld hl,compiled_data (since only 1 song possible)
+        ; Only import "timer.o" if sfx  
+        ; ... but still need SUB_TM_CALL macro
+        ; Don't check *_lsb when ayane=0  
+        ; Move events and track_end for jr c,track_reset
 ; ----- Alpha2 -----
   ; Jan      
    ;22 Call preplay (cleaner than doing it in timer.set_timer_and_psg)
@@ -961,7 +963,9 @@ Amorce_song
       IF ayane
    ; N/A (subsong selected)
       ELSE
-   ; HL= tracks (determines which sub_song)
+   ; TODO! HL= tracks (determines which sub_song)  
+   ; For now set HL for ease of use by client
+          ld hl,compiled_data
       END
           ld de,track_stack
       IF ayane
