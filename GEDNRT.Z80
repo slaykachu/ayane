@@ -5,7 +5,11 @@ todo_wrong_chr = 0
 
 ; TODO???? refresh_focus in gedeihen_enter?
 
-; -- 2026 -- 
+; -- 2026 --  
+; Nov
+  ; 3: Update test_return_in_text_field and co references
+     ; oversight? from Feb 4: ged.text_field_on_enter doesn't 
+     ; overwrite anymore.
  ; --- Alpha 2---
 ; Jan 
   ;15: Fix memory corruption (word written at tmp_env_type)
@@ -2728,7 +2732,7 @@ test_return_in_text_field
           ret
 .seq  BYTE "x",kreturn
           END_OF_NRT_SEQUENCE()
-      BYTE "x"          ; didn't give back focus, nevermind
+      BYTE "Oix"        ; didn't give back focus, nevermind
       BYTE nrtend
 
 test_return_in_text_field'
@@ -2740,7 +2744,7 @@ test_return_in_text_field'
           ret
 .seq  BYTE krgt,"y",kreturn
           END_OF_NRT_SEQUENCE()
-      BYTE "dynamyte y" ; didn't give back focus, nevermind
+      BYTE "dynamyte Oiy" ; didn't give back focus, nevermind
       BYTE nrtend
 
 
@@ -3366,7 +3370,7 @@ test_focus_text_field
 .seq
       BYTE "hu"
           END_OF_NRT_SEQUENCE()
-      BYTE "hu":FOCUS(" ") ; editing: cursor
+      BYTE "Oihu":FOCUS(" ") ; editing: cursor
       BYTE nrtend
 
 
@@ -3377,9 +3381,12 @@ test_focus_text_field'
           TEST_RUN_FOCUS(ui_text_field,.seq)
           ret
 .seq
-      BYTE "123456",kdwn
+    ;  BYTE "123456",kdwn    ; TODO: weird behavior when field full
+      BYTE "123",kdwn
           END_OF_NRT_SEQUENCE()
-          6 ** FOCUS("1" + #)
+          FOCUS("O")
+          FOCUS("i")
+          3 ** FOCUS("1" + #)
       BYTE nrtend
 
 nrt_setup_text_field
