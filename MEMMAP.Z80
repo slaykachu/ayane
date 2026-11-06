@@ -1,5 +1,7 @@
 ; ========= Shared buffers and variables ==========
-; 2026 Out
+; 2026 Nov
+         ;  6 Remove fx_module (handled by ply.o)
+     ; Out
          ; 27 ply.events have moved to accomodate compiled version
      ; May  
          ;  8 Even more room for instruments:
@@ -61,12 +63,11 @@ uiloop = &1D0F
 ;padding
 phrase = &1D94
 track_module = &2550
-fx_module = &3400
-ply   = &3404           ;needed for events signatures
-fx_set_phrase_jp = ply+&13
-evt_set_transpose_lsb = ply+&27 AND &FF ; track.o
-evt_track_loop_lsb = ply+&46 AND &FF ; "
-evt_change_phrase_lsb = ply+&50 AND &FF ; "
+ply   = &3400           ;needed for events signatures
+fx_set_phrase_jp = ply+&17
+evt_set_transpose_lsb = ply+&2B AND &FF ; track.o
+evt_track_loop_lsb = ply+&4A AND &FF ; "
+evt_change_phrase_lsb = ply+&54 AND &FF ; "
 
 playsong_module = &38A2
 ; -- salo
@@ -94,12 +95,11 @@ uiloop = &1B00
 ;padding
 phrase = &1B90
 track_module = &2350
-fx_module = &3200
-ply   = &3204
-fx_set_phrase_jp = ply+5
-evt_set_transpose_lsb = ply+&19 AND &FF
-evt_track_loop_lsb = ply+&2A AND &FF
-evt_change_phrase_lsb = ply+&34 AND &FF
+ply   = &3200
+fx_set_phrase_jp = ply+9
+evt_set_transpose_lsb = ply+&1D AND &FF
+evt_track_loop_lsb = ply+&2E AND &FF
+evt_change_phrase_lsb = ply+&38 AND &FF
 
 playsong_module = &36A2
 ; -- salo

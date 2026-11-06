@@ -75,24 +75,23 @@ check_pc
 psg_regs = compiled_psg_regs
       END
 
+ply_code
+          jp Amorce_song
+          jr play
+
 ; Note: the only dependency is fx_noFx 
 ; As other fx LSB are encoded directly in phrases (generic hooks)
 ; Anyway we need:
     ; - to know fx_code MSB
     ; - to put fx_set_phrase in same &100 area
 
-      IF nb_fx AND sfx
+      IF [nb_fx AND sfx] OR ayane ; if ayane, imported by chung anyway
       IMPORT "timer.o"  ; replay_period_in_nops, SUB_TM_CALL
       ELSE
       MACRO SUB_TM_CALL n:ENDM ; no-op
       END
       IF nb_fx
       IMPORT "fx.o"
-
-; Todo, move that before timer and co?
-ply_code
-          jp Amorce_song
-          jr play
 
  ;     IF use_fx_set_phrase
 fx_set_phrase

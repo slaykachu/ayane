@@ -57,7 +57,7 @@ todo  = 1
       ORG track_module  ; skip instrsel
       IMPORT "track.o"
       IMPORT "periods.o" ; set_diapason
-      ORG fx_module     ; fx.o imported by ply
+      ORG ply
       IMPORT "ply.o"    ; salo: events signature phrasui: Amorce_song
       IMPORT "playsong.o" ; not used by salo, but needed for ayalib2
 ;put here since we import ply anyway

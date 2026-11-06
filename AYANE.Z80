@@ -3,6 +3,9 @@
 ; ---------------------------
 
 ; 2026
+ ;--- alpha 5 ---
+  ; Out
+   ; 5: Add check for Amorce_song
  ;--- alpha 3 ---
   ; Apr
    ;11: Add CAT (CTRL-C), |A and |B (CTRL-A/B)
@@ -283,6 +286,9 @@ play_song
 ; No ENTER: must return to screen
           call Song_get_first_track
           call get_track_header
+      IF dev_checks
+          ld a,(Amorce_song):cp &C3:call nz,mess
+      END
           ld a,3
           call Amorce_song
 ;play_song does DI. So it automatically turn off status.

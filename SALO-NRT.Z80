@@ -644,6 +644,7 @@ vampire_size = &1110
           ASSERT(track_code == track_module)
           ASSERT(playsong_code == playsong_module)
 ; Sync with ayane             
+          ASSERT(ply_code == ply)
           ASSERT(init_code == init_module)
 
       IF 0              ; dev_checks (ambiguous)
@@ -655,7 +656,7 @@ vampire_size = &1110
       SAVE "ayasalor.bin",salo_code,salo_end - salo_code
       ELSE
       SAVE "ayalib1d.bin",phrase,init_end - phrase
-      SAVE "ayalib'd.bin",fx_module,init_end - fx_module ; for debug
+      SAVE "ayalib'd.bin",ply,init_end - ply ; for debug
       SAVE "ayaiod.bin",io_code,io_end - io_code
       SAVE "ayasalod.bin",salo_code,salo_end - salo_code
       END
