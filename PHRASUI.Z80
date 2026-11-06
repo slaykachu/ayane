@@ -2,6 +2,8 @@
 todo  = 0
 ; 2026
 ; -- Alpha5 --
+  ; Nov
+      ; 6 Fix #23 Cloned phrase: new id not shown
   ; Out
       ;18 Fix #18: pos lost after CTRL-H 
                  ; s/_set_cursor/gedeihen_set_cursor
@@ -954,6 +956,10 @@ pre_modif
 clone_if_needed
           ld a,(is_first_iter):or a
           ret nz
+;-- Fix #23 new id not shown
+;Happens when phrase not duplicated in screen.
+;A bit overkill, nevermind.
+          inc a:ld (must_refresh),a
 ;-- clone phrase
           ld hl,t0
           ld de,time_tmp
