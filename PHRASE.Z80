@@ -5,6 +5,9 @@ do_add_empty_row = 0
       END
 
 ; 2026    
+ ; -- alpha 5 -- 
+  ; Nov
+   ; 6: Fix #22: Reserved phrase 0 picked for auto-clone
  ; -- alpha 3 --
   ; Apr
    ;13: skip_nfx: fix skipping of param: always word.
@@ -238,7 +241,7 @@ song_get_empty_phrase
           call scope_bk_phrase
 
 ;Scan all phrases, and count non-empty
-          ld c,0
+          ld c,1        ; 0 is reserved (bug #22)
 .lp
           ld a,c
           call Get_phrase
