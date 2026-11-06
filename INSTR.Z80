@@ -6,8 +6,10 @@ dev_checks' = 1         ; new checks
       ; - instr_default
 
 ;2026      
- ;Out
+ ;Out  
+   ;30: Import timer when ayane=1
    ;27: Remove buggos static error message for compiled version
+      ; const.i also needed for compiled version
  ;Jan
    ;19: Use ARP_CLIP
    ; 5: instr_null must cut fx
@@ -17,18 +19,17 @@ dev_checks' = 1         ; new checks
 
       IMPORT "plyconf.i"
       IMPORT "macro.i"
+      IMPORT "const.i"  ; instr_head_size, note_c_0_encoding
 
       IF ayane
-      IMPORT "const.i"  ; instr_head_size
       IMPORT "memmap.i" ; BK_INSTR, instr_idx, psg_regs
       IMPORT "assert.o"
       IMPORT "periods.o"
 ;!! periods don't pad itself, to get the correct binary size
 ;!! when assembling ply.o with ayane=0
       FILL -$ AND &FF,&F7
-      IF sfx
-      IMPORT "timer.o"  ; for ret_sp, fx_end
-      END
+;Note: always imported if ayane, since needed by chung
+      IMPORT "timer.o"  ; for ret_sp, fx_end, SUB_TM_CALL
       ELSE
 psg_regs = compiled_psg_regs
  ; instr is imported at start of ply.o (to ensure confinement)
@@ -436,11 +437,6 @@ instr_code_             ; for check by fx.o
 ; ------------ Helpers ------------
 
       IF ayane
-
-      IF 1-sfx
- !!! sfx expected to be on in ayane
-  ; we use JP HL' here!
-      END
 
       MACRO CHECK_DI
       IF dev_checks
