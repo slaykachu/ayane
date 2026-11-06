@@ -1,36 +1,11 @@
 ; <<<< Phrase Editor >>>>
 todo  = 0
 ; 2026
-; -- Alpha3 --
-  ; Apr
-      ;14 _del_note Fix refresh of cleared instr 
-        ; Fix regression Apr 6 (refresh_nofocus must also be called
-                               ;when not refreshing)
-      ; 7 _del_note: Also delete instr (fix #12)
-      ; 6 refresh_row: don't call CALL_ENTER after update_pos_y
-        ; skip_or_next: call refresh_nofocus
-            ; (fix #11 residual cursor when deleting a note)
-; -- Alpha2 --
-  ; Feb 
-      ; 4 CTRL-SPACE: play current phrase
-      ; 3 CTRL-f0/f.: go to first/last phrase
-        ; pre_view/post_view: handle when "scrolling" more than one page
-                          ; (well we couldn't do that before, could we?)
-; -- Alpha2 --
-  ; Jan
-      ;19 Do not transpose /note_c_10/
-      ;17 Handle track loop
-      ;13 CTRL-f0/f.
-        ; CTRL-DEL, ENTER
-; -- Alpha1 --
-      ; 9 Display notes with transposition
-      ; 8 Display phrase id and transpose
-      ; 7 Display row number
-      ; 5. Del: must go to next line even if empty
-      ; 3. Handle CLR (stop sound)
-      ; 1. Add consume_row (for CTRL-SPACE and when entering note)
-; 2025
-  ; Dec 31. Use ged binary.
+; -- Alpha5 --
+  ; Out
+      ;18 Fix #18: pos lost after CTRL-H 
+                 ; s/_set_cursor/gedeihen_set_cursor
+                   ; (uses hook from prasuit)
 
       IMPORT "const.i"  ; kclr
 dev_checks' = 1 - release
@@ -54,6 +29,8 @@ refresh_nofocus = ged+18
 refresh_focus = ged+21
 validate = ged+24
 update_pos_y = ged+27
+gedeihen_set_cursor = ged+30
+gedeihen_set_cursor_x = ged+33
 
 phrasui_code
           jp phrase_cold_refresh
@@ -64,6 +41,7 @@ phrasui_code
 
 ;------------------
 phrase_cold_refresh
+; Not that cold: used to switch back (from e.g. help)
 ;------------------
  ; -- restore state
           ld hl,saved_state
@@ -84,15 +62,11 @@ phrase_cold_refresh
           ld bc,_paint_sprite
           call gedeihen_set_hooks
 
-          ld hl,[1+wid_row#]*&0100 + 1
-          call setup_phrase_ui
- ; -- focus on current row
-          call gedeihen_disp
- ; -- enter        
-          ld hl,[1+wid_row#]*&0100 + 1
-          call _set_cursor
-          ld hl,phrase_ui
-          jp gedeihen_enter
+; Change track first, as it doesnt refresh focus
+          ld a,(track_cur)
+          call switch_track
+ ; -- focus on current row           
+          jp refresh_row_from_time_cur ; in particular, update_pos_y
 
 phrase_ui_process
 ;----------------
@@ -102,6 +76,18 @@ phrase_ui_process
           ld (auto_skip),a
           ld (must_refresh),a
           ld a,b
+          call .do_process
+; Save state (issue #18).
+; Note: storing in bank will be needed for persistence
+          push af
+          ld hl,state
+          ld de,saved_state
+          ld bc,state_
+          ldir
+          pop af
+          ret
+
+.do_process
           call gedeihen_process
           ret nc
           ld a,(is_modified)
@@ -132,8 +118,7 @@ do_skip_id = 2
           call get_time_row
           call get_delai_ui
           ld l,a:ld h,0:add hl,de
-          call refresh_row
-          ret
+          jp refresh_row
 
 ; ---------------------
 phrase_ui
@@ -510,7 +495,12 @@ refresh_row__
       IF dev_checks'
           call nc,mess
       END
-          inc a         ; ged cursor is 1-based
+          inc a         ; ged cursor is 1-based   
+      IF todo
+; see why ged set it from root state (for propagation?)
+; here it's ok because root widget (phrase_ui) is ad-hok,
+; handling cursor y itself.  
+      END
           call update_pos_y ; + focus on new line
           GED_HANDLED() ; when coming for e.g. edit_row_com
           ret
@@ -776,18 +766,25 @@ next_track
           ld a,(hl)
           cp 3:jr c,$+3:xor a
           inc a
-          jr switch_track
+          jr _set_track
 
 prev_track
           ld hl,track_cur
           ld a,(hl)
           cp 2:jr nc,$+4:ld a,4
           dec a
-switch_track
+_set_track
           ld (hl),a
           push af
-          call gedeihen_disp ; remove focus
+          call gedeihen_disp ; remove focus 
           pop af
+          call switch_track
+          call gedeihen_enter ; focus on new track
+          GED_HANDLED() ; when coming for e.g. edit_row_com
+          ret
+
+switch_track
+;In: A = track #
           push af
           call Song_select_track
           call refresh_state_cur
@@ -797,20 +794,15 @@ track_wid = 24
           ASSERT(track_wid == 24)
           ld c,a:add a:add c:3 ** add a ; * 24
           add wid_row#+1 ;ged cursor 1-based
-          push af
-          call ph_get_cursor
-          pop af
-          ld h,a
-;         GET_STATE_BYTE(widget_pos_y)
-;         ld l,a
 ; we don't use update_pos_x, which would require ged.propagate_x = 1
 ; also, setup_phrase_ui rewind to 1st field, 
 ; which is what we want for next_track
-          call setup_phrase_ui
-          call select_row_ui
-          call gedeihen_enter
-          GED_HANDLED() ; when coming for e.g. edit_row_com
-          ret
+          call gedeihen_set_cursor_x
+; Needed to propagate cursor to leaf widget
+; As a side effect, it resets to 1st column (note), which is fine.
+          ld hl,phrase_ui
+          call setup_widget
+          jp select_row_ui
 
 ;-------------------------
 piano_keys
@@ -829,7 +821,6 @@ piano_keys
           jp edit_row_skip
 
 ; ----------------------
-_set_cursor = ph_set_cursor
 _paint_sprite = &BE00
 ; ----------------------
 
@@ -990,11 +981,6 @@ get_page_shift
           ld hl,time_at_top
           ret
 
-setup_phrase_ui
-;IN: hl = cursor (1-based)
-          call _set_cursor
-          ld hl,phrase_ui
-          jp setup_widget
 ; ----------------------
 play_phrase
 ;----------
@@ -1124,16 +1110,12 @@ time_tmp SKIP 3
 
       ORG _savepc
 
-      IF 0
-defaut_state
-dfd   = $ - state
-          ASSERT($ == dfd+time_at_top)
+      MACRO PHRASUI_DEFAULT_STATE cur,track
+; used by nrt
           TIME(0)
-          ASSERT($ == dfd+time_cur)
-          TIME(0)
-          ASSERT($ == dfd+track_cur)
-      BYTE 1
-      END
+          TIME(cur)
+      BYTE track
+      ENDM
 
 saved_state
 dfs   = $ - state

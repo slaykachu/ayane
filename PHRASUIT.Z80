@@ -8,29 +8,11 @@ with_loop = 1 AND [1 - do_nrt] ; todo, see why nrt fails when = 1
 ; with_loop = 0
 
 ; 2026         
-  ; -- Alpha 3 --
-  ; Feb
-      ; 4: Add test_goto_last_phrase
-  ; -- Alpha 2 --
-  ; Jan 
-      ;16: Add with_loop
-      ;13: test_fuzz: add CTRL-DEL / Return    
-         ; test_row_dwn_to_repeated_phrase: update ref to match transpos
-      ; 9: test_refresh_state: add check for unaligned transpose
-      ; 8: Adapt refs, accounting for row# column
-  ; -- Alpha 1 --
-      ; 5: Add test_clr
-      ; 3: Add test_note_2nd_row
-      ; 2: Move keys_buffer @ 8200 (since we now uses ply for playback) 
-; 2025
-  ; Dec
-      ;17: Move phrasui in BK_DISP
-      ;16: Add test_fuzz
-      ;13: Add test_refresh_page 
-      ;12: Add test_next_page
-         ; Add test_kcdwn
-         ; Add test_kcup
-         ; Add test_up_to_prev_phrase
+  ; -- Alpha 5 --
+  ; Out
+      ; 5: Add test_next_track
+         ; !!! On hold, since 'set_cursor' at 9c86 is reset to
+             ; ph_set_cursor at some point, i haven't found yet why. 
 
 nrtfail = &BE00
 
@@ -85,6 +67,13 @@ nrt_phrase1_dur = delai_ui_default*8
           call New_module ; for Amorce_song
           call dummy_instr_ui
           call phrase_reset
+      IF do_nrt
+;-- tests expect cleared state
+          CALL_DISP_BK(nrt_clear_state)
+      ELSE
+          CALL_DISP_BK(nrt_set_state)
+      END
+
       IF 0
           call dummy_phrase_64_rows ; tmp test (solved already)
       ELSE
@@ -148,7 +137,32 @@ note4 = &43
 
           ld a,BK_DISP:call connect_a ; for checks against phrasui's var
           CALL_DISP_BK(phrase_cold_refresh)
+      IF do_nrt
+;re-set our hooks since phrase_cold_refresh calls gedeihen_init
+          call gedeihen_set_hooks_nrt
+      END
           ret
+
+nrt_clear_state
+          ld hl,defaut_state
+          ld de,saved_state
+          ld bc,state_
+          ldir
+          ret
+
+nrt_set_state
+          ld hl,test_state
+          ld de,saved_state
+          ld bc,state_
+          ldir
+          ret
+
+
+defaut_state
+          PHRASUI_DEFAULT_STATE(0,1)
+
+test_state
+          PHRASUI_DEFAULT_STATE(48,2)
 
 dummy_phrase_64_rows
 ; 64 rows * 6 
@@ -212,6 +226,7 @@ sentinelle = 0
 
 tests
           ld a,&F7:ld (0),a
+      ;    call test_next_track
           call test_refresh_state
           call test_refresh_page
           call test_row_dwn_to_repeated_phrase
@@ -227,6 +242,7 @@ tests
           call test_note_2nd_row
           call test_clr
           call test_goto_last_phrase
+      ;    call test_next_track
           call test_fuzz
           ret
 
@@ -452,6 +468,20 @@ test_prev_page
       FILL 3,kcup
           END_OF_NRT_SEQUENCE()
       BYTE nrtend
+
+test_next_track
+          call dev_setup
+          TEST_RUN(.seq)
+          CHECK_CURSOR(1+wid_row#+track_wid,1)
+          ld a,(track_cur):cp 2:call nz,nrtfail
+          ret
+
+.seq  BYTE kcrgt
+          END_OF_NRT_SEQUENCE()
+  ;    BYTE "#"
+      BYTE nrtend
+
+
 
 test_goto_last_phrase
           call dev_setup

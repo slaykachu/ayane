@@ -1,5 +1,8 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
 ;2026
+; -- alpha5 --
+; Out
+  ; 3 Expose gedeihen_set_cursor(_x) for phrasui
 ; -- alpha3 --
 ; Apr 
   ; 6 update_pos_y: use ENTER_COMMON ourself
@@ -278,6 +281,8 @@ gedeihen_code
           jp refresh_focus
           jp validate
           jp update_pos_y
+          jp gedeihen_set_cursor
+          jp gedeihen_set_cursor_x
 
 ; ----------------------------------
 ; Macros + helpers
@@ -438,14 +443,14 @@ gedeihen_set_hooks
 
 ; --------------------------
 setup_widget
-;- Save current pos as topleft of widget
+;- Set current pos as topleft of widget
 ;- [Reset common fields (just focus for now)]
 ;- Install on_display on_enter etc hooks
 ;- Call widget's init: 
        ; copying custom fields
        ; recursively setting child widget for containers (w_struct...)
 
-; Note: setup all branch until leaf. This is assumed by gedeihen_enter
+; Note: setup whole branch until leaf. This is assumed by gedeihen_enter
       ; to be able to re-enter with state conserved.
 
 ; TODO? since disp/enter must dynamically setup embeded widgets,
@@ -455,7 +460,8 @@ setup_widget
            ; - modif param (e.g. page down for multiline)
   ; If disp calls setup itself, we cannot handle the second use-case.
 
-; In: HL = widget description
+; In: HL = widget description      
+          push hl:call set_root_state:pop hl
           call reset_widget_location_from_cursor
 _setup_widget           ; <- when location copied for parent
           ld a,(hl)
@@ -1294,8 +1300,23 @@ refresh_nofocus_safe_save_cursor
           ex (sp),hl
           call refresh_nofocus_safe
           pop hl
+;enchaine
+gedeihen_set_cursor
+;used by phrasui
+;In: H = X 
+   ; L = Y     
+;Mod: AF, BC, HL?   
           CALL_STATE_EXT(set_cursor)
           ret
+
+gedeihen_set_cursor_x
+;In: A = POS     
+;Mod: AF, BC, HL   
+          push af
+          CALL_STATE_EXT(get_cursor)
+          pop af
+          ld h,a
+          jr gedeihen_set_cursor
 
 refresh_nofocus_safe
 ;Refresh without changing original state ("safe")
@@ -2086,7 +2107,7 @@ update_nested_pos_y_
           pop af
           push af
           ld l,a
-          CALL_STATE_EXT(set_cursor)
+          call gedeihen_set_cursor
 
 ; Updated embedded widget's Y location 
 ; Necessary when refresh is used (other wrong line got refreshed)
@@ -2388,7 +2409,7 @@ disp_one_line
           GET_STATE(widget_pos)
           ld a,l:add c:ld l,a
           push hl
-          CALL_STATE_EXT(set_cursor)
+          call gedeihen_set_cursor
           pop hl
 ;-- select line in model    
           pop af
@@ -3027,7 +3048,7 @@ fe_pos = $+1
 reset_cursor_from_widget_location
           push bc:push hl
           GET_STATE(widget_pos)
-          CALL_STATE_EXT(set_cursor)
+          call gedeihen_set_cursor
           pop hl:pop bc
           ret
 
@@ -3229,8 +3250,7 @@ inverse_video
       ; that ensure proper location for next widget in struct
   ;I.E. we assume cursor past field. Possible better solution:
       ; use left location + width.
-          CALL_STATE_EXT(set_cursor)
-          ret
+          jp gedeihen_set_cursor
 
 tws_lp
           ld a,(hl):inc hl:or a:ret z
@@ -3242,7 +3262,7 @@ tws_lp
 display_cursor_at
 ;----------------
 ; IN: HL = cursor position (1-based)
-          CALL_STATE_EXT(set_cursor)
+          call gedeihen_set_cursor
 ; For now: only handle text field
 ;          CALL_STATE(get_height)
           CALL_STATE_EXT(place_cursor)
