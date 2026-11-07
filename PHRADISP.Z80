@@ -1,15 +1,10 @@
 ; <<<<< Fast phrase display >>>>>
 dev_checks' = 1
 
-; 2025
-; -- Alpha2 -- 
-  ; Jan
-     ;19 Do not transpose /note_c_10/
-     ; 8 Display phrase id and transpose
-     ; 7 Display row number
-; -- Alpha1 --
-  ; Dec
-    ; 25 disp_rows: fix buffer not reloaded
+; 2026
+; -- Alpha5 --
+  ; Nov
+     ; 6 Add /print_cloned/
 
 wid_row# = 3
 wid_separator = 21
@@ -365,6 +360,27 @@ ph_write_char
           inc (hl)
           pop hl:pop de:pop af
           ret
+;---------------------------------
+;--- Info helper ----
+print_cloned
+;-- Display "Phrase xx cloned to yy"
+;In: A = previous 
+   ; B = new
+          push bc
+          push af
+          ld bc,txt_phrase+&8000
+          LOCATION(x_pos_command,y_pos_last_line)
+          CALL_STATUS(status_str_at)
+          pop af
+          CALL_STATUS(status_deci_a)
+          ld bc,txt_cloned+&8000
+          CALL_STATUS(status_str)
+          pop af
+          CALL_STATUS(status_deci_a)
+          ret
+
+txt_phrase BYTE "Phrase ",0
+txt_cloned BYTE " cloned to ",0
 
 ;---------------------------------
 cur_transpose BYTE 0

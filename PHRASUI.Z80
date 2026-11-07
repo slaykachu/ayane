@@ -3,7 +3,9 @@ todo  = 0
 ; 2026
 ; -- Alpha5 --
   ; Nov
-      ; 6 Fix #23 Cloned phrase: new id not shown
+      ; 6 clone_if_needed: use print_cloned
+                         ; deactivate useless dup handling 
+        ; Fix #23 Cloned phrase: new id not shown
   ; Out
       ;18 Fix #18: pos lost after CTRL-H 
                  ; s/_set_cursor/gedeihen_set_cursor
@@ -960,23 +962,36 @@ clone_if_needed
 ;Happens when phrase not duplicated in screen.
 ;A bit overkill, nevermind.
           inc a:ld (must_refresh),a
+.refresh_forced = 1
 ;-- clone phrase
           ld hl,t0
           ld de,time_tmp
           call copy_time
           call song_get_current_phrase
+      IF .refresh_forced == 0
+; If source phrase was dup on-screen, set new phrase as such
+; No need when refresh_forced, as dup flags are re-computed
           ld hl,phrase_dup:call bs_get
+      END
           push af
           call phrase_clone
           ld hl,time_tmp
           call Set_phrase_at_t
           call select_row_ui
-          pop af
-          ret z
-; If source phrase was duplicated, considere new phrase as duplicated
+
           call song_get_current_phrase
+          ld b,a
+          pop af        ; A = old phrase  F = flag dup
+      IF .refresh_forced == 0
+          ld c,a
+          ld a,b
           ld hl,phrase_dup
-          jp bs_set
+          call nz,bs_set
+          ld a,c
+      END
+;-- Info
+          jp print_cloned
+
 ; ----------------------
 get_page_shift
 ; Out: HL= time_at_top

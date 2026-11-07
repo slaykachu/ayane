@@ -1,6 +1,8 @@
 ; ========= Shared buffers and variables ==========
-; 2026 Nov
-         ;  6 Remove fx_module (handled by ply.o)
+; -- Alpha 5 --
+; 2026 Nov       
+         ;  6 disp_ayane at 5f00 (leave room for phrasui)  
+            ; Remove fx_module (handled by ply.o)
      ; Out
          ; 27 ply.events have moved to accomodate compiled version
      ; May  
@@ -8,16 +10,6 @@
                  ; instr_pool: s/&5000/&4e00  (less room for events)
                  ; still not enough for 4k-2026.chp
          ;  4 More room for instruments
-; 2025 Dec
-         ; 24 Reorder to get rid of ayalib.o
-         ; 23 phrase -> 1d09 (ayalib)
-         ; 18 instrui 1900 -> 19B0
-            ; ply: 1604 -> 1404 (removed instr.instr_state)
-         ;  3 ply: 1004 -> 1604
-     ; Nov 10 instrui @ 1900 (shift subsequent modules as well)
-     ; Oct 16  tracks in bank
-     ; Aug  8  Cleanup unused buffers
-     ; Jun 23  Move disc_buffer at &4000
 todo  = 1
 need_room = 1
 
@@ -213,7 +205,7 @@ fonte_small = &4800
 disp  = &48D8           ; start of code after fonts
 pianoui = &4F10
 phrasui = &5630
-disp_ayane = &5EA0      ; other modules imported by ayane.o
+disp_ayane = &5F00      ; other modules imported by ayane.o
 strings = &7C00
 name_module = &7F00
 

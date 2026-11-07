@@ -687,6 +687,19 @@ ged
               ; -> Con: "tabs" show them all starting at code_start
 
 
+memmap
+; 2025 Dec
+         ; 24 Reorder to get rid of ayalib.o
+         ; 23 phrase -> 1d09 (ayalib)
+         ; 18 instrui 1900 -> 19B0
+            ; ply: 1604 -> 1404 (removed instr.instr_state)
+         ;  3 ply: 1004 -> 1604
+     ; Nov 10 instrui @ 1900 (shift subsequent modules as well)
+     ; Oct 16  tracks in bank
+     ; Aug  8  Cleanup unused buffers
+     ; Jun 23  Move disc_buffer at &4000
+
+
 memcpc
 ; +scope_bk_base/phrase for temp bank change.
 ;                        
@@ -798,6 +811,11 @@ plyconf
        ; + default_use_arp
 phradisp
 ; 2025
+; -- Alpha2 -- 
+  ; Jan
+     ;19 Do not transpose /note_c_10/
+     ; 8 Display phrase id and transpose
+     ; 7 Display row number
 ; -- Alpha1 --
   ; Dec
     ; 25 disp_rows: fix buffer not reloaded
