@@ -388,6 +388,7 @@ cur_transpose BYTE 0
           PAD()         ; for confine
 phradisp_buf FILL 11," ":BYTE 0 ; 00 C-4 11 F
           CHECK_CONFINE(phradisp_buf)
+          PAD()         ; for confine
 phraseid_buf FILL 6," ":BYTE 0 ; 01 +12
           CHECK_CONFINE(phraseid_buf)
 empty_row               ; "--- -- -"

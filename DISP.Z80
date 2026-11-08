@@ -6,6 +6,8 @@ dev_checks' = 1
 
 screen' = &4000         ; for status
 
+; -- Alpha 5 ---
+ ; Nov  8: Remove doc-in/strings.o dep
 ; -- Alpha 3 ---
  ; Apr 18: Fix #16 flicker with 'ei' in disp_ret_ and status_ret
      ; 12: status_clear_from: wasn't clearing all lines
@@ -30,9 +32,6 @@ pccheck
       IF $ != pccheck
   !! must have been imported beforehand
       END
-; Cannot use IMPORT_STRINGS (bug orgams wip)
-      ORG strings
-      IMPORT "doc-in/strings.o" ; txt_mess and co
       ORG pccheck
 
       IF fonte_gris AND &03FF
@@ -847,10 +846,10 @@ dh_cursor_x BYTE 0
 
 status_error
 ;In: A = id message
-   ; HL = main caller address (failing point)
-          ld bc,txt_to_be_implemented+&8000:or a:jr z,.ok
-          ld bc,txt_memory_full+&8000:dec a:jr z,.ok
-          ld bc,txt_mess+&8000
+   ; HL = main caller address (failing point) 
+          ld bc,txt_to_be_implemented:or a:jr z,.ok
+          ld bc,txt_memory_full:dec a:jr z,.ok
+          ld bc,txt_mess
 .ok
           LOCATION(0,y_pos_last_line)
           push bc
@@ -861,13 +860,27 @@ status_error
           ld a,":":call status_char
           call status_hexa_hl
 display_press_a_key_and_wait
-          ld bc,txt_press_a_key+&8000
+          ld bc,txt_press_a_key
           call status_str
 ;sanity if assert comming while playing
           di
           ld bc,&7F8E
           exx
           jp km_wait_key
+
+txt_to_be_implemented
+;0
+      BYTE "To be implemented",0
+txt_memory_full
+;1
+      BYTE "Memory full",0
+txt_mess
+;2 Keep this one last as fallback message
+      BYTE "Bug in ayane",0
+
+txt_press_a_key
+      BYTE " Press a key",0
+
 
 _status_cursor
 ;In: d=x (0 based) e=y (0 based) <= 4
