@@ -9,6 +9,9 @@ use_widget = 0          ; 1 for trackui
 ; -----------------------------------------------
 
 ; 2026       
+; -- alpha 5 -- 
+ ; Nov
+     ; 8: Replace BRK by call mess
 ; -- alpha 3 --
  ; Feb
      ; 1: Add track_select_last_phrase
@@ -459,7 +462,7 @@ track_code
           jp Reset_tracks_and_subsongs
           jp New_module
           jp Song_attach_empty_phrases
-          3 ** BRK
+          call mess
 
 ; -----------------------------
 ;      AUM Virtual Machine
@@ -937,9 +940,7 @@ read_pnt_bc
 ; This assert might be too strong!
           cp bytecode_start/&0100
           ret nc
-      BRK
-; Mess.
-      BRK               ; for visu: read_pnt_bc failed
+          call mess
 
 fun_com
 ;------
@@ -1055,7 +1056,7 @@ _ld
           ld a,(hl)
           and MODIFIER_MASK:jp z,dest_reg
           cp ind16:jp z,dest_deref16
-      BRK
+          call mess
 ; Error programming: modifier not handled for dest register
 
           OPCODE_ALIGN(fun1)
@@ -1090,7 +1091,7 @@ _ld
           ld bc,&0601:call scr_set_border
           call km_wait_key
           pop hl
-      BRK
+          call mess
 ; BREAK triggered from AUM bytecode itself.
 ; HL = PC = past BRK() bytecode.
           jp eval_loop
@@ -1207,9 +1208,8 @@ _add
 ; Like ind, but unsigned convertion to 24 bits (pad with 0)
 ; Ind16: dest:= (reg + op) (16 bits, converted to 24)
           call _add     ; = _reg + _add_op
-      BRK
+          call mess
  ; TODO: Right now just used for /_ld/
-          di:halt       ; marker for visu
 ;          jp deref16
 
           MODIFIER_ALIGN(ind_post)

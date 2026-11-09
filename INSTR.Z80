@@ -5,11 +5,15 @@ dev_checks' = 1         ; new checks
 ; Routine for each type of intruments:
       ; - instr_default
 
+; -- Alpha 5 --
 ;2026      
+ ;Nov
+   ; 8: Replace BRK by call mess
  ;Out  
    ;30: Import timer when ayane=1
    ;27: Remove buggos static error message for compiled version
       ; const.i also needed for compiled version
+; -- Alpha 2 --
  ;Jan
    ;19: Use ARP_CLIP
    ; 5: instr_null must cut fx
@@ -294,7 +298,7 @@ tm1   = tm1_-1 + arp_clip_tm + 14+7+50 ; Until jr ok_noise (taken)
       ELSE
 ; Infer noise flag from noise value  
       IF default_use_noise
-      BRK
+          call mess
 !! Fixme, flag not set in r7
           ld e,&3F
           ld a,(hl)
@@ -461,7 +465,7 @@ instr_setup
           ld a,(hl)
           cp instr_default AND &FF:jr z,.ok
           cp instr_null AND &FF:jr z,.ok
-      BRK
+          call mess
 .ok
       END
           ld de,instr_code_pnt

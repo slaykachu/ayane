@@ -6,16 +6,8 @@ todo  = 1
   ;         ST 128 conversion
   ; (also tested via ply.nrt with donrt=0)
 
- ; Mar
-; ----- For v0f -----------
-  ; 24 !!ON HOLD!! Work on "chipn.o" first: 
-            ; - less complicated
-            ; - more directly useful for vanity.
-  ; 21 Adapt for Conv_song_map
-  ; 16 Adapt to new instr.o (only one table)
-
-; ----- For v0e -----------
-  ; 10 Import memcpc.o from local dir
+; ---- Alpha 5 ----
+; 2026 Nov 8: Replace BRK by call mess
 
 ; ----- For v09 -----------
  ; Dec        
@@ -28,6 +20,8 @@ todo  = 1
 ; ----- For v08 -----------
 ; May     
  ; 20: Use connect_bk_st  
+ ; 1st v5: Use new track API to convert songlist
+
 ; ---------------------------
   ; v4: Extracted from plybh.o
   ; v3: * C fx put in instr (to avoid cutting previous FX) 
@@ -46,7 +40,7 @@ todo  = 1
       IF todo
 ; should be removed, no?
       END
-      IMPORT "memcpc.o" ; connect_bk_base
+      IMPORT ":lib/memcpc.o" ; connect_bk_base
 
 
 st_convert
@@ -87,74 +81,68 @@ st_inslp
 st_instnotempty
 
           push hl
-;Clean table (e.g. set arp to 0, as not defined by st128)
-          ld hl,workzone
-          ld de,workzone+1
-          ld bc,instr_row_size_max * 16 - 1
-          pop hl
-
-;---Set volume
-          ld b,32
-          ld de,workzone + instr_vol
-.vollp
-; Convert to XXXX0 with XXXX = vol to subtract (0 = max volume)
-          ld a,(hl):bit 7,a:call nz,mess ; TODO
-          ld a,15:sub (hl):inc hl
-          add a
-          ld (de),a
-          ld a,instr_row_size_max:add e:ld e,a:jr nc,$+3:inc d
-          djnz .vollp
-
-;---Set noise
-          ld b,32
-          ld ix,workzone
-.noiselp
-          ld a,(hl):inc hl
-          bit 7,a:jr nz,.nonoise
-          and &1F
-          ld (ix+instr_noise),a
-          ld a,&00      ; noise and channel open
-          jr .noiseflag
-
-.nonoise
-          ld a,&38      ; no noise, channel open
-.noiseflag
-          ld (ix+instr_flags),a
-          ld de,instr_row_size_max
-          add ix,de
-          djnz .noiselp
-
-;---- pitch       
-; (First must get abs/rel flag)
-          push hl
-          ld bc,64:add hl,bc
-          ld b,(hl):inc hl ; repeat pos + flags
+          ld bc,32+32+64:add hl,bc
+          ld b,(hl):inc hl ; repeat pos
           ld c,(hl)     ; repeat len
           pop hl
 
+          push bc
+          call st_make_table32
+          call instr_set_vol_table
+          call connect_bk_st
+
+;NOISE-----
+          call is_empty32b ;TODO: check maybe 32=empty
+          jr z,st_nonoise
+
+          pop bc
+          push bc
+          call st_make_table32
+          call instr_set_noise_table
+          call connect_bk_st
+          jr st_oknoise
+
+st_nonoise
+          ld bc,32:add hl,bc
+st_oknoise
+
+
+;TONE------
+          pop bc
           bit 7,b
-          jr z,st_tone_
+          jr nz,st_abs
+
+          push bc
+          ld b,64:call is_empty
+          jr z,st_notone
+
+          pop bc
+
+          ld a,32
+          call st_make_table_word
+          call instr_set_tonerel_table
+          call connect_bk_st
+          jr st_tone_
 
 st_abs
-      BRK
- ; TODO: flag instr as "absolute", to associate it with d#9 or ...
-       ; Note: this flag is only for convertion.
+; make table even at 0 (balayette)
+          ld a,32
+          call st_make_table_word
+; !NO, must discriminate      !?! Is it still true
+          call instr_set_toneabs_table
+          call connect_bk_st
+          jr st_oktone
 
+st_notone
+          pop bc        ;discard
+          ld bc,64:add hl,bc
 st_tone_
+          call instr_append_note2tone
           call connect_bk_st
 
 st_oktone
-          inc hl        ;skip rep flags, already read 
+          inc hl        ;skip rep flags, already read and used
           inc hl
-
-          push hl
-          ld hl,workzone
-          ld bc,&2000   ; force loop to 0
-      IF todo
-; reproduce loop 
-      END
-          call instr_append_rows
-          pop hl
 
 st_instok
           pop bc
@@ -176,6 +164,7 @@ st_arpglp
           jr st_arpgok
 
 st_arpgnotempty
+
           ld bc,0       ; no loop
 ;Fixme: should loop on last entry, but on 0
 ;Optim: strip trailings 0
@@ -247,14 +236,14 @@ progress  ld hl,&C000
 st_rowlp
           push bc
           call phrase_select_new_row
-          call nc,&BE00
+          call nc,mess
 
           call connect_bk_st
 
           ld a,(hl):inc hl
           cp &D0        ; RAZ track 
           jp z,stp_nonote ; Never mind for now
-          call z,&BE00  ; TODO !!   ^^^^
+          call z,mess   ; TODO !!   ^^^^
           or a:jp z,stp_nonote ;do not read instr
           cp iyl:jr z,stp_samenote
 
@@ -325,9 +314,7 @@ stp_arp_
           ld hl,(va_instr_pnt)
           dec (hl)
           push hl
-      BRK
-; To be reviewed: why not sfx?
-;          call song_clone_instr
+          call song_clone_instr
           pop hl
           inc (hl)
 
@@ -337,10 +324,9 @@ stp_arp_
 
           call song_select_instr
           ld a,l:and &0F:ld c,a
-      BRK
-     ;     call get_arpg_from_index
-     ;     call instr_set_arpg_table
-     ;     call instr_append_note2tone
+          call get_arpg_from_index
+          call instr_set_arpg_table
+          call instr_append_note2tone
 
           ld a,d
 _stp_instr
@@ -352,7 +338,7 @@ _stp_instr
 stp_fxc
           inc hl:ld a,(hl)
 ; tone 
-          and &F0:call nz,&BE00 ; not implemented
+          and &F0:call nz,mess ; not implemented
 ; recupere Noise.
           xor (hl)
           or b          ; num instr source in MSQ
@@ -370,9 +356,7 @@ stp_fxc
           ld hl,(va_instr_pnt)
           dec (hl)
           push hl
-; To be reviewed. Why not sfx
-      BRK
-       ;   call song_clone_instr
+          call song_clone_instr
           pop hl
           inc (hl)
           pop hl
@@ -384,18 +368,16 @@ stp_fxc
           call song_select_instr
           push hl
 
-      BRK
-    ;      call instr_get_noise_table
-      IF dev_checks:call nc,&BE00:END
+          call instr_get_noise_table
+      IF dev_checks:call nc,mess:END
 
           ld c,l:ld b,h
           pop hl
 
           ld a,d
           call song_select_instr
-      BRK
-        ;  call instr_set_noise_table
-        ;  call instr_append_note2tone
+          call instr_set_noise_table
+          call instr_append_note2tone
 
           ld a,d
 _stpc_instr
@@ -442,14 +424,12 @@ stp_nofx
 ; TODO: replace by more accurate row_get_fx, since
 
           dec hl:ld a,(hl):inc hl ; peek instr/fx
-          and &0F:call nz,&BE00
+          and &0F:call nz,mess
 
           xor a
           ld (ix+st_curportaup-st_var),a
           ld (ix+st_curportadown-st_var),a
-      BRK
-; TODO
-     ;     call row_set_reset_glide
+          call row_set_reset_glide
 
 stp_okporta
           call connect_bk_st
@@ -611,7 +591,7 @@ stfx_volume
 stfx_noise_tone
           ld a,c
 ;TONE? TODO
-          and &F0:ld b,a:call nz,&BE00:xor c
+          and &F0:ld b,a:call nz,mess:xor c
 
 ; Noise: already injected in new instr
           ret
@@ -641,7 +621,7 @@ st_transpose
           ld b,a
 .lp
           ld a,(hl):inc hl
-          or a:call nz,&BE00 ; NOT impl yet (Shap barely transpose)
+          or a:call nz,mess ; NOT impl yet (Shap barely transpose)
           djnz .lp
           ret
 
@@ -672,7 +652,6 @@ st_map
           call connect_bk_base
           call get_phrase_chunk
 ;Form complete 24 bits pnt      
-mess  = &BE00
       IF dev_checks
           ld a,l:and &F4:cp &C4:call nz,mess
       END

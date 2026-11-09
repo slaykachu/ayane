@@ -1,8 +1,8 @@
 ; ---- Shared constants and struct def -----
 
-release = 1
+release = 0
 dev   = 1-release
-dev_checks = dev AND 1
+dev_checks = dev OR 1   ; force 1 to detect bug even in release
 
 ; Unit is nop, as timer.current_clock 
 ; The slowest replay is then 65535 / 312 / 64 = 3.28 frames
@@ -260,7 +260,6 @@ kclft = &FA
 kcrgt = &FB
 
 kesc  = &FC
-kextra = &BE00          ; lifting val broken (w_hexa_digit_custom)
 
 ;---           
 ; Disp and bandaya
@@ -268,7 +267,6 @@ r1    = 40
 r1'   = 48
 
 ;---                    
-programming_error = &BE00 ; TODO: use except
 km_wait_key = &BB18
 
       ORG savepc,saveobj ; restore

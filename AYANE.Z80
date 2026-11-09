@@ -4,7 +4,8 @@
 
 ; 2026
  ;--- alpha 5 ---
-  ; Out
+  ; Nov
+   ; 8: Replace BRK by call mess
    ; 5: Add check for Amorce_song
  ;--- alpha 3 ---
   ; Apr
@@ -82,7 +83,7 @@ r2'   = 50              ; sequence
           IMPORT_SHARED_DEPS''()
           ASSERT(track_code == track_module)
  !! todo: load uiloop bin
-      ORG fx_module
+      ORG ply
       LOAD "ayalib'd.bin" ; ply and init
       END
 
@@ -183,15 +184,16 @@ scr_ink_set = &BC32
 
 mc_set_mode = &BD1C
 
-mess  = &BE00
-
 err_io = 1
 err_too_big = 2
 ; -------------------------------
 
 ;---------
 start
-;---------          
+;---------
+      IF dev_checks
+          ld a,&F7:ld (0),a
+      END
           call set_sp_backup
           ld hl,status_init:ld (hook_bandaya),hl
 ; Entry point after io_postlude
@@ -526,7 +528,7 @@ reenter_last
           ld hl,&3000:ld (offset),hl ; reset after scrolling cat
           call reset_sp
 reenter_jp = $+1
-          jp &BE00
+          jp mess
 
 ;-----------------------------------------------
 ; Tables, variables and co 

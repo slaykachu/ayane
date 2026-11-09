@@ -2,6 +2,7 @@
 dev   = 1
 dev_checks = 1
 
+; 2026 Nov 8 Replace BRK by call mess
 ; 2025 Jun 5 init_widget: Remove (again) CRTC/pal setup
 
 screen = &C000
@@ -17,11 +18,10 @@ grey  = &92
 
 mc_set_mode = &BD1C
 
-fail  = &BE00
-
    ;      IMPORT "memmap.i" ; for rgb? No, keep rgb private here.
       IMPORT ":lib/rgb256.o"
       IMPORT "track.o"  ; SIGN, NO_FLAGS
+      IMPORT "assert.o"
 ;---------------------------
       MACRO SANITIZE_OFFSET_HL
           set 7,h
@@ -107,7 +107,7 @@ fhorizontal_size = 8
           jr c,.done    ; case rgt <= lft
 
       IF dev_checks
-          ld a,b:cp 4:call nc,fail ; Max size would &300 pix in mode 2
+          ld a,b:cp 4:call nc,mess ; Max size would &300 pix in mode 2
       END
           srl b:rr c    ; /2 (pixels to bytes)
           jr z,.done    ; one pix -> 0 bytes
@@ -120,7 +120,7 @@ fhorizontal_size = 8
       IF dev_checks
 ; Check we stay on screen.
           add hl,bc
-          call c,fail
+          call c,mess
           sbc hl,bc     ; restore
       END
           ldir
@@ -148,7 +148,7 @@ fx    = 2
           srl d:rr e
           add hl,de
       IF dev_checks
-          call c,fail
+          call c,mess
       END
           ret
 

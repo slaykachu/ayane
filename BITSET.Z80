@@ -6,7 +6,12 @@ dev_checks = 1
 
 ; Adapted from :lib/bitset (remove tests and auto-burn)
 
+; -- Alpha 5 --
+; 2026 Nov 8: Replace BRK by mess
+
 ; ========================================
+      IMPORT "assert.o"
+
       MACRO DECLARE_BITSET n
 ; Reserve space for bitset of size n
       FILL [n+7]/8 + 1,0
@@ -24,7 +29,7 @@ dev_checks = 1
           cp (hl)       ; cp with size-1
           jr c,.ok
           jr z,.ok
-      BRK
+          call mess
 .ok
       ENDM
 

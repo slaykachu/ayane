@@ -1,8 +1,10 @@
 ; <<< Song/Subsong handling >>>
 
-; 2025
+; 2026
+; -- Alpha 5 --
+; Nov  8. s/programming_error/mess (harmonize)
+
 ; TOC ---------------
-; -------------------
     ; New_subsong (no!! lives in track.o to avoid song->track dep)
     ; Subsong_add 
     ; Song_select_subsong
@@ -42,7 +44,7 @@ Subsong_add_track
          ;-sample mix mode
 ;out: af,de preserved
           push af:push de
-          ld a,c:cp 2:call nz,programming_error
+          ld a,c:cp 2:call nz,mess
           ex de,hl
           call Song_goto_last_track
           ld a,(subsong_pool_pnt)

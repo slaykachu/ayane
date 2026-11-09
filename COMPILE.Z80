@@ -6,7 +6,8 @@ todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
 ; 2026 
-; Out 27. Fix assembling: s/track.o/tracknub.o
+; Nov  8. Replace BRK by call mess
+; Out 27. Fix assembling: needs tracknub.o
                         ; s/fail/mess
     ; 24. Fix assembling (chipnsfx instruments no more supported)
 
@@ -109,12 +110,12 @@ compiled_instr_chip_down_arp = compiled_player + &52
 dest  = compiled_data
 
 connect_bk_compile = connect_bk_io
-error_confine = &BE00
+error_confine = mess
       IF todo
 ;!! When not set, raise ambiguous label. Shouldn't it meant to be
 ;  &be00 everywhere? 
       END
-to_be_implemented = &BE00
+to_be_implemented = mess
 
 ;------------------------------------------
       MACRO CHECK_DEST
@@ -158,6 +159,7 @@ instr_lp
           call Song_select_instr ; connect bk base
           jp z,instr_next
 
+          pop hl:ld a,l:ld (cur_instr),a:push hl ; for debug
           call get_instr_pnt
           CHECK_DEST()
 
@@ -378,7 +380,7 @@ phrases_lp
       END
           cp &27:jp z,phrases_next
       END
-      ;    cp &1C:call nc,&BE00
+      ;    cp &1C:call nc,mess
           call song_select_phrase
           jp z,phrases_next
 
@@ -597,7 +599,7 @@ track_lp
       ELSE
 .evtlp
 ;tmp dbg
-          ld a,(&4525):cp &4A:call nz,&BE00
+          ld a,(&4525):cp &4A:call nz,mess
           push hl
           idsz ** inc hl
           ld a,(hl)
@@ -635,12 +637,12 @@ track_lp
           ld a,(hl):inc hl
       IF compiled_data AND &8000
       IF dev_checks
-          bit 7,a:call z,fail
+          bit 7,a:call z,mess
       END
           res 7,a
       ELSE
       IF dev_checks
-          bit 7,a:call nz,fail
+          bit 7,a:call nz,mess
       END
           set 7,a
       END
@@ -771,6 +773,7 @@ loop_pnt WORD
 last_row WORD 
 phrase_idx_pnt0 WORD 
 phrase_idx_pnt WORD 
+cur_instr BYTE 
 
 ; ----- Flags for compilation -----
       IF todo
@@ -778,9 +781,9 @@ phrase_idx_pnt WORD
       END
 ;--instr
 _use_instr_arp BYTE 1
-_use_instr_pitch BYTE 0
+_use_instr_pitch BYTE 1
 _use_flags BYTE 0       ; 0: Infer from noise value
-_use_noise BYTE 0       ; 0 for kim as noise is constant
+_use_noise BYTE 1
 _use_hard_env BYTE 0
 ;--phrase
 _nb_fx BYTE 0

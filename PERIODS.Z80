@@ -3,6 +3,7 @@ todo  = 1
 need_room = 1
 
 ; 2026
+ ; Nov  8: Harmonize: s/programming_error/mess
  ; Out 26: Harmonize: c0 at 0 for compiled player as well
          ; macro.i must be imported in any case
  ; Jan 19: Add ARP_CLIP
@@ -14,6 +15,7 @@ need_room = 1
       IF ayane
       IMPORT "memmap.i" ; diapason
       IMPORT "memcpc.o" ; scope_bk_base
+      IMPORT "assert.o"
       END
 
 periods_code
@@ -100,7 +102,7 @@ set_diapason
    ; for now only one diapasion...
 
           ld bc,diapason_default
-          or a:sbc hl,bc:add hl,bc:call nz,programming_error
+          or a:sbc hl,bc:add hl,bc:call nz,mess
       IF need_room
 ; use generic routine set_a_in_bk_base
       END

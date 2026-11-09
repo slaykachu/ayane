@@ -1,5 +1,7 @@
 ;   <<<<< SAVE/LOAD module >>>>>
 ; 2026
+;--- Alpha 5 ---
+ ; Nov 8: Replace BRK by mess
 ;--- Alpha 4 ---
  ; May 5: Use MAX_INSTRS
 ;--- Alpha 3 ---
@@ -402,7 +404,7 @@ _do_load
           call get_bk_connected
           push af
           call connect_bk_io
-jp_io_load call &BE00
+jp_io_load call mess
           pop bc        ; preserve carry
           jp connect_b
 
@@ -647,7 +649,7 @@ phrases_lp
 ; necessarily 10 here
           srl c
       IF dev_checks
-          call nc,&BE00
+          call nc,mess
       END
           call load_bc
           call fx_append_param_word
@@ -1703,7 +1705,7 @@ save_a
           call get_bk_connected
           push af
           call connect_bk_track
-          ld a,(&466B):cp &4C:call nz,&BE00
+          ld a,(&466B):cp &4C:call nz,mess
           pop af
           call connect_a
           pop af
@@ -1809,7 +1811,7 @@ _do_save
           call get_bk_connected
           push af
           call connect_bk_io
-jp_io_save call &BE00
+jp_io_save call mess
           pop bc        ; preserve carry
           jp connect_b
 

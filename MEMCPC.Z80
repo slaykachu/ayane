@@ -11,10 +11,12 @@ dev_checks' = 1         ; for now, don't use const.dev_checks
    ; dev_checks for ply, timer etc...
 
 ; /// 2026 ///
-   ; -- alpha2 --
+ ; -- alpha5 --
+     ; Nov 8: Replace BRK by call mess
+ ; -- alpha2 --
      ; Jan 22: s/reenter_last/reenter_safe
 ; /// 2025 ///
-   ; -- v0.0an --
+ ; -- v0.0an --
        ;25: Adopt JP_DISP / 
 
 ; Store currently connected bank 
@@ -175,7 +177,6 @@ scope_bk_phrase_save_hl
           ex (sp),hl
           push hl
 _jump'    call mess
-      BRK
           pop hl
           ex (sp),hl
           call connect_l
@@ -437,8 +438,9 @@ reenter_safe
 ; Go back to welcome screen after error
           call reset_sp
 reenter_safe_jp = $+1
-          jp &BE00      ; set by ayane init 
+          jp mess       ; set by ayane init  (might infinite loop?)
 
       END
+
 
 

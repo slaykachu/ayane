@@ -1,11 +1,10 @@
  ; Help module (generic, except constants specific Ayane doc)
+; 2026 Nov 8  Replace BRK by call mess
 ; 2026 Jan 14 Move string helpers in conv.o
 ; 2025 Jun 25 Remove bandaya dependency
      ; Jun 10 Use disp-jp
 
 dev_checks = 1
-
-mess  = &BE00
 
 MAX_NB_LINES = 25
 screen = &C000
@@ -21,6 +20,7 @@ NB_SECTIONS = 2
       IMPORT "memmap.i"
       IMPORT "import.i"
       IMPORT "conv.o"   ; skip_nt
+      IMPORT "assert.o"
 
           IMPORT_DISP()
 

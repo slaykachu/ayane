@@ -5,7 +5,9 @@ tmp_rast = 0
 ; <<<< Handling cpc keyboard as piano >>>>
 ; -> Using hardware keycode: locale agnostic (azerty/qwerty)
 
-;2026 Jan 19 s/fail/mess
+;2026
+ ;Nov  8 Replace BRK by call mess 
+ ;Jan 19 s/fail/mess
          ; 3 Handle ^ (qwerty) / - (azerty) for period 0 (note_c_10)
 
       IMPORT "const.i"  ; note_c_10
@@ -145,7 +147,7 @@ _refa     ld a,0
 .toot     ld a,14
           dec a
           ld (.toot+1),a
-          call z,&BE00
+          call z,mess
           ex af,af
           SUB_TM(12)
       END

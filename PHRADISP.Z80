@@ -4,6 +4,7 @@ dev_checks' = 1
 ; 2026
 ; -- Alpha5 --
   ; Nov
+     ; 8 Replace BRK by call mess
      ; 6 Add /print_cloned/
 
 wid_row# = 3
@@ -274,7 +275,7 @@ correct_y
        ; Carry if in view
        ; NC otherwise
 zoom_hook = $+1
-          call &BE00
+          call mess
           ccf:ret nc    ; If ovf -> NC
           add ixl
           ccf:ret nc    ; If ovf -> NC

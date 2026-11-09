@@ -1,8 +1,12 @@
-; Display routine in status bar (AYANE VERSION)
+; Display routine in status bar
 
 dev_checks = 1
 need_room = 1
 
+; 2026
+ ; -- Alpha 5 --
+ ; Nov
+     ; 8 Clean-up (/fail/ not used)
 ; 2025 
  ; -- v0au --
  ; Nov
@@ -20,13 +24,12 @@ need_room = 1
       END
 
 .test_pc
-      IMPORT "disp.o"   ; !!! disp.bin loaded by client
+      IMPORT "disp.o"
+      IMPORT "assert.o"
 
       IF $ != .test_pc
   !! disp must have been imported by host
       END
-
-fail  = &BE00
 
 ; ------------------------------------------------
       IF 0

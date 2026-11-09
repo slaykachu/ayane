@@ -10,6 +10,9 @@ need_room = 1
 ;   All routines return NC in case of error,
 ;   or BRK if failed assertion. (no 'exit/exception' mecanism)
 
+; -- Alpha 5 --
+; 2026 Nov 8: Replace BRK by call mess
+
       IMPORT "memmap.i" ; for checks and Init_chunk_module
       IMPORT "assert.o"
       IMPORT "memcpc.o"
@@ -198,7 +201,7 @@ get_node_list
           ld hl,v_free6_list:cp 6:jr z,.ok
           ld hl,v_free7_list:cp 7:jr z,.ok
           ld hl,v_free9_list:cp 9:jr z,.ok
-      BRK
+          call mess
 ;TODO: other size or more generic system!
 .ok
           pop af
@@ -473,7 +476,7 @@ _check_bk0
           push af
           and &C4:cp &C4:jr z,okpopaf
           pop af
-      BRK
+          call mess
 okpopaf   pop af
           ret
 

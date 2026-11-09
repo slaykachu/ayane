@@ -3,6 +3,7 @@ todo  = 0
 ; 2026
 ; -- Alpha5 --
   ; Nov
+      ; 8 Replace BRK by mess
       ; 6 clone_if_needed: use print_cloned
                          ; deactivate useless dup handling 
         ; Fix #23 Cloned phrase: new id not shown
@@ -825,7 +826,7 @@ piano_keys
           jp edit_row_skip
 
 ; ----------------------
-_paint_sprite = &BE00
+_paint_sprite = mess
 ; ----------------------
 
 refresh_page

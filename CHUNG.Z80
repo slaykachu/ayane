@@ -1,5 +1,7 @@
 ; <<<<< chung: gestion instr >>>>>
 ; 2026
+ ; -- alpha 5 --
+  ; Nov  8. Replace BRK by mess
  ; -- alpha 4 --
   ; May  8. [clean-up] Remove stored_table_start/back
                      ; (was write only and wasted a chunk)
@@ -1123,7 +1125,7 @@ vars
 
 va_savesp WORD 0
 
-jp_ret    jp &BE00
+jp_ret    jp mess
 
 dbg1  WORD 0
 dbg2  WORD 0

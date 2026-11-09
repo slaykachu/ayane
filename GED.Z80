@@ -1,6 +1,8 @@
 ; <<<<<<<<< Gedeihen >>>>>>>>>>  Generic Declarative UI.  
 ;2026
 ; -- alpha5 --
+; Nov
+  ; 8 Replace BRK by mess
 ; Out
   ; 3 Expose gedeihen_set_cursor(_x) for phrasui
 ; -- alpha3 --
@@ -75,7 +77,7 @@ ev_refresh = &81
 ;Note: they are defined in shortcut.o but we don't import that!
 ; k_esc and co in const.i
 
-break = &BE00
+break = mess
 
       MACRO ASSERT_NOT p
       IF p
@@ -3096,7 +3098,7 @@ get_padding
 get_width_common
           push bc:push de:push hl
           CALL_STATE(get_width) ; NB: focus is on cell
-          ld a,h:or a:call nz,&BE00 ; not handled
+          ld a,h:or a:call nz,mess ; not handled
           ld a,l
           pop hl:pop de:pop bc
           ret
@@ -3463,7 +3465,7 @@ _check_address
 ; hooks can be defined externaly (e.g instrui.o or gednrt.o),
 ; so we don't know what's the end address
           ld hl,&4000:scf:sbc hl,bc:jr nc,.ok
-          ld hl,&A200:or a:sbc hl,bc:call c,&BE00
+          ld hl,&A200:or a:sbc hl,bc:call c,mess
 .ok
           pop hl
           pop af

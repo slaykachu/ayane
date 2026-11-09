@@ -6,6 +6,9 @@ border_col = &54
 border_col' = &44
 
 ; 2026
+ ; -- alpha5 --
+  ; Nov  8: Replace BRK by call mess
+  ; 
  ; -- alpha3 --
   ; Apr 15: Fix #14 Buzzer hard env not restored after sync buzz stop
               ; By adding active_sync# and forcing bit4 of reg13
@@ -38,8 +41,6 @@ MAX_TIMER_FXS = 15      ; used here only -> no ui check.
 ; Routines plugged in instr row:
 ; - fx_null                    
 ; - sync_buzzer_register
-
-mess' = &BE00           ; tmp mitigation bug orgams
 
       IMPORT "const.i"
       IMPORT "plyconf.i"
@@ -236,7 +237,7 @@ insert_event_tm = 34 + 13
 ; We check that to be more future-robust, and detect programming error
       IF dev_checks
           ld b,a
-          ld a,c:inc a:cp e:call z,mess'
+          ld a,c:inc a:cp e:call z,mess
           ld a,b
           SUB_TM''(8)
       END
@@ -307,7 +308,7 @@ program_next_event_tm = 11
           ASSERT_NOT(EVENT_MAX_SIZE AND EVENT_MAX_SIZE-1)
 ; -> if not power of 2, replace 'and' by modulo 
           and EVENT_MAX_SIZE-1
-          cp offset:call nz,mess'
+          cp offset:call nz,mess
       END
       ENDM
 
@@ -331,15 +332,15 @@ psg_l_hl_tm = 26
           pop hl:pop de
       ELSE
           ld a,l:cp 8:jr nz,.ok8
-          ld a,(hl):or a:call nz,&BE00
+          ld a,(hl):or a:call nz,mess
 .ok8
           ld a,l:cp 9:jr nz,.ok9
-          ld a,(hl):cp &10:call nz,&BE00
+          ld a,(hl):cp &10:call nz,mess
 .ok9
           ld a,l:cp 10:jr nz,.ok10
-          ld a,(hl):or a:call nz,&BE00
+          ld a,(hl):or a:call nz,mess
 .ok10
-          ld a,l:cp 13:call z,&BE00
+          ld a,l:cp 13:call z,mess
       END
       END
           ASSERT(psg_regs AND &FF == 0) ; to use lsb=reg
@@ -583,7 +584,7 @@ change_pnt = $+1
 ; Use exception mecanism, as we don't want to crash in user mode
 ; (exec without orgams)
       END
-          call mess'
+          call mess
 
 .start
 ; Setup code as new event
@@ -617,7 +618,6 @@ setup_tm = 48 + 26      ; until sbr_setup_tm
           ld l,(hl)     ; gross pos in LSB
           ld h,header_events/&0100
           ld d,events/&0100
-;      BRK
           FIND_EVENT_PRELUDE()
 ;First iter unrolled:
   ; - optimisation
@@ -822,7 +822,7 @@ change_params_tm = 11   ; until chgend taken
 
       IF dev_checks
 ; For now, only 1 type of fx so we know what/where to poke
-          cp fx_type_sync_buzzer:call nz,mess'
+          cp fx_type_sync_buzzer:call nz,mess
           SUB_TM''(5)
       END
           inc l
@@ -858,8 +858,8 @@ update_clock_tm = 16
       IF dev_checks
 ; Todo [persitence] make sure it is repopulated
           ex af,af
-          ld a,c:cp replay_default AND &FF:call nz,programming_error
-          ld a,b:cp replay_default / &0100:call nz,programming_error
+          ld a,c:cp replay_default AND &FF:call nz,mess
+          ld a,b:cp replay_default / &0100:call nz,mess
           ex af,af
           SUB_TM(14)
       END
@@ -973,7 +973,7 @@ cut_tm2 = 6 - 1         ; until jr .removefound (taken) -1: not .race1
           cp anchor_event
       IF dev_checks
 removelp_tm = 14
-          call z,mess'
+          call z,mess
       ELSE
 removelp_tm = 13
           jr z,.exit    ;mess, nothing we can do
