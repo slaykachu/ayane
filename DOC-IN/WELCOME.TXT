@@ -3,11 +3,18 @@
  - Piano:  Sim1                              \\\ \\ \  DOGMA 2 ,/ // ///
 CTRL-H for Help                                      '--_____--
 
+----- Alpha 5. 9 de nov 2026. ---------------
+Phrase editor:
+- Fix crash when displaying phrase > 99
+- Fix #18 Position lost after CTRL-H
+- Cloned phrase:         
+   - Fix #23 New id is now shown (in page and info bar)
+   - Fix #22 Id 0 wrongly picked  
+
 ----- Alpha 4. 24 de out 2026. --------------
 - More memory available for instruments
 
 --- Known bugs ------------------------------
-#18: Phrase editor: position lost after displaying help 
  #8: Timer FXs: Some spurious artefacts
  #7: Timer FXs: Phase shift when FX is paused
  #4: C#4 PSG period rounded to 226 instead of 225
