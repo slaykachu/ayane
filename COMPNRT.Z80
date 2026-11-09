@@ -1,6 +1,14 @@
 ; Tests compilation
 
-; 2026 Out 24. Fix assembling: use code_start, free_ram_for_nrt
+; 2026 Nov  7. Add test_compile_4k_fix !!!!!PRIVATE!!!!!
+             ; Remove chipn dependency
+     ; Out 30. Deactivate /test_compile_minimala/
+                  ; - we must create an .aya with correction applied
+                    ; for fair compairison with chpnsfx
+                  ; (those corrections were hard-coded in
+                    ;minimal_ok branch) 
+do_test_compile_minimala = 0
+         ; 24. Fix assembling: use code_start, free_ram_for_nrt
                              ; same IMPORT sequence than SALO-NRT
              ; Files moved in TESTDATA/
 ; 2025 Mar 19. Adapt to kima.chp
@@ -36,18 +44,23 @@ data  = compiled_data
 
 tests
           ld a,&F7:ld (0),a
+      IF do_test_compile_minimala
           call check_player
-          call full_init
-          call test_compile_minimal
+          call test_compile_minimala
+      END
+          call test_compile_4k_fix
           ret
 
-test_compile_minimal
+      IF do_test_compile_minimala
+test_compile_minimala
 ; That's the name of the song.
 ; Not really minimal!
 
-; We use conv_chipn routine since SAVE/LOAD of .aya is not ready.
+          call full_init
           ld hl,minimala
-          call conv_chipn
+          ld bc,0       ; skip meta data
+          call load_file
+          call nc,mess
           call compile
           ld (data_start),de
           ld (data_size),hl
@@ -149,8 +162,24 @@ dbg_pnt   ld de,dbg
 end_of_tune
 ; success!
           ret
+      END
+
+test_compile_4k_fix
+; Just check it doesn't assert 
+
+;-- load
+          call full_init
+          ld hl,filename_4k_fix
+          ld bc,0       ; skip metadata
+          call load_file
+          call nc,mess
+;-- compile
+          call compile
+          ld a,l:or h:call z,mess ; size not 0
+          ret
 
 ; ------------------------------
+      IF do_test_compile_minimala
 check_player
 ; Sanity checks
 ; We manually set the address,
@@ -206,28 +235,24 @@ chip_init
           call chip_play+&15
           ret
 
-      FILL -$ AND &FF,0
-psg_ref SKIP 14
+minimala BYTE "testdata/minimala.chp",0 ; TODO: create it!
+      END
+
+filename_4k_fix BYTE "testdata/4k-fix0.aya",0
 
 hi
       SKIP &4000-$      ; poor man's limit
 
 BK_REF = &C6
 
+      IF do_test_compile_minimala
       BANK BK_REF
       ORG chip_play
       LOAD "testdata/chipnsfx.out"
 
       ORG chip_sng
       LOAD "testdata/minimala.bin"
-
-      BANK BK_IO
-      ORG &4000
-minimala
-      LOAD "testdata/minimala.chp"
-  ;    LOAD "4k08.chq"   ; with header
-  ;    LOAD "ums:40y/kima.chp"
-  ;    LOAD "ums:40y/kim0.chp" ; 2 patterns for test
+      END
 
 ;Compile uses BK_IO, so put player in same bank
       SKIP &7D00 - $
@@ -237,9 +262,9 @@ playcomp
 playcomp_ = $ - playcomp
       SKIP &8000 - $    ; limit
 
-      ORG free_ram_for_nrt
+      ORG salo
+      IMPORT "salo.o"
       IMPORT "compile.o"
-      IMPORT "chipn.o"
 
 ; ------------------------------
 
@@ -248,8 +273,8 @@ data_size WORD
 
       FILL -$ AND &FF,&F7
 dbg   FILL &0100,0
+psg_ref SKIP 14
 ; ------------------------------
-
 
       SKIP ramlimit' - $
 
