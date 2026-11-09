@@ -18,7 +18,10 @@ diapason_default = 440*128
 
 MAX_INSTRS = 99         ; instrsel, memmap
 ; !!! Actually 98 since 0 used for instr_clr
-MAX_PHRASES = 99        ; 99 for ui. shall be extended
+MAX_PHRASES = 256       ; 4k-2026.chp use phrase 204!
+      IF MAX_PHRASES != 256
+ !! TODO: phrase.o must check id
+      END
 MAX_TRACKS = 16         ; used by track, ply, salo
 MAX_FX_BY_INSTR = 2     ; 7 max (see timer.fxcutend)
 ;MAX_TIMER_FXS = 15      ; in timer.o

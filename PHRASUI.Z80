@@ -832,8 +832,8 @@ _paint_sprite = mess
 refresh_page
 ;-----------   
           call cls_
-          ld hl,phrase_met:ld a,MAX_PHRASES:call bs_init
-          ld hl,phrase_dup:ld a,MAX_PHRASES:call bs_init
+          ld hl,phrase_met:ld a,MAX_PHRASES AND &FF:call bs_init
+          ld hl,phrase_dup:ld a,MAX_PHRASES AND &FF:call bs_init
 
           ld b,3
           ld ixh,0      ; cursor x
