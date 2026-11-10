@@ -6,7 +6,8 @@ todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
 ; 2026 
-; Nov 10. Handle instrs not fitting in &100 (instr_area_size > 1)
+; Nov 10. Handle CLR (instr 0 without note)
+        ; Handle instrs not fitting in &100 (instr_area_size > 1)
         ; Only scan MAX_INSTRS instruments (since others not init)
         ; Some clean-up
     ;  8. Replace BRK by call mess
@@ -492,7 +493,15 @@ no_instr_escape_code = compiled_instr_null ; handled by ply
           call to_be_implemented
 .no_note_flag
 ; Flag always set. We verify that
-          bit bit_note,b:call z,mess
+          bit bit_note,b:jr nz,.poke_note
+; Corner case: CLR uses instr 0 without note.
+      IF dev_checks
+          dec hl:ld a,(hl):inc hl:or a:call nz,mess ; check it is instr 0
+      END
+          xor a:call poke_a ; poke dummy note
+          jr .ok_note
+
+.poke_note
           call poke_ldi
 
 .ok_note
@@ -797,14 +806,8 @@ _use_instr_flag BYTE 0  ; Flag not needed when always instr in row
 _use_note_flag BYTE 0   ; Flag not needed when always note in row
 _has_phrase_loop BYTE 0 ; 0: no loop, phrase changed on time 
 
-      IF _use_instr_flag - _nb_fx - 1
- !! must be contiguous
-      END
-      IF _use_note_flag - _use_instr_flag - 1
- !! must be contiguous
-      END
-      IF _has_phrase_loop - _use_note_flag - 1
- !! must be contiguous
-      END
-
+;check contiguity
+          ASSERT(_use_instr_flag == _nb_fx+1)
+          ASSERT(_use_note_flag == _use_instr_flag+1)
+          ASSERT(_has_phrase_loop == _use_note_flag+1)
 
