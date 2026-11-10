@@ -1,7 +1,9 @@
 ; Config for player
 ayane = 1               ; 0: Stand-alone  1: In-tool player
 
-; 2025
+; 2026
+  ; Nov 10 Replace is_instr_indexed by instr_area_size
+         ; -> Allow > &100 
 
 ; Hard coded dest compile  
 ;Buffer first, so we can better concatenate code+data
@@ -45,7 +47,8 @@ use_instr_flag = 1      ; Flag not need when always instr in row
 use_note_flag = 1       ; Flag not need when always note in row
 has_phrase_loop = 1     ; 0: no loop, phrase changed on time 
 
-is_instr_indexed = 1
+; only for compiled player 
+instr_area_size = 16    ; Power of 2. 1: Fit in &100
 is_compiled_phrase_indexed = 1
 compile_output_channel = 0 ; 0: don't output "1, 2, 3" in songlist
 
@@ -58,6 +61,7 @@ use_hard_env = 1
 ; --- All those: necessarily 1 in-tool ----
 use_instr_end = 1       ; to cut instr
 use_instr_default = 1
+use_fx_set_phrase = 1   ; for next chunk, autoloop, empty phrase?
 ;todo: harmonize naming
 default_use_arp = 1
 default_use_pitch = 1

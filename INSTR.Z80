@@ -8,6 +8,8 @@ dev_checks' = 1         ; new checks
 ; -- Alpha 5 --
 ;2026      
  ;Nov
+   ;10: Compiled player:
+          ; Handle instrs not fitting in &100 (instr_area_size > 1)
    ; 8: Replace BRK by call mess
  ;Out  
    ;30: Import timer when ayane=1
@@ -74,10 +76,10 @@ loop_bit = 7
       ENDM
 
       MACRO INC_HL_INSTR
-      IF ayane
+      IF ayane OR [instr_area_size > 1]
           inc hl
       ELSE
-          inc l         ; kimd: confined instruments
+          inc l         ; confined in &100
       END
       ENDM
 
@@ -125,7 +127,7 @@ tm1_  = 8               ; from .exec to jr instr_end (taken)
 instr_confine
           SIGN(type_instr_null,0,0)
 instr_null
-;Required in both in-tool and compiled,
+;!!! Required in both in-tool and compiled,
 ; as ply inconditionaly jump to instr routine.
 ;When no current instr, come here.
 ;Also fallback for undefined instr.
@@ -205,20 +207,31 @@ tm1   = tm1_-1 + arp_clip_tm + 14+7+50 ; Until jr ok_noise (taken)
           push bc       ; for next time
           pop bc        ; skip
       ELSE
-;For compiled version, relative link (confined in &100)
+;For compiled version, relative link 
       IF use_volume
           ld ixh,b
       END
           ld a,(hl)
-          add l
       IF use_phrase_pitch
 !! todo, cannot use de
       END
+      IF instr_area_size == 1
+;confined in &100
+          add l
           ld e,a
           ld d,h
           push de
           pop de        ; skip
           inc l
+      ELSE
+          ld e,a
+; Report sign in D for backward ref
+          add a:sbc a:ld d,a
+          ex de,hl:add hl,de:ex de,hl
+          push de
+          pop de
+          inc hl
+      END
       END
 
 ; Start by arpeggio and pitch, since we must do that anyway

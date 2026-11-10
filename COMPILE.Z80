@@ -6,7 +6,10 @@ todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
 ; 2026 
-; Nov  8. Replace BRK by call mess
+; Nov 10. Handle instrs not fitting in &100 (instr_area_size > 1)
+        ; Only scan MAX_INSTRS instruments (since others not init)
+        ; Some clean-up
+    ;  8. Replace BRK by call mess
 ; Out 27. Fix assembling: needs tracknub.o
                         ; s/fail/mess
     ; 24. Fix assembling (chipnsfx instruments no more supported)
@@ -68,6 +71,8 @@ todo  = 1
       ; Instead, we use dynamic flag (_use_note_flag etc), meant to be
       ; set up after analysis.
       IMPORT "plyconf.i"
+      IMPORT "macro.i"
+          ASSERT(ayane == 1) ; uses in-tool routines
 
       IMPORT "assert.o" ; mess
       IMPORT "ply.o"
@@ -78,34 +83,12 @@ todo  = 1
       IMPORT "chunk.o"  ; Next_node
       IMPORT "memcpc.o" ; for connect_bk_io
 
-;      IF ayane:ELSE
-;!!! ayane must be = 1, to detect proper instruments
-;      END
-
 ;=========================================
 
 ;Hack: we report here the LSB of routines for instr.o compiled with 
      ; ayane = 0 
-
 compiled_instr_null = compiled_player + 0
-      IF hack_minimala
-;compiled_instr_default = compiled_player + 0 ; Not used for minimal
-      END
-      IF hack_kim
-compiled_instr_default = compiled_player + &04 ; used for kim
-      END
-      IF 0
-;minimala
-compiled_instr_chip_down_vib = compiled_player + 4
-compiled_instr_chip_down_arp_noise = compiled_player + &4D
-      ELSE
-;4k08
-;compiled_instr_chip_down_vib = compiled_player + 4
-;compiled_instr_chip_down_arp = compiled_player + &4D
-;compiled_instr_chip_down_vib_noise = compiled_player + &95
-compiled_instr_chip_down_vib = compiled_player + &36
-compiled_instr_chip_down_arp = compiled_player + &52
-      END
+compiled_instr_default = compiled_player + &04
 
 dest  = compiled_data
 
@@ -123,7 +106,6 @@ to_be_implemented = mess
           call _check_dest
       END
       ENDM
-
 ;------------------------------------------
 
 compile
@@ -140,6 +122,7 @@ instruments
 ; Must add instr 0 = instr_null.
 ; Since ply inconditionaly jump to one instrument
           ld hl,instr_map
+          call align_instr
           ld (hl),e:inc h
           ld (hl),d
 ; Type, no params
@@ -152,6 +135,7 @@ instr_lp
 ; Store instrument pnt in compiled file
 ; (note: done even for empty instrument, to free HL)
           push hl
+          call align_instr
           ld (hl),e:inc h
           ld (hl),d
 
@@ -169,7 +153,7 @@ instr_lp
           cp instr_null AND &FF:call z,mess
           cp instr_default AND &FF
           jr z,comp_default
-      BRK               ; unexpected
+          call mess
 
 comp_default
           call poke_init
@@ -304,8 +288,8 @@ comp_default
       END
 
 ; Link to next row (check &100 confined)
+          call check_confine
           ld hl,(last_row)
-          ld a,h:cp d:call nz,error_confine ; Expect instr fit in &100
           ld a,e:sub l:ld (hl),a ; relative link
 
           pop hl
@@ -322,7 +306,6 @@ comp_default
           jp instr_next
 
 
-
 _chip_finalize_table
           call connect_bk_compile
           ld hl,(last_row)
@@ -332,12 +315,11 @@ _chip_finalize_table
 instr_next
           pop hl
           inc l
-          jp nz,instr_lp
+          ld a,l
+          cp MAX_INSTRS
+          jp c,instr_lp
 
-      IF is_instr_indexed
-; For chp: assume instr fit in &100
-          ld a,d:cp dest/&0100:call nz,mess
-      END
+          call check_confine
 
 phrases
 ;......
@@ -413,7 +395,7 @@ phrases_lp
 ; End of phrase or link to next chunk 
           dec hl        ; rewind    
           call is_end_of_phrase
-          jr z,.row_end
+          jp z,.row_end
           call follow_link_if_eoc
           jr .row_lp
 
@@ -483,15 +465,25 @@ no_instr_escape_code = compiled_instr_null ; handled by ply
           push hl
           ld l,(hl)
           ld h,instr_map / &0100
-      IF hack_chp
+      IF instr_area_size == 1
 ; All instr in first &100, so only need for LSB
           inc h:ld a,(hl):dec h
           cp dest / &0100:call nz,mess
           ld a,(hl)
-          call poke_a
       ELSE
- !! todo. Dynamic flag "_are_instr_confined"
+          ASSERT(instr_area_size AND instr_area_size-1 == 0)
+;encoding MSB in low bits (since aligned)
+      IF dev_checks
+          ld a,(hl):and instr_area_size-1:call nz,mess ; check aligned
       END
+          inc h:ld a,(hl):dec h
+          sub dest/&0100
+      IF dev_checks
+          cp instr_area_size:call nc,mess
+      END
+          or (hl)
+      END
+          call poke_a
           pop hl
           inc hl
 
@@ -666,6 +658,22 @@ track_lp
 
 ; ---------- Helpers -----------------------------------
 
+align_instr
+; Align to multiple of instr_area_size (no-op if 1)
+; In: DE = cur dest
+;Out: DE = aligned dest
+;Mod: AF
+.align = instr_area_size - 1
+          .align ** inc de
+      IF .align
+          ld a,e:and .align XOR &FF:ld e,a
+      END
+          ret
+
+check_confine
+          ld a,d:cp dest/&0100 + instr_area_size:call nc,error_confine
+          ret
+
 setup_comp_chip_down_3
           ld b,3        ; vol step, initial vol, noise
 ;enchaine
@@ -677,7 +685,6 @@ setup_comp_chip_down
 ;Out: de= dest (advanced)
     ;  b= loop row # 
     ; hl preserved
-
           call poke_init
           call poke_a
 ; ext params, before table
@@ -750,7 +757,6 @@ _check_dest
           ld a,d
           cp buffer/&0100:jr z,.ok
           cp dest/&0100:call c,mess
-          cp dest/&0100+8:call nc,mess ; limit for chp (minimala:&468)
 .ok
           pop af
           ret

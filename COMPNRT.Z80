@@ -20,10 +20,8 @@ do_play = 0             ; 0: check  1: play tune  (if no return)
 
       IMPORT "memmap.i"
       IMPORT "import.i"
-      IMPORT "plyconf.i" ; just for check below    
-      IF 1-ayane
- !! Compile: in-tool routine, so ayane must be set.
-      END
+      IMPORT "plyconf.i" ; for static checks
+      IMPORT "macro.i"
 
       ORG code_start
           IMPORT_SALO_DEPS()
@@ -166,8 +164,8 @@ end_of_tune
 
 test_compile_4k_fix
 ; Just check it doesn't assert 
-
-;-- load
+          ASSERT(instr_area_size >= 16) ;todo: make dynamic
+;-- load                              
           call full_init
           ld hl,filename_4k_fix
           ld bc,0       ; skip metadata

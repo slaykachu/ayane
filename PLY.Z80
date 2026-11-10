@@ -19,8 +19,11 @@ need_room = 1
 
 ; \/\/\/ 2026 \/\/\/\/\
 ; ----- Alpha5 -----
+  ; Nov
+   ; 9 For compiled player (ayane=0 release=1):
+        ; Handle instrs not fitting in &100 (instr_area_size > 1)
   ; Out
-   ;27 For compiled player (ayane=0 release=1):
+   ;27 For compiled player:
         ; Amorce_song: ld hl,compiled_data (since only 1 song possible)
         ; Only import "timer.o" if sfx  
         ; ... but still need SUB_TM_CALL macro
@@ -239,15 +242,22 @@ change_phrase_tm = !! TODO
       ENDM
 
 
+      MACRO INC_INSTR_PNT
+      IF instr_area_size == 1
+          inc c
+      ELSE
+          inc bc
+      END
+      ENDM
+
       MACRO UPDATE_INSTR flags_in_b,phrase_in_de
 ;Indirection. Rational from vAF:
- ;  Don't hardcode instr adr in phrase, but use its number
+ ;  Don't hardcode instr adr in phrase, but use its index
                ; - take less space
                ; - ease compile (hu?)
                ; - more future proof (ease changing instr while played)
                                      ; e.g. "alternate instr"
 
-      IF is_instr_indexed
       IF phrase_in_de
   !! review this
       END
@@ -266,20 +276,15 @@ update_instr_tm = 61
           push hl       ; save phrase pnt
           ld l,(hl)     ; idx instru
 
-      IF instr_head_size-8
- !! review this
-      END
-      IF instr_idx AND &07FF
- !! review this
-      END
+      IF ayane
+          ASSERT(instr_head_size == 8)
+          ASSERT(instr_idx AND &07FF == 0)
           ld h,instr_idx / &0800
           3 ** add hl,hl
 
-      IF ayane
           ld a,b
           ld bc,&7F00+BK_INSTR:out (c),c
           ld b,a
-      END
 
           ld a,(hl):inc hl
           ld (de),a:inc e ; LSB instr routine
@@ -292,36 +297,44 @@ update_instr_tm = 61
 
           pop hl
           INC_HL()
+
+          ld a,b
+          ld bc,&7F00+BK_PHRASE:out (c),c
+          ld b,a
+
       ELSE
-; Here instrument defined directly by its LSB, pointing to:
-; type, params, [inlined rows]
-      IF flags_in_b
-          inc bc        ; So B not changed by LDI
-!! todo. we use bc for indirection
-      END
-      IF sfx
- !! todo
-      END
-      IF 1-phrase_in_de
-  !! error
-      END
+; Compiled 
+
+          ASSERT(flags_in_b == 0) ; we use bc for indirection
+          ASSERT(sfx == 0) ; todo
+          ASSERT(phrase_in_de == 1)
           ld a,(de):inc de
 ; 0 only used for empty row: no instr to install and no note to read
           or a:jr z,_no_note
+      IF instr_area_size == 1
+; Here instrument defined directly by its LSB, pointing to:
+; type, params, [inlined rows]
           ld c,a
           ld b,compiled_data / &0100 ; instr data MSB
-          ld a,(bc):inc c ; type -> lsb routine
+      ELSE
+; MSB in lower bits.
+          ld c,a
+          ASSERT(instr_area_size AND [instr_area_size-1] == 0)
+          and instr_area_size-1
+          add compiled_data / &0100:ld b,a
+          sub compiled_data / &0100:xor c:ld c,a
+      END
+
+          ld a,(bc):INC_INSTR_PNT() ; type -> lsb routine
           ld (hl),a:inc l
           ld (hl),instr_code / &0100:inc l
           ld (hl),c:inc l ; pnt params
           ld (hl),b
       END
 
-      IF ayane
           ld a,b
           ld bc,&7F00+BK_PHRASE:out (c),c
           ld b,a
-      END
       ENDM
 
       MACRO UPDATE_NOTE phrase_in_de
