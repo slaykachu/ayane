@@ -6,7 +6,8 @@ todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
 ; 2026 
-; Nov 10. Handle CLR (instr 0 without note)
+; Nov 11. Handle track loop (now encoded by event in .aya)
+    ; 10. Handle CLR (instr 0 without note)
         ; Handle instrs not fitting in &100 (instr_area_size > 1)
         ; Only scan MAX_INSTRS instruments (since others not init)
         ; Some clean-up
@@ -567,14 +568,18 @@ track_lp
 ; Might be empty (intermediate hook)
 ; For now, not suported
           call z,to_be_implemented
+          push hl
+          idsz ** inc hl
+          ld a,(hl)
+          cp evt_track_loop AND &FF:jr nz,.no_loop_yet
+          pop hl:pop hl
+          jr .set_track_loop
+.no_loop_yet
       IF hack_chp
 ; For now, rely on the fact there is always transpose following by
 ; phrase (aka "static")
   ; -> No need for indirection (would take space)
   ; -> We could still leverage phrase looping (if same transpose)
-          push hl
-          idsz ** inc hl
-          ld a,(hl)
           cp evt_set_transpose AND &FF:call nz,mess
           inc hl
           call poke_ldi
@@ -614,6 +619,7 @@ track_lp
           call Next_node
           jr nz,.hooklp
 
+.set_track_loop
           call poke_flush
           ld de,(dest_pnt)
 ; Encode loop via fake event
