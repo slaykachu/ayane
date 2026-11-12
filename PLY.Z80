@@ -20,6 +20,10 @@ need_room = 1
 ; \/\/\/ 2026 \/\/\/\/\
 ; ----- Alpha5 -----
   ; Nov
+   ;11 [clean-up] Remove phrase_in_de alternative:
+                    ; easier to follow (harmonize in-tool vs compiled)
+                    ; it was a micro-optimisation for minimala.chp,
+                         ; but code has rotten
    ; 9 For compiled player (ayane=0 release=1):
         ; Handle instrs not fitting in &100 (instr_area_size > 1)
   ; Out
@@ -29,31 +33,6 @@ need_room = 1
         ; ... but still need SUB_TM_CALL macro
         ; Don't check *_lsb when ayane=0  
         ; Move events and track_end for jr c,track_reset
-; ----- Alpha2 -----
-  ; Jan      
-   ;22 Call preplay (cleaner than doing it in timer.set_timer_and_psg)
-   ;19 Use ARP_CLIP
-     ; Don't transpose /c_note_10/
-   ;17 Add evt_track_loop (see rationale in journal)
-; ----- Alpha1 -----
-   ;04 play: reset volumes (see rationale there)
-   ;02 Amorce_song: must scope bk (when called from PHRASUI)
-   ;01 read_vol: Must add track volume, since it will be sub in instr.o
-               ; (track volume cannot be set right now, so the bug
-                 ;didn't manifest)
-; \/\/\/ 2025 \/\/\/\/\
-; ----- v0au -----
-  ; Nov
-   ;10 fx_set_phrase: fix routine
-
-; ----- v0at -----
-   ; 5 Move get/set_diapasion in periods.o
-  ; Oct
-   ;28 Move Init_periods in periods.o
-   ;16 Amorce_song: use channel info from subsong (moved from tracks)
-
-; ----- v0as -----
-   ;14 diapason on 16 bits
 
       IMPORT "plyconf.i"
       IF 1-ayane
@@ -250,19 +229,13 @@ change_phrase_tm = !! TODO
       END
       ENDM
 
-      MACRO UPDATE_INSTR flags_in_b,phrase_in_de
+      MACRO UPDATE_INSTR flags_in_b
 ;Indirection. Rational from vAF:
  ;  Don't hardcode instr adr in phrase, but use its index
                ; - take less space
                ; - ease compile (hu?)
                ; - more future proof (ease changing instr while played)
                                      ; e.g. "alternate instr"
-
-      IF phrase_in_de
-  !! review this
-      END
-;Done preemptively, as we must do it before push
-;Timer might be triggered a bit too soon, nevermind   
       IF sfx
       IF ayane
 update_instr_tm = 61
@@ -270,6 +243,8 @@ update_instr_tm = 61
  !!! todo     
       END
       END
+;Done preemptively, as we must do it before push
+;Timer might be triggered a bit too soon, nevermind   
           EX_AF'()
           SUB_TM_CALL(update_instr_tm-1)
           EX_AF'()
@@ -303,12 +278,13 @@ update_instr_tm = 61
           ld b,a
 
       ELSE
-; Compiled 
-
+; Compiled
+      IF use_flags
           ASSERT(flags_in_b == 0) ; we use bc for indirection
+!! todo. 
+      END
           ASSERT(sfx == 0) ; todo
-          ASSERT(phrase_in_de == 1)
-          ld a,(de):inc de
+          ld a,(hl):inc hl
 ; 0 only used for empty row: no instr to install and no note to read
           or a:jr z,_no_note
       IF instr_area_size == 1
@@ -324,44 +300,23 @@ update_instr_tm = 61
           add compiled_data / &0100:ld b,a
           sub compiled_data / &0100:xor c:ld c,a
       END
-
           ld a,(bc):INC_INSTR_PNT() ; type -> lsb routine
-          ld (hl),a:inc l
+          ld (de),a:inc l
+          ex de,hl
           ld (hl),instr_code / &0100:inc l
           ld (hl),c:inc l ; pnt params
           ld (hl),b
+          ex de,hl
       END
-
-          ld a,b
-          ld bc,&7F00+BK_PHRASE:out (c),c
-          ld b,a
       ENDM
 
-      MACRO UPDATE_NOTE phrase_in_de
-      IF phrase_in_de
-          ld a,(de):INC_DE()
-; Periods in word, so we multiply*2 before storing.
-  ; - More optimised (don't have to redo it for next ticks)
-  ; - Trigger flags for future uses (and checks right now).
-          add a
-      IF sfx
-!! todo
-      END
-      IF dev_checks
-          call c,mess   ; >= 128: reserved
-      END
-          pop hl
-; l: note+transpose (aka current note)
-; h: transpose  
-          cp note_c_10 * 2:jr z,$+3:add h
-!!todo ARP_CLIP
-          ld l,a
-          push hl
-      ELSE
+      MACRO UPDATE_NOTE
 update_note_tm = 18
-;same but de,hl exchanged
+; Periods in word, note was stored *2
           ld a,(hl):INC_HL()
           pop de
+; e: note+transpose (aka current note). Dropped
+; d: transpose (*2) 
           cp note_c_10*2 + note_c_0_encoding:jr z,.oktrans
           add d
           ARP_CLIP()
@@ -372,7 +327,6 @@ update_note_tm = 18
           SUB_TM_CALL(update_note_tm-1) ; -1 jr not taken
           EX_AF'()
           push de
-      END
       ENDM
 
       MACRO NOT_REACHED
@@ -722,13 +676,9 @@ tm_read_row = 1 + 43    ; until read_fx
 ; and continue at .ok_phrase
           ld hl,track_fx - track_phrase_pnt
           add hl,sp
-      IF ayane
           ex de,hl
           pop hl        ; restore phrase pnt
-      ELSE
-          pop de
-      END
-;-----------------------------------------
+;--- Read row --------------------------------------
       IF use_flags
           ld b,(hl)     ; flags   
           INC_HL()
@@ -786,14 +736,14 @@ read_instr
 tm_read_instr = 5       ; when no instr
           bit bit_instr-nb_fx,b ; (compense RR b)
           jr z,.okinstr ; no need to skip if no instr: de discarded
-          UPDATE_INSTR(1,0)
+          UPDATE_INSTR(1)
 .okinstr
 
 read_note
 ;--------            
 tm_read_note = 5
           bit bit_note-nb_fx,b:jr z,.oknote
-          UPDATE_NOTE(0)
+          UPDATE_NOTE()
 .oknote
 
 read_vol
@@ -827,11 +777,14 @@ tm_read_vol = 11 + 17   ; when .okvol taken
       ELSE
 ; Version minimala.chp!
 ; Read instr and note inconditionally
+tm_read_fx0 = 0
+tm_read_instr = 0
+tm_read_note = 0
       IF nb_fx
  !! todo 
       END
-          UPDATE_INSTR(0,1)
-          UPDATE_NOTE(1)
+          UPDATE_INSTR(0)
+          UPDATE_NOTE()
 _no_note
           ex de,hl
       IF use_volume
@@ -1129,6 +1082,7 @@ track_stack_init_size = $-track_stack_init + 2
 save_org = $
 ho
       FILL compiled_periods - $,0 ; crunchability compiled player
+end_of_code = c1        ; post period seeds
       ORG compiled_stack
       END
 
@@ -1182,6 +1136,8 @@ track_stack_
 hi
       IF 1-ayane
       ORG save_org
+;Explicit start and size since we emit code in /compiled_stack/
+      SAVE "ply.bin",compiled_player,end_of_code-compiled_player
       END
 
 
