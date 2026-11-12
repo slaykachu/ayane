@@ -2,19 +2,19 @@
 ayane = 1               ; 0: Stand-alone  1: In-tool player
 
 ; 2026
-  ; Nov 10 Replace is_instr_indexed by instr_area_size
+  ; Nov 12 Remove compiled_instr_buf (was for chipnsfx-like instruments)
+                ; compiled_instr     (not used)
+      ; 10 Replace is_instr_indexed by instr_area_size
          ; -> Allow > &100 
 
 ; Hard coded dest compile  
 ;Buffer first, so we can better concatenate code+data
-compiled_instr_buf = &4000
-compiled_stack = &4100
-compiled_psg_regs = &4200
-compiled_player = &4220 ; instr.o + ply.o
+compiled_stack = &4000
+compiled_psg_regs = &4100
+compiled_player = &4120 ; instr.o + ply.o
 compiled_periods = [compiled_player AND &FF00] + &0200
 ; tracklist, instr, phrase, tracks
 compiled_data = compiled_periods + &0100
-compiled_instr = compiled_data
 
 periods_in_16bits = 1
 
@@ -25,7 +25,7 @@ sfx   = 1
 nb_fx = 1               ; warning: 0 won't work for chung
 ;see const.nb_fx_max for encoding itself
 
-pattern_size = 32*3     ; 0 for dynamic
+pattern_size = 0        ; 0 for dynamic, >0 if constant
 
 ; Can change "master" volume (by track basic)
 use_track_volume = 0
