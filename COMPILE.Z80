@@ -6,7 +6,8 @@ todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
 ; 2026 
-; Nov 12. Handle _use_instr_end
+; Nov 13. Handle _periods_in_16bits = 0
+    ; 12. Handle _use_instr_end
     ; 11. Handle track loop (now encoded by event in .aya)
     ; 10. Handle CLR (instr 0 without note)
         ; Handle instrs not fitting in &100 (instr_area_size > 1)
@@ -221,6 +222,15 @@ comp_default
       END
           ld a,(_use_instr_pitch)
           or a:jr z,.no_instr_pitch
+          ld a,(_periods_in_16bits):or a:jr nz,.asis
+          ld a,(hl):inc hl
+          ld b,(hl):inc hl
+      4 ** [sra b:rr a]
+          ld (de),a:inc de
+          ld a,b
+          ld (de),a:inc de
+          jr .ok_instr_pitch
+.asis
           ldi
           ldi
           jr .ok_instr_pitch
@@ -808,6 +818,7 @@ cur_instr BYTE
       IF todo
 ; Set them after analysis phase
       END
+_periods_in_16bits BYTE 0
 ;--instr
 _use_instr_arp BYTE 1
 _use_instr_pitch BYTE 1
