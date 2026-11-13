@@ -8,8 +8,9 @@ dev_checks' = 1         ; new checks
 ; -- Alpha 5 --
 ;2026      
  ;Nov
-   ;10: Compiled player:
-          ; Handle instrs not fitting in &100 (instr_area_size > 1)
+   ;11: Compiled player:
+          ; Handle use_instr_end
+   ;10:     Handle instrs not fitting in &100 (instr_area_size > 1)
    ; 8: Replace BRK by call mess
  ;Out  
    ;30: Import timer when ayane=1
@@ -187,7 +188,7 @@ instr_default
       ;  A = TM
 ;/tm1_/ placed in _instr_end to avoid forward reference
           pop hl        ; Instr table
-      IF use_instr_end
+      IF use_instr_end AND ayane
           inc h:dec h:jr z,_instr_end
       END
 ; Follow next link.
@@ -212,6 +213,12 @@ tm1   = tm1_-1 + arp_clip_tm + 14+7+50 ; Until jr ok_noise (taken)
           ld ixh,b
       END
           ld a,(hl)
+      IF use_instr_end
+;-1 is not a possible link delta, used as end marker.
+          ASSERT(compiled_instr_end_marker == &FF)
+          inc a:jr z,_instr_end
+          dec a
+      END
       IF use_phrase_pitch
 !! todo, cannot use de
       END

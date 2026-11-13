@@ -6,7 +6,8 @@ todo  = 1
 ; Compile: Adapt data, flatten event list, inline tables, etc
 
 ; 2026 
-; Nov 11. Handle track loop (now encoded by event in .aya)
+; Nov 12. Handle _use_instr_end
+    ; 11. Handle track loop (now encoded by event in .aya)
     ; 10. Handle CLR (instr 0 without note)
         ; Handle instrs not fitting in &100 (instr_area_size > 1)
         ; Only scan MAX_INSTRS instruments (since others not init)
@@ -301,18 +302,25 @@ comp_default
           jp .deflp
 
 .defend
+          call instr_get_loop
           call connect_bk_compile
-          ld hl,(last_row)
-          ld a,(loop_pnt)
-          sub l:ld (hl),a
-          jp instr_next
-
-
-_chip_finalize_table
-          call connect_bk_compile
-          ld hl,(last_row)
-          ld a,(loop_pnt)
-          sub l:ld (hl),a
+          jr c,.poke_loop
+;no loop. does the player handle it
+          ld a,(_use_instr_end):or a:call z,mess
+          ld a,compiled_instr_end_marker:ld (de),a:inc de
+          jr .ok_loop
+.poke_loop
+;todo: check if back ref >= &80  (we use sign to mark it)
+          ld bc,(last_row)
+          ld hl,(loop_pnt)
+          or a:sbc hl,bc
+          jr z,.okref
+          call nc,mess  ; Forward? inconsistency 
+          inc h:call nz,mess ; ref > &100
+          bit 7,l:call z,mess ; ref > &80
+.okref
+          ld a,l:ld (bc),a
+.ok_loop
 ;enchaine
 instr_next
           pop hl
@@ -806,6 +814,7 @@ _use_instr_pitch BYTE 1
 _use_flags BYTE 0       ; 0: Infer from noise value
 _use_noise BYTE 1
 _use_hard_env BYTE 0
+_use_instr_end BYTE 1
 ;--phrase
 _nb_fx BYTE 0
 _use_instr_flag BYTE 0  ; Flag not needed when always instr in row

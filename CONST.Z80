@@ -16,7 +16,7 @@ replay_default = replay_50_08Hz
 delai_ui_default = 6
 diapason_default = 440*128
 
-MAX_INSTRS = 99         ; instrsel, memmap
+MAX_INSTRS = 99         ; instrsel, memmap, compile
 ; !!! Actually 98 since 0 used for instr_clr
 MAX_PHRASES = 256       ; 4k-2026.chp use phrase 204!
       IF MAX_PHRASES != 256
@@ -30,6 +30,8 @@ note_c_0_encoding = -128 ; Notes are signed, for ovf detection
 note_c_10 = 10 * 12     ; C-10 -> period 0 
 note_clr = 127          ; *not* encoded as is, just for "unpack_row_at"
 instr_clr = 0
+
+compiled_instr_end_marker = &FF
 
 ;ply, salo, comp
 type_evt_comment = 0
