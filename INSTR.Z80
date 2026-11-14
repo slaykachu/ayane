@@ -8,9 +8,12 @@ dev_checks' = 1         ; new checks
 ; -- Alpha 5 --
 ;2026      
  ;Nov
-   ;11: Compiled player:
-          ; Handle use_instr_end
-   ;10:     Handle instrs not fitting in &100 (instr_area_size > 1)
+     ; Compiled player:
+   ;13:  Fix instr_null: must consume channel mask
+     ;   Handle use_hard_env = 0
+      ;  Handle use_flag_channel = 0
+   ;11:  Handle use_instr_end
+   ;10:  Handle instrs not fitting in &100 (instr_area_size > 1)
    ; 8: Replace BRK by call mess
  ;Out  
    ;30: Import timer when ayane=1
@@ -133,9 +136,7 @@ instr_null
 ;When no current instr, come here.
 ;Also fallback for undefined instr.
           pop hl        ; consume param
-      IF use_flag_channel
           pop hl
-      END
           pop hl        ; consume regs+vol
       IF sfx
 ;Needd to cut fx, as instr_null is used for 'CLR'
@@ -292,9 +293,8 @@ tm1   = tm1_-1 + arp_clip_tm + 14+7+50 ; Until jr ok_noise (taken)
       END
 
 ; r7
+          pop de        ; D=psg_regs E=Mask tone/noise for cur channel
       IF use_flag_channel
-          pop de        ; Mask channel / noise for current channel
-
 ; Flags channel/noise (copied in each channel)
           ld a,(hl)
           or e
@@ -316,26 +316,26 @@ tm1   = tm1_-1 + arp_clip_tm + 14+7+50 ; Until jr ok_noise (taken)
           SUB_TM''(14-1) ; -1 for tm not taken
 ;enchaine
       ELSE
-; Infer noise flag from noise value  
-      IF default_use_noise
-          call mess
-!! Fixme, flag not set in r7
-          ld e,&3F
-          ld a,(hl)
+; Infer noise flag from noise value 
+
+          ld a,(hl)     ; noise
           or a
           jr z,.ok_noise
-          ld (psg_regs+6),a
-          ld e,&07
-      END
+
+          ld a,e:ld e,7
+          ex de,hl
+          and (hl):ld (hl),a:dec l
+          ld a,(de):ld (hl),a
+          ex de,hl
       END
 .ok_noise
           INC_HL_INSTR() ; skip noise value
 
+          ld a,(hl):INC_HL_INSTR()
+      IF use_hard_env
 ; Volume, or env_hard:
     ;  xxxx0 -> vol xxxx (F=max volume)
     ; 1yyyy1 -> env hard            
-          ld a,(hl):INC_HL_INSTR()
-      IF use_hard_env
 tm2   = 10              ; until jr no_hard_env (taken)
           rrca
           jr nc,.no_hard_env
@@ -384,9 +384,8 @@ tm_hard = 17-1          ; until jr abs_hard (taken)
           EX_AF'()
           SUB_TM(tm_hard+20)
           jr .ok_vol
-
       ELSE
- !!! todo
+tm2   = 6
       END
 .no_hard_env
       IF use_volume
